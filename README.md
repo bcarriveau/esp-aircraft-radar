@@ -3,20 +3,32 @@
 PlatformIO firmware for the exact 7-inch 800×480 Waveshare ST7262 + GT911
 board.
 
-## Product 16 TLS stability candidate
+## Product 18 certificate-bundle candidate
 
 Current firmware marker:
 
-`7IN-20260721-PRODUCT16-TLS-STABLE`
+`7IN-20260721-PRODUCT18-CERT-BUNDLE`
 
-Product 16 keeps the Product 15 display, UI, data-publication, and recovery
-architecture while correcting the repeated `OFFLINE TLS x6` disconnect cycle:
+Product 18 corrects the native HTTPS configuration rejected during the first
+Product 17 physical test. It attaches Espressif's full CA certificate bundle
+and keeps hostname verification enabled. Product 17 failed locally before any
+network TLS handshake because no server-verification method was configured.
 
-- Uses the already-resolved ADS-B server address for TCP while preserving the
-  hostname for TLS SNI, avoiding a second DNS lookup to a different edge.
-- Allows 20 seconds for the TLS handshake, matching the proven CYD request
-  timeout instead of forcing a 10-second cutoff.
-- Logs the exact mbedTLS error code and text after a secure-connect failure.
+Product 17 introduced the native transport while keeping the Product 15
+display, UI, data-publication, and recovery
+architecture while replacing the TLS transport that continued to time out in
+Product 16:
+
+- Uses ESP-IDF's native streaming HTTPS client instead of Arduino's
+  `NetworkClientSecure` handshake plus the hand-written HTTP parser.
+- Re-resolves DNS and creates a completely fresh native client for each retry;
+  both attempts are no longer pinned to one Cloudflare address.
+- Keeps all HTTPS work on the existing core-0 network task and does not
+  reintroduce `HTTPClient::GET()` on the UI task.
+- Preserves the request/body deadlines, response-size guard, PSRAM payload,
+  generation rejection, and single-snapshot publication architecture.
+- Logs RSSI, the native ESP-IDF error, socket errno, and TCP-vs-TLS diagnosis
+  when a connection fails.
 - Recycles Wi-Fi only for Wi-Fi, DNS, or TCP failures. TLS, HTTP, response-body,
   and JSON failures now retry without deliberately disconnecting a healthy
   station link.
@@ -135,7 +147,7 @@ do not intentionally commit or share it.
 
 Serial should show:
 
-- `Build: 7IN-20260721-PRODUCT15-HARDENED`
+- `Build: 7IN-20260721-PRODUCT18-CERT-BUNDLE`
 - `PSRAM: YES`
 - display initialization messages
 - Wi-Fi IP and RSSI
@@ -147,11 +159,11 @@ unavailable.
 
 ## Verified build
 
-Product 15 was compiled and linked with the pinned PlatformIO environment and a
+Product 17 was compiled and linked with the pinned PlatformIO environment and a
 placeholder local `config.h`:
 
-- Flash: 1,928,921 / 6,553,600 bytes (29.4%)
-- Internal RAM: 196,620 / 327,680 bytes (60.0%)
+- Flash: 1,945,653 / 6,553,600 bytes (29.7%)
+- Internal RAM: 196,636 / 327,680 bytes (60.0%)
 
 The test build did not use or overwrite the private Wi-Fi credentials.
 

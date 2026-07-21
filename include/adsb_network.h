@@ -7,7 +7,7 @@ namespace adsb {
 // Owns Wi-Fi lifecycle, fetch scheduling, and successful publication.
 
 constexpr uint32_t FETCH_INTERVAL_MS = 15000;
-constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 15000;
+constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 30000;
 
 void begin();
 void service();

@@ -3,7 +3,10 @@
 #include <ArduinoJson.h>
 #include <WiFiClient.h>
 #include <WiFiClientSecure.h>
+#include <esp_crt_bundle.h>
+#include <esp_err.h>
 #include <esp_heap_caps.h>
+#include <esp_http_client.h>
 
 #include "adsb_network.h"
 #include "config.h"
@@ -12,11 +15,11 @@
 namespace adsb_fetch {
 namespace {
 
-constexpr uint32_t SOCKET_TIMEOUT_MS = 10000;
-constexpr uint32_t TLS_HANDSHAKE_TIMEOUT_MS = 20000;
+constexpr uint32_t HTTP_NETWORK_TIMEOUT_MS = 15000;
 constexpr uint32_t TCP_PROBE_TIMEOUT_MS = 3000;
 constexpr uint32_t IDLE_TIMEOUT_MS = 15000;
 constexpr uint32_t TOTAL_TIMEOUT_MS = 90000;
+constexpr size_t MAX_RESPONSE_BYTES = 250000;
 constexpr uint8_t MAX_ATTEMPTS = 2;
 constexpr uint32_t RETRY_DELAY_MS = 500;
 
@@ -39,35 +42,6 @@ AttemptResult failed(app_state::FetchFailureStage stage,
   return result;
 }
 
-bool readSecureHttpLine(WiFiClientSecure& client, String& line,
-                        uint32_t timeoutMs) {
-  line = "";
-  const uint32_t started = millis();
-  uint32_t lastProgress = started;
-  while (millis() - started < timeoutMs &&
-         millis() - lastProgress < timeoutMs) {
-    int availableBytes = client.available();
-    if (availableBytes <= 0) {
-      delay(2);
-      continue;
-    }
-    int value = client.read();
-    if (value < 0) {
-      delay(2);
-      continue;
-    }
-    lastProgress = millis();
-    char ch = static_cast<char>(value);
-    if (ch == '\n') {
-      if (line.endsWith("\r")) line.remove(line.length() - 1);
-      return true;
-    }
-    if (line.length() >= 511) return false;
-    line += ch;
-  }
-  return false;
-}
-
 app_state::FetchFailureStage diagnoseSecureConnectFailure(
     const IPAddress& serverIp) {
   // A short raw TCP probe only runs after a secure connect failure. This lets
@@ -81,149 +55,260 @@ app_state::FetchFailureStage diagnoseSecureConnectFailure(
                       : app_state::FetchFailureStage::TCP;
 }
 
-AttemptResult openRequest(WiFiClientSecure& client, const String& path,
-                          const IPAddress& serverIp, uint8_t attempt) {
-  Serial.printf("ADSB.fi request attempt %u\n", attempt);
-  Serial.printf("Heap before request: %u, free PSRAM: %u\n",
-                ESP.getFreeHeap(), ESP.getFreePsram());
-
-  client.setInsecure();
-  client.setTimeout(SOCKET_TIMEOUT_MS);
-  client.setHandshakeTimeout((TLS_HANDSHAKE_TIMEOUT_MS + 999) / 1000);
-
-  const uint32_t connectStarted = millis();
-  // Use the address already resolved for this attempt while retaining the
-  // hostname for TLS SNI. This prevents a second DNS lookup from selecting a
-  // different Cloudflare edge than the one used by failure diagnostics.
-  if (!client.connect(serverIp, 443, "opendata.adsb.fi", nullptr, nullptr,
-                      nullptr)) {
-    char tlsError[160]{};
-    const int tlsErrorCode = client.lastError(tlsError, sizeof(tlsError));
-    const app_state::FetchFailureStage stage =
-        diagnoseSecureConnectFailure(serverIp);
-    Serial.printf("ADSB.fi %s connect failed after %lu ms; TLS error=%d (%s)\n",
-                  app_state::failureStageName(stage),
-                  (unsigned long)(millis() - connectStarted), tlsErrorCode,
-                  tlsError[0] ? tlsError : "no mbedTLS detail");
-    client.stop();
-    return failed(stage);
-  }
-  Serial.printf("ADSB.fi TLS connected in %lu ms\n",
-                (unsigned long)(millis() - connectStarted));
-
-  String request = "GET " + path + " HTTP/1.0\r\n"
-                   "Host: opendata.adsb.fi\r\n"
-                   "Accept: application/json\r\n"
-                   "Accept-Encoding: identity\r\n"
-                   "User-Agent: BILLS-Aircraft-Radar-7in/15\r\n"
-                   "Connection: close\r\n\r\n";
-  size_t requestBytes = client.print(request);
-  if (requestBytes != request.length()) {
-    Serial.printf("ADSB.fi request write failed: %u of %u bytes\n",
-                  (unsigned)requestBytes, (unsigned)request.length());
-    client.stop();
-    return failed(app_state::FetchFailureStage::TCP);
-  }
-  AttemptResult result;
-  result.success = true;
-  return result;
-}
-
-AttemptResult readResponseHeaders(WiFiClientSecure& client,
-                                  int& expectedLength) {
-  String headerLine;
-  if (!readSecureHttpLine(client, headerLine, SOCKET_TIMEOUT_MS)) {
-    Serial.println("ADSB.fi status-line timeout");
-    client.stop();
-    return failed(app_state::FetchFailureStage::HTTP_HEADERS);
-  }
-  int firstSpace = headerLine.indexOf(' ');
-  int code = firstSpace >= 0 ? headerLine.substring(firstSpace + 1).toInt() : 0;
-  expectedLength = -1;
-  bool headersComplete = false;
-  while (readSecureHttpLine(client, headerLine, SOCKET_TIMEOUT_MS)) {
-    if (headerLine.length() == 0) {
-      headersComplete = true;
-      break;
-    }
-    String lowerHeader = headerLine;
-    lowerHeader.toLowerCase();
-    if (lowerHeader.startsWith("content-length:")) {
-      expectedLength = headerLine.substring(15).toInt();
-    }
-  }
-  if (!headersComplete) {
-    Serial.println("ADSB.fi header timeout");
-    client.stop();
-    return failed(app_state::FetchFailureStage::HTTP_HEADERS);
-  }
-  if (code != 200) {
-    Serial.printf("ADSB.fi HTTP error: %d\n", code);
-    client.stop();
-    return failed(app_state::FetchFailureStage::HTTP_STATUS);
-  }
-  Serial.printf("ADSB.fi HTTP 200, content length: %d\n", expectedLength);
-  if (expectedLength <= 0 || expectedLength > 250000) {
-    Serial.printf("ADSB.fi invalid content length: %d\n", expectedLength);
-    client.stop();
-    return failed(app_state::FetchFailureStage::HTTP_HEADERS);
-  }
-  AttemptResult result;
-  result.success = true;
-  result.responseBytes = expectedLength;
-  return result;
-}
-
-AttemptResult readResponseDocument(WiFiClientSecure& client,
-                                   int expectedLength, JsonDocument& filter,
-                                   JsonDocument& doc) {
+uint8_t* allocatePayload(size_t capacity) {
   uint8_t* payload = static_cast<uint8_t*>(heap_caps_malloc(
-      static_cast<size_t>(expectedLength) + 1,
+      capacity + 1,
       MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (!payload) {
-    payload = static_cast<uint8_t*>(
-        malloc(static_cast<size_t>(expectedLength) + 1));
+    payload = static_cast<uint8_t*>(malloc(capacity + 1));
   }
-  if (!payload) {
-    Serial.printf("ADSB.fi payload allocation failed: need %d bytes\n",
-                  expectedLength + 1);
+  return payload;
+}
+
+AttemptResult fetchAttemptWithSecureClient(const String& path,
+                                             JsonDocument& filter,
+                                             JsonDocument& doc) {
+  Serial.println("ADSB.fi fallback HTTPS via WiFiClientSecure");
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(HTTP_NETWORK_TIMEOUT_MS / 1000);
+  client.setHandshakeTimeout(HTTP_NETWORK_TIMEOUT_MS / 1000);
+
+  if (!client.connect("opendata.adsb.fi", 443)) {
+    Serial.println("ADSB.fi fallback TLS connect failed");
+    return failed(app_state::FetchFailureStage::TLS);
+  }
+
+  client.print(String("GET ") + path + " HTTP/1.1\r\n");
+  client.print("Host: opendata.adsb.fi\r\n");
+  client.print("User-Agent: BILLS-Aircraft-Radar-7in/18\r\n");
+  client.print("Accept: application/json\r\n");
+  client.print("Accept-Encoding: identity\r\n");
+  client.print("Connection: close\r\n\r\n");
+
+  const uint32_t responseStarted = millis();
+  while (!client.available() && millis() - responseStarted < HTTP_NETWORK_TIMEOUT_MS) {
+    delay(2);
+  }
+  if (!client.available()) {
     client.stop();
+    Serial.println("ADSB.fi fallback response timed out");
+    return failed(app_state::FetchFailureStage::HTTP_HEADERS);
+  }
+
+  String response = client.readString();
+  client.stop();
+
+  const int headerEnd = response.indexOf("\r\n\r\n");
+  if (headerEnd < 0) {
+    Serial.println("ADSB.fi fallback response had no header/body separator");
+    return failed(app_state::FetchFailureStage::HTTP_HEADERS);
+  }
+
+  const String headers = response.substring(0, headerEnd);
+  const String body = response.substring(headerEnd + 4);
+  if (body.length() > MAX_RESPONSE_BYTES) {
+    Serial.printf("ADSB.fi fallback response too large: %u bytes\n",
+                  (unsigned)body.length());
+    return failed(app_state::FetchFailureStage::HTTP_HEADERS);
+  }
+
+  if (headers.indexOf("HTTP/1.1 200") < 0 && headers.indexOf("HTTP/1.0 200") < 0) {
+    Serial.printf("ADSB.fi fallback HTTP error headers: %s\n",
+                  headers.c_str());
+    return failed(app_state::FetchFailureStage::HTTP_STATUS);
+  }
+
+  doc.clear();
+  DeserializationError error = deserializeJson(
+      doc, body.c_str(), body.length(), DeserializationOption::Filter(filter));
+  if (error) {
+    Serial.printf("ADSB.fi fallback JSON error: %s\n", error.c_str());
+    return failed(app_state::FetchFailureStage::JSON, body.length());
+  }
+
+  JsonArray parsed = doc["ac"].as<JsonArray>();
+  if (parsed.isNull()) {
+    Serial.println("ADSB.fi fallback response did not contain an ac array");
+    return failed(app_state::FetchFailureStage::JSON, body.length());
+  }
+
+  AttemptResult result;
+  result.success = true;
+  result.responseBytes = body.length();
+  return result;
+}
+
+AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
+                           JsonDocument& doc, uint8_t attempt) {
+  Serial.printf("ADSB.fi native HTTPS attempt %u\n", attempt);
+  Serial.printf("Heap before request: %u, free PSRAM: %u, RSSI: %d dBm\n",
+                ESP.getFreeHeap(), ESP.getFreePsram(), WiFi.RSSI());
+
+  // Resolve for each attempt. A failed Cloudflare edge is never pinned across
+  // both retries, and the address remains available for TCP-vs-TLS diagnosis.
+  IPAddress serverIp;
+  if (!WiFi.hostByName("opendata.adsb.fi", serverIp)) {
+    Serial.println("ADSB DNS failed: opendata.adsb.fi");
+    return failed(app_state::FetchFailureStage::DNS);
+  }
+  Serial.printf("ADSB DNS attempt %u: opendata.adsb.fi -> %s\n", attempt,
+                serverIp.toString().c_str());
+
+  String url = "https://opendata.adsb.fi" + path;
+  esp_http_client_config_t config{};
+  config.url = url.c_str();
+  config.user_agent = "BILLS-Aircraft-Radar-7in/18";
+  config.method = HTTP_METHOD_GET;
+  config.timeout_ms = HTTP_NETWORK_TIMEOUT_MS;
+  config.disable_auto_redirect = false;
+  config.max_redirection_count = 3;
+  config.transport_type = HTTP_TRANSPORT_OVER_SSL;
+  config.buffer_size = 4096;
+  config.buffer_size_tx = 1024;
+  config.keep_alive_enable = false;
+  // Native esp-tls requires an explicit server-verification method. Use the
+  // full CA bundle already supplied by the pinned Arduino/ESP-IDF framework
+  // and retain hostname verification for opendata.adsb.fi.
+  config.crt_bundle_attach = esp_crt_bundle_attach;
+  config.skip_cert_common_name_check = false;
+
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  if (!client) {
+    Serial.println("ADSB.fi native HTTPS client allocation failed");
+    return failed(app_state::FetchFailureStage::TLS);
+  }
+
+  esp_http_client_set_header(client, "Accept", "application/json");
+  esp_http_client_set_header(client, "Accept-Encoding", "identity");
+  esp_http_client_set_header(client, "Connection", "close");
+
+  const uint32_t connectStarted = millis();
+  const esp_err_t openError = esp_http_client_open(client, 0);
+  if (openError != ESP_OK) {
+    const int socketError = esp_http_client_get_errno(client);
+    const app_state::FetchFailureStage stage =
+        WiFi.status() == WL_CONNECTED
+            ? diagnoseSecureConnectFailure(serverIp)
+            : app_state::FetchFailureStage::WIFI;
+    Serial.printf(
+        "ADSB.fi native %s connect failed after %lu ms: %s (0x%x), errno=%d\n",
+        app_state::failureStageName(stage),
+        (unsigned long)(millis() - connectStarted),
+        esp_err_to_name(openError), (unsigned)openError, socketError);
+    esp_http_client_cleanup(client);
+    const AttemptResult fallbackResult =
+        fetchAttemptWithSecureClient(path, filter, doc);
+    if (fallbackResult.success) {
+      return fallbackResult;
+    }
+    return failed(stage);
+  }
+  Serial.printf("ADSB.fi native TLS connected in %lu ms\n",
+                (unsigned long)(millis() - connectStarted));
+
+  const int64_t headerLength = esp_http_client_fetch_headers(client);
+  if (headerLength < 0) {
+    Serial.printf("ADSB.fi native header failure: %lld\n",
+                  static_cast<long long>(headerLength));
+    esp_http_client_cleanup(client);
+    const AttemptResult fallbackResult =
+        fetchAttemptWithSecureClient(path, filter, doc);
+    if (fallbackResult.success) {
+      return fallbackResult;
+    }
+    return failed(app_state::FetchFailureStage::HTTP_HEADERS);
+  }
+
+  const int statusCode = esp_http_client_get_status_code(client);
+  if (statusCode != 200) {
+    Serial.printf("ADSB.fi HTTP error: %d\n", statusCode);
+    esp_http_client_cleanup(client);
+    const AttemptResult fallbackResult =
+        fetchAttemptWithSecureClient(path, filter, doc);
+    if (fallbackResult.success) {
+      return fallbackResult;
+    }
+    return failed(app_state::FetchFailureStage::HTTP_STATUS);
+  }
+
+  const bool chunked = esp_http_client_is_chunked_response(client);
+  const bool lengthKnown = headerLength > 0;
+  if (lengthKnown && static_cast<uint64_t>(headerLength) > MAX_RESPONSE_BYTES) {
+    Serial.printf("ADSB.fi response too large: %lld bytes\n",
+                  static_cast<long long>(headerLength));
+    esp_http_client_cleanup(client);
+    const AttemptResult fallbackResult =
+        fetchAttemptWithSecureClient(path, filter, doc);
+    if (fallbackResult.success) {
+      return fallbackResult;
+    }
+    return failed(app_state::FetchFailureStage::HTTP_HEADERS);
+  }
+  const size_t capacity =
+      lengthKnown ? static_cast<size_t>(headerLength) : MAX_RESPONSE_BYTES;
+  Serial.printf("ADSB.fi HTTP 200, content length: %lld, chunked: %s\n",
+                static_cast<long long>(headerLength), chunked ? "yes" : "no");
+
+  uint8_t* payload = allocatePayload(capacity);
+  if (!payload) {
+    Serial.printf("ADSB.fi payload allocation failed: need %u bytes\n",
+                  (unsigned)(capacity + 1));
+    esp_http_client_cleanup(client);
+    const AttemptResult fallbackResult =
+        fetchAttemptWithSecureClient(path, filter, doc);
+    if (fallbackResult.success) {
+      return fallbackResult;
+    }
     return failed(app_state::FetchFailureStage::RESPONSE_BODY,
-                  expectedLength);
+                  static_cast<uint32_t>(capacity));
   }
 
   size_t received = 0;
   const uint32_t readStarted = millis();
   uint32_t lastProgress = readStarted;
-  while (received < static_cast<size_t>(expectedLength)) {
+  bool readFailed = false;
+  while (received < capacity) {
     uint32_t now = millis();
     if (now - lastProgress >= IDLE_TIMEOUT_MS ||
         now - readStarted >= TOTAL_TIMEOUT_MS) {
       break;
     }
-    int availableBytes = client.available();
-    if (availableBytes > 0) {
-      size_t remaining = static_cast<size_t>(expectedLength) - received;
-      size_t toRead = min(static_cast<size_t>(availableBytes), remaining);
-      toRead = min(toRead, static_cast<size_t>(4096));
-      int bytesRead = client.read(payload + received, toRead);
-      if (bytesRead > 0) {
-        received += static_cast<size_t>(bytesRead);
-        lastProgress = millis();
-      } else {
-        delay(2);
-      }
-    } else {
+    const size_t remaining = capacity - received;
+    const int toRead = static_cast<int>(min(remaining, static_cast<size_t>(4096)));
+    const int bytesRead = esp_http_client_read(
+        client, reinterpret_cast<char*>(payload + received), toRead);
+    if (bytesRead > 0) {
+      received += static_cast<size_t>(bytesRead);
+      lastProgress = millis();
+    } else if (bytesRead == 0) {
+      if (esp_http_client_is_complete_data_received(client)) break;
       delay(2);
+    } else if (bytesRead == -ESP_ERR_HTTP_EAGAIN) {
+      delay(2);
+    } else {
+      Serial.printf("ADSB.fi native body read failed: %d\n", bytesRead);
+      readFailed = true;
+      break;
     }
   }
   payload[received] = 0;
-  client.stop();
+  const bool responseComplete =
+      esp_http_client_is_complete_data_received(client);
+  esp_http_client_cleanup(client);
 
-  if (received != static_cast<size_t>(expectedLength)) {
-    Serial.printf("ADSB.fi truncated response: received %u of %d bytes\n",
-                  (unsigned)received, expectedLength);
+  const bool lengthMismatch = lengthKnown && received != capacity;
+  if (readFailed || lengthMismatch || !responseComplete) {
+    Serial.printf(
+        "ADSB.fi incomplete response: received %u of %u bytes, complete=%s\n",
+        (unsigned)received, (unsigned)capacity,
+        responseComplete ? "yes" : "no");
     free(payload);
+    const AttemptResult fallbackResult =
+        fetchAttemptWithSecureClient(path, filter, doc);
+    if (fallbackResult.success) {
+      return fallbackResult;
+    }
     return failed(app_state::FetchFailureStage::RESPONSE_BODY, received);
   }
   Serial.printf("ADSB.fi response complete: %u bytes in %lu ms\n",
@@ -246,19 +331,6 @@ AttemptResult readResponseDocument(WiFiClientSecure& client,
   AttemptResult result;
   result.success = true;
   result.responseBytes = received;
-  return result;
-}
-
-AttemptResult fetchAttempt(const String& path, const IPAddress& serverIp,
-                           JsonDocument& filter, JsonDocument& doc,
-                           uint8_t attempt) {
-  WiFiClientSecure client;
-  AttemptResult result = openRequest(client, path, serverIp, attempt);
-  if (!result.success) return result;
-  int expectedLength = -1;
-  result = readResponseHeaders(client, expectedLength);
-  if (!result.success) return result;
-  result = readResponseDocument(client, expectedLength, filter, doc);
   if (result.success && attempt > 1) Serial.println("ADSB.fi retry succeeded");
   return result;
 }
@@ -380,16 +452,6 @@ Result fetchAircraft(aircraft::Target* out) {
                 "/dist/" + String(radiusNm, 1);
   Serial.printf("ADSB request: https://opendata.adsb.fi%s [generation %lu]\n",
                 path.c_str(), (unsigned long)result.requestGeneration);
-  IPAddress adsbIp;
-  if (!WiFi.hostByName("opendata.adsb.fi", adsbIp)) {
-    Serial.println("ADSB DNS failed: opendata.adsb.fi");
-    result.failureStage = app_state::FetchFailureStage::DNS;
-    result.durationMs = millis() - fetchStarted;
-    return result;
-  }
-  Serial.printf("ADSB DNS: opendata.adsb.fi -> %s\n",
-                adsbIp.toString().c_str());
-
   JsonDocument filter;
   JsonObject ac = filter["ac"].add<JsonObject>();
   ac["lat"] = true; ac["lon"] = true; ac["flight"] = true; ac["hex"] = true;
@@ -401,7 +463,7 @@ Result fetchAircraft(aircraft::Target* out) {
   JsonDocument doc;
   AttemptResult attemptResult;
   for (uint8_t attempt = 1; attempt <= MAX_ATTEMPTS; ++attempt) {
-    attemptResult = fetchAttempt(path, adsbIp, filter, doc, attempt);
+    attemptResult = fetchAttempt(path, filter, doc, attempt);
     if (attemptResult.success) break;
     waitForRetry(attempt);
   }

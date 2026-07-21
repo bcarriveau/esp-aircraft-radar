@@ -5,6 +5,7 @@
 #include "adsb_fetch.h"
 #include "app_state.h"
 #include "config.h"
+#include "network_reconnect_logic.h"
 #include "settings.h"
 
 namespace adsb {
@@ -52,6 +53,7 @@ void beginWifiConnection(const char* reason) {
                 (unsigned long)wifiAttempts, reason, ssid.c_str());
   WiFi.disconnect(false, false);
   delay(50);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(ssid.c_str(), password.c_str());
   app_state::setWifiStatus(WiFi.status());
 }
@@ -60,6 +62,7 @@ bool waitForWifi(uint32_t timeoutMs) {
   const uint32_t started = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - started < timeoutMs) {
     delay(100);
+    yield();
   }
   app_state::setWifiStatus(WiFi.status());
   return WiFi.status() == WL_CONNECTED;
@@ -218,6 +221,8 @@ const char* wifiStatusName(wl_status_t status) {
 void begin() {
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
   WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
     if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
       const int reason = info.wifi_sta_disconnected.reason;
@@ -261,8 +266,12 @@ void service() {
     lastMemorySample = now;
     app_state::observeMemory();
   }
-  if (status != WL_CONNECTED &&
-      now - lastWifiAttempt >= WIFI_RETRY_INTERVAL_MS) {
+  const uint32_t retryDelayMs =
+      (status == WL_NO_SSID_AVAIL || status == WL_CONNECT_FAILED)
+          ? 60000U
+          : WIFI_RETRY_INTERVAL_MS;
+  if (adsb::shouldScheduleWifiReconnect(status, now, lastWifiAttempt,
+                                        retryDelayMs)) {
     queueCommand(COMMAND_WIFI_RECONNECT);
     lastWifiAttempt = now;
   }
