@@ -1,0 +1,283 @@
+#include "adsb_network.h"
+
+#include <esp_heap_caps.h>
+
+#include "adsb_fetch.h"
+#include "app_state.h"
+#include "config.h"
+#include "settings.h"
+
+namespace adsb {
+namespace {
+
+constexpr uint32_t WIFI_CONNECT_WINDOW_MS = 12000;
+constexpr uint32_t LAST_RESORT_RESTART_MS = 30UL * 60UL * 1000UL;
+constexpr uint16_t LAST_RESORT_FAILURE_COUNT = 20;
+constexpr uint32_t COMMAND_REFRESH = 1U << 0;
+constexpr uint32_t COMMAND_WIFI_RECONNECT = 1U << 1;
+
+TaskHandle_t fetchTaskHandle = nullptr;
+portMUX_TYPE commandMux = portMUX_INITIALIZER_UNLOCKED;
+uint32_t pendingCommands = 0;
+volatile uint32_t lastWifiAttempt = 0;
+uint32_t wifiAttempts = 0;
+wl_status_t lastLoggedWifiStatus = WL_IDLE_STATUS;
+
+void configureTimeSync() {
+  configTzTime("CST6CDT,M3.2.0/2,M11.1.0/2", "pool.ntp.org",
+               "time.google.com");
+}
+
+void queueCommand(uint32_t command) {
+  portENTER_CRITICAL(&commandMux);
+  pendingCommands |= command;
+  portEXIT_CRITICAL(&commandMux);
+  if (fetchTaskHandle) xTaskNotifyGive(fetchTaskHandle);
+}
+
+uint32_t takeCommands() {
+  portENTER_CRITICAL(&commandMux);
+  uint32_t commands = pendingCommands;
+  pendingCommands = 0;
+  portEXIT_CRITICAL(&commandMux);
+  return commands;
+}
+
+void beginWifiConnection(const char* reason) {
+  ++wifiAttempts;
+  lastWifiAttempt = millis();
+  const String ssid = settings::wifiSsid();
+  const String password = settings::wifiPassword();
+  Serial.printf("WiFi attempt %lu (%s): %s\n",
+                (unsigned long)wifiAttempts, reason, ssid.c_str());
+  WiFi.disconnect(false, false);
+  delay(50);
+  WiFi.begin(ssid.c_str(), password.c_str());
+  app_state::setWifiStatus(WiFi.status());
+}
+
+bool waitForWifi(uint32_t timeoutMs) {
+  const uint32_t started = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - started < timeoutMs) {
+    delay(100);
+  }
+  app_state::setWifiStatus(WiFi.status());
+  return WiFi.status() == WL_CONNECTED;
+}
+
+uint32_t failureBackoffMs(uint16_t failures) {
+  if (failures < 3) return FETCH_INTERVAL_MS;
+  if (failures < 6) return 30000;
+  if (failures < 9) return 60000;
+  return 120000;
+}
+
+void waitUntilOrCommand(uint32_t deadlineMs) {
+  for (;;) {
+    const uint32_t now = millis();
+    if ((int32_t)(now - deadlineMs) >= 0) return;
+    const uint32_t remainingMs = deadlineMs - now;
+    if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(remainingMs)) > 0) return;
+  }
+}
+
+void fetchTask(void*) {
+  aircraft::Target* incoming = static_cast<aircraft::Target*>(heap_caps_calloc(
+      aircraft::MAX_TARGETS, sizeof(aircraft::Target),
+      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (!incoming) {
+    incoming = static_cast<aircraft::Target*>(
+        calloc(aircraft::MAX_TARGETS, sizeof(aircraft::Target)));
+  }
+  if (!incoming) {
+    Serial.println("FATAL: ADSB target buffer allocation failed");
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  Serial.println("ADSB fetch task started on core 0");
+  uint32_t nextPollAt = millis();
+  uint32_t outageStartedAt = 0;
+  for (;;) {
+    uint32_t commands = takeCommands();
+    if (commands & COMMAND_WIFI_RECONNECT) {
+      Serial.println("Network task processing WiFi reconnect");
+      beginWifiConnection("requested");
+      app_state::recordNetworkRecovery();
+      waitForWifi(WIFI_CONNECT_WINDOW_MS);
+      nextPollAt = millis();
+      commands |= COMMAND_REFRESH;
+    }
+
+    const uint32_t now = millis();
+    const bool pollDue = (int32_t)(now - nextPollAt) >= 0;
+    if (!pollDue && !(commands & COMMAND_REFRESH)) {
+      waitUntilOrCommand(nextPollAt);
+      continue;
+    }
+
+    const uint32_t pollStartedAt = millis();
+    app_state::beginFetch();
+    adsb_fetch::Result result = adsb_fetch::fetchAircraft(incoming);
+    bool immediateFollowup = false;
+
+    if (result.success) {
+      if (result.requestGeneration != app_state::rangeGeneration()) {
+        Serial.printf(
+            "Discarded ADSB generation %lu; current generation is %lu\n",
+            (unsigned long)result.requestGeneration,
+            (unsigned long)app_state::rangeGeneration());
+        app_state::recordDiscardedResponse(
+            result.durationMs, result.responseBytes, result.receivedCount,
+            result.acceptedCount);
+        immediateFollowup = true;
+      } else {
+        app_state::publishTargets(incoming, result.acceptedCount, millis());
+        app_state::recordFetchSuccess(
+            result.durationMs, result.responseBytes, result.receivedCount,
+            result.acceptedCount);
+        Serial.printf("Published %u aircraft in %lu ms\n",
+                      result.acceptedCount,
+                      (unsigned long)result.durationMs);
+        outageStartedAt = 0;
+      }
+    } else {
+      app_state::recordFetchFailure(result.failureStage, result.durationMs,
+                                    result.responseBytes);
+      app_state::Diagnostics diagnostics;
+      app_state::copyDiagnostics(diagnostics);
+      if (outageStartedAt == 0) outageStartedAt = millis();
+      Serial.printf("ADSB fetch failed at %s; consecutive failures=%u\n",
+                    app_state::failureStageName(result.failureStage),
+                    diagnostics.consecutiveFailures);
+
+      // Recovery ladder: preserve normal retries first, then recycle WiFi only
+      // after the current socket is closed, and progressively back off.
+      if (diagnostics.consecutiveFailures >= 3 &&
+          (diagnostics.consecutiveFailures == 3 ||
+           diagnostics.consecutiveFailures % 6 == 0)) {
+        Serial.println("ADSB recovery ladder: recycling WiFi");
+        beginWifiConnection("ADSB recovery");
+        app_state::recordNetworkRecovery();
+        waitForWifi(WIFI_CONNECT_WINDOW_MS);
+      }
+
+      if (outageStartedAt != 0 &&
+          millis() - outageStartedAt >= LAST_RESORT_RESTART_MS &&
+          diagnostics.consecutiveFailures >= LAST_RESORT_FAILURE_COUNT) {
+        Serial.println(
+            "ADSB recovery ladder exhausted for 30 minutes; restarting ESP32");
+        delay(200);
+        ESP.restart();
+      }
+      nextPollAt = millis() +
+                   failureBackoffMs(diagnostics.consecutiveFailures);
+    }
+
+    // A normal successful poll is scheduled from its start time, giving a
+    // true 15-second cadence. A request never overlaps because this task owns
+    // the entire transport.
+    if (result.success && !immediateFollowup) {
+      nextPollAt = pollStartedAt + FETCH_INTERVAL_MS;
+      if ((int32_t)(millis() - nextPollAt) >= 0) nextPollAt = millis();
+    } else if (immediateFollowup) {
+      nextPollAt = millis();
+    }
+
+    // Preserve button/range commands that arrived while TLS was active.
+    if (ulTaskNotifyTake(pdTRUE, 0) > 0) {
+      uint32_t lateCommands = takeCommands();
+      if (lateCommands & COMMAND_WIFI_RECONNECT) {
+        queueCommand(COMMAND_WIFI_RECONNECT);
+      }
+      if (lateCommands & COMMAND_REFRESH) nextPollAt = millis();
+    }
+  }
+}
+
+}  // namespace
+
+const char* wifiStatusName(wl_status_t status) {
+  switch (status) {
+    case WL_CONNECTED: return "connected";
+    case WL_NO_SSID_AVAIL: return "SSID not found";
+    case WL_CONNECT_FAILED: return "authentication failed";
+    case WL_CONNECTION_LOST: return "connection lost";
+    case WL_DISCONNECTED: return "disconnected";
+    case WL_IDLE_STATUS: return "idle";
+    default: return "unknown";
+  }
+}
+
+void begin() {
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+      const int reason = info.wifi_sta_disconnected.reason;
+      app_state::setWifiStatus(WL_DISCONNECTED);
+      app_state::setLastDisconnectReason(reason);
+      Serial.printf("WiFi disconnected, reason=%d\n", reason);
+    } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+      app_state::setWifiStatus(WL_CONNECTED);
+      Serial.printf("WiFi connected: %s, RSSI=%d\n",
+                    WiFi.localIP().toString().c_str(), WiFi.RSSI());
+      configureTimeSync();
+    }
+  });
+
+  beginWifiConnection("startup");
+  Serial.printf("Connecting to %s", settings::wifiSsid().c_str());
+  const bool connected = waitForWifi(20000);
+  Serial.println();
+  if (connected) {
+    Serial.printf("Initial WiFi connection complete: %s\n",
+                  WiFi.localIP().toString().c_str());
+    configureTimeSync();
+  } else {
+    Serial.println("WiFi timeout; UI will still run");
+  }
+
+  xTaskCreatePinnedToCore(fetchTask, "ADSB", 16384, nullptr, 1,
+                          &fetchTaskHandle, 0);
+}
+
+void service() {
+  const uint32_t now = millis();
+  const wl_status_t status = WiFi.status();
+  if (status != lastLoggedWifiStatus) {
+    app_state::setWifiStatus(status);
+    Serial.printf("WiFi state: %s (%d)\n", wifiStatusName(status), status);
+    lastLoggedWifiStatus = status;
+  }
+  static uint32_t lastMemorySample = 0;
+  if (now - lastMemorySample >= 1000) {
+    lastMemorySample = now;
+    app_state::observeMemory();
+  }
+  if (status != WL_CONNECTED &&
+      now - lastWifiAttempt >= WIFI_RETRY_INTERVAL_MS) {
+    queueCommand(COMMAND_WIFI_RECONNECT);
+    lastWifiAttempt = now;
+  }
+}
+
+void reconnectOrRefresh() {
+  if (app_state::wifiStatus() == WL_CONNECTED) {
+    requestRefresh();
+  } else {
+    requestWifiReconnect();
+  }
+}
+
+void requestRefresh() {
+  Serial.println("ADSB refresh queued");
+  queueCommand(COMMAND_REFRESH);
+}
+
+void requestWifiReconnect() {
+  Serial.println("WiFi reconnect queued for network task");
+  queueCommand(COMMAND_WIFI_RECONNECT);
+}
+
+}  // namespace adsb
