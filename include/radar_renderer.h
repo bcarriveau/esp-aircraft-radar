@@ -16,8 +16,11 @@ struct View {
   lv_obj_t* canvas = nullptr;
   lv_color_t* buffer = nullptr;
   lv_obj_t* countLabel = nullptr;
+  lv_obj_t* aircraftModeLabel = nullptr;
   lv_obj_t* nearestCallsignLabel = nullptr;
   lv_obj_t* nearestSummaryLabel = nullptr;
+  lv_obj_t* headingArrow = nullptr;
+  lv_obj_t* headingLabel = nullptr;
   lv_obj_t* listLabels[5]{};
 };
 

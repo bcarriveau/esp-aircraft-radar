@@ -3,11 +3,36 @@
 PlatformIO firmware for the exact 7-inch 800×480 Waveshare ST7262 + GT911
 board.
 
-## Product 18 certificate-bundle candidate
+## Product 21 tracked-heading candidate
 
 Current firmware marker:
 
-`7IN-20260721-PRODUCT18-CERT-BUNDLE`
+`7IN-20260721-PRODUCT21-TRACKED-HEADING`
+
+Product 21 builds on the physically working Product 18 TLS baseline with the
+following radar and Setup improvements:
+
+- Removes the 160-mile selection; available radar ranges are 20, 40, and 80
+  miles.
+- Predictively steps the radar outward from 20 to 40 or 40 to 80 miles before
+  the tracked aircraft leaves the current view. Tracking never automatically
+  zooms back in.
+- Uses a screen-level popup keyboard for the Setup entry fields.
+- Removes the redundant status overlay from the radar's upper-left corner.
+- Measures identifier text with LVGL so aircraft labels stay on one line.
+- Changes the left aircraft panel from `NEAREST` to `TRACKED` while tracking
+  and shows the tracked aircraft's live information.
+- Adds a rotating travel-heading arrow and heading value above Data Status for
+  both nearest and tracked aircraft.
+- Keeps the panel in tracked mode if the selected aircraft temporarily drops
+  out of a response instead of silently substituting the nearest aircraft.
+- Opens details for whichever aircraft the left panel currently represents.
+
+Product 21 has not yet completed a compile/link or physical-display test. The
+latest physically confirmed TLS baseline is Product 18 at commit `69dce612`.
+The permanent rollback baseline remains tagged `product-15-hardened`.
+
+## Product 18 certificate-bundle TLS baseline
 
 Product 18 corrects the native HTTPS configuration rejected during the first
 Product 17 physical test. It attaches Espressif's full CA certificate bundle
@@ -33,9 +58,9 @@ Product 16:
   and JSON failures now retry without deliberately disconnecting a healthy
   station link.
 
-This candidate has passed a complete compile/link test and still requires
-physical-display testing and a 24-hour soak test. The known baseline remains
-tagged as `product-15-hardened`.
+Product 18 passed compile/link verification and the initial physical TLS test.
+It remains subject to long-term soak testing. The known Product 15 rollback
+baseline remains tagged as `product-15-hardened`.
 
 ## Product 15 hardened baseline
 
@@ -67,8 +92,9 @@ proven RGB anti-rolling configuration from Product 14.
   only when their underlying version changes.
 - Copies targets, selected range, and tracking state under one mutex per radar
   frame instead of locking once per aircraft.
-- Shows a compact radar status line such as
-  `18 AIRCRAFT | 20 MI | LIVE 6s`.
+- Product 15 originally showed a compact upper-left radar status line. Product
+  20 removed that overlay because it duplicated other status information and
+  interfered with aircraft-label placement.
 - Shows one collision-aware identifier per 20-mile contact. Airline/charter
   traffic uses flight/callsign; GA/private traffic without a separate flight
   identifier falls back to registration.
@@ -123,8 +149,8 @@ guessed as an airliner.
 - Exact display, I/O expander, LVGL, and ArduinoJson versions are pinned in
   `platformio.ini`.
 - PlatformIO build objects and dependencies live under
-  `~/.platformio/workspaces/bills_aircraft_radar`, outside Google Drive, to
-  prevent Drive File Stream locking generated `.pio` files.
+  `~/.platformio/workspaces/bills_aircraft_radar`, outside the repository, to
+  keep generated `.pio` files out of version control.
 
 Do not replace the high-performance framework, reduce the bounce buffer, or
 change the Waveshare panel timing unless specifically testing the RGB rolling
@@ -139,15 +165,14 @@ fix.
 3. Connect the board's programming USB-C port.
 4. Build, upload, and open Serial Monitor at 115200.
 
-`include/config.h` and `*.env` are ignored by Git. The private `config.h` may
-remain in this personal Google Drive project so it continues to build normally;
-do not intentionally commit or share it.
+`include/config.h` and `*.env` are ignored by Git. Keep the private
+`include/config.h` only in the local working copy; never commit or share it.
 
 ## Expected first-boot output
 
 Serial should show:
 
-- `Build: 7IN-20260721-PRODUCT18-CERT-BUNDLE`
+- `Build: 7IN-20260721-PRODUCT21-TRACKED-HEADING`
 - `PSRAM: YES`
 - display initialization messages
 - Wi-Fi IP and RSSI
@@ -157,15 +182,20 @@ Serial should show:
 The display still loads and remains usable if Wi-Fi or adsb.fi is temporarily
 unavailable.
 
-## Verified build
+## Build-verification status
 
-Product 17 was compiled and linked with the pinned PlatformIO environment and a
+Product 18 was compiled and linked with the pinned PlatformIO environment and a
 placeholder local `config.h`:
 
-- Flash: 1,945,653 / 6,553,600 bytes (29.7%)
-- Internal RAM: 196,636 / 327,680 bytes (60.0%)
+- Flash: 2,011,253 / 6,553,600 bytes (30.7%)
+- Internal RAM: 197,060 / 327,680 bytes (60.1%)
 
 The test build did not use or overwrite the private Wi-Fi credentials.
+
+Product 21 has not yet been compile-verified. Build and upload it locally, then
+confirm the marker, PSRAM detection, the 20-scanline bounce buffer, tracking,
+automatic range changes, label layout, popup keyboard, page switching, and
+screen stability during HTTPS activity.
 
 ## Important
 
@@ -173,6 +203,5 @@ This project is for the exact **Waveshare ESP32-S3-Touch-LCD-7, 800×480,
 ST7262 + GT911** board. It is not for the 7B, 7C-BOX, P4, or a generic 7-inch
 ESP32-S3 panel.
 
-If an older Drive-synced `.pio` folder remains in the project, it is no longer
-used and can be ignored or deleted after PlatformIO is closed. Do not delete
-`src`, `include`, `assets`, `platformio.ini`, or `README.md`.
+Do not commit generated `.pio` content. Do not delete `src`, `include`,
+`assets`, `platformio.ini`, or `README.md`.

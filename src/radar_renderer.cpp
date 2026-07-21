@@ -106,21 +106,11 @@ bool drawPlacedLabel(int dotX, int dotY, const char* text, lv_color_t color,
                      int maxWidth, LabelBox* labelBoxes,
                      uint8_t& labelBoxCount) {
   if (!text || !text[0]) return false;
-  int lineCount = 1;
-  int longestLine = 0;
-  int currentLine = 0;
-  for (const char* ch = text; *ch; ++ch) {
-    if (*ch == '\n') {
-      longestLine = max(longestLine, currentLine);
-      currentLine = 0;
-      ++lineCount;
-    } else {
-      ++currentLine;
-    }
-  }
-  longestLine = max(longestLine, currentLine);
-  const int labelHeight = lineCount * 15 + 1;
-  int labelWidth = constrain(longestLine * 7 + 6, 44, maxWidth);
+  lv_point_t textSize{};
+  lv_txt_get_size(&textSize, text, &lv_font_montserrat_12,
+                  0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+  const int labelHeight = textSize.y + 2;
+  const int labelWidth = constrain(textSize.x + 6, 44, maxWidth);
   int candidateX[6] = {
     dotX + 7, dotX - labelWidth - 7, dotX - labelWidth / 2,
     dotX - labelWidth / 2, dotX + 7, dotX - labelWidth - 7
@@ -350,8 +340,6 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
                        const ContactFrame& frame) {
   static LabelBox labelBoxes[aircraft::MAX_TARGETS + 2];
   uint8_t labelBoxCount = 0;
-  // The compact live-status overlay occupies the radar's upper-left corner.
-  labelBoxes[labelBoxCount++] = {2, 2, 286, 31};
   if (snapshot.manualTracking) {
     labelBoxes[labelBoxCount++] = {
       (int16_t)(WIDTH - 124), (int16_t)(HEIGHT - 46),
@@ -381,21 +369,81 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
   }
 }
 
-void updateRadarSummary(aircraft::Target* workTargets, uint8_t count) {
+void updateHeadingDisplay(const aircraft::Target* target) {
+  if (!radarView.headingArrow || !radarView.headingLabel) return;
+  if (!target || !target->hasTrack) {
+    lv_obj_add_flag(radarView.headingArrow, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(radarView.headingLabel, "HDG\n--");
+    return;
+  }
+
+  static lv_point_t points[5];
+  constexpr float center = 21.0f;
+  const float radians = target->track * M_PI / 180.0f;
+  const float directionX = sinf(radians);
+  const float directionY = -cosf(radians);
+  const float perpendicularX = -directionY;
+  const float perpendicularY = directionX;
+  const float tipX = center + directionX * 17.0f;
+  const float tipY = center + directionY * 17.0f;
+  const float headBaseX = tipX - directionX * 9.0f;
+  const float headBaseY = tipY - directionY * 9.0f;
+  points[0] = {(lv_coord_t)(center - directionX * 14.0f),
+               (lv_coord_t)(center - directionY * 14.0f)};
+  points[1] = {(lv_coord_t)tipX, (lv_coord_t)tipY};
+  points[2] = {(lv_coord_t)(headBaseX + perpendicularX * 6.0f),
+               (lv_coord_t)(headBaseY + perpendicularY * 6.0f)};
+  points[3] = points[1];
+  points[4] = {(lv_coord_t)(headBaseX - perpendicularX * 6.0f),
+               (lv_coord_t)(headBaseY - perpendicularY * 6.0f)};
+  lv_line_set_points(radarView.headingArrow, points, 5);
+  lv_obj_clear_flag(radarView.headingArrow, LV_OBJ_FLAG_HIDDEN);
+  lv_label_set_text_fmt(radarView.headingLabel, "HDG\n%03.0f %s",
+                        target->track,
+                        aircraft::compassDirection(target->track));
+}
+
+void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
+                        const app_state::Snapshot& snapshot) {
   char text[96];
   lv_label_set_text_fmt(radarView.countLabel, "%u", count);
-  if (count > 0) {
+  const aircraft::Target* primaryTarget = nullptr;
+  if (snapshot.manualTracking) {
+    for (uint8_t i = 0; i < count; ++i) {
+      if (app_state::isManuallyTracked(workTargets[i], snapshot)) {
+        primaryTarget = &workTargets[i];
+        break;
+      }
+    }
+    lv_label_set_text(radarView.aircraftModeLabel, "TRACKED");
+    lv_obj_set_style_text_color(radarView.aircraftModeLabel,
+                                rgb(255, 120, 100), 0);
+  } else {
+    if (count > 0) primaryTarget = &workTargets[0];
+    lv_label_set_text(radarView.aircraftModeLabel, "NEAREST");
+    lv_obj_set_style_text_color(radarView.aircraftModeLabel,
+                                rgb(100, 170, 180), 0);
+  }
+
+  if (primaryTarget) {
     lv_label_set_text(radarView.nearestCallsignLabel,
-                      aircraft::primaryIdentifier(workTargets[0]));
+                      aircraft::primaryIdentifier(*primaryTarget));
     snprintf(text, sizeof(text), "%s %s\n%.1f mi %s\n%.0f ft\n%.0f MPH",
-             aircraft::kindName(workTargets[0].typeCode), workTargets[0].typeCode,
-             workTargets[0].distanceMiles,
-             aircraft::compassDirection(workTargets[0].bearing),
-             workTargets[0].altitudeFt, workTargets[0].speedKt * 1.15078f);
+             aircraft::kindName(primaryTarget->typeCode), primaryTarget->typeCode,
+             primaryTarget->distanceMiles,
+             aircraft::compassDirection(primaryTarget->bearing),
+             primaryTarget->altitudeFt, primaryTarget->speedKt * 1.15078f);
     lv_label_set_text(radarView.nearestSummaryLabel, text);
+    updateHeadingDisplay(primaryTarget);
+  } else if (snapshot.manualTracking) {
+    lv_label_set_text(radarView.nearestCallsignLabel, "--");
+    lv_label_set_text(radarView.nearestSummaryLabel,
+                      "Waiting for tracked aircraft");
+    updateHeadingDisplay(nullptr);
   } else {
     lv_label_set_text(radarView.nearestCallsignLabel, "--");
     lv_label_set_text(radarView.nearestSummaryLabel, "Waiting for aircraft");
+    updateHeadingDisplay(nullptr);
   }
   for (int i = 0; i < 5; ++i) {
     if (i < count) {
@@ -449,11 +497,14 @@ void render(aircraft::Target* workTargets) {
 
   static uint32_t lastSummaryTargetVersion = UINT32_MAX;
   static uint32_t lastSummaryRangeGeneration = UINT32_MAX;
+  static uint32_t lastSummaryTrackingVersion = UINT32_MAX;
   if (snapshot.targetVersion != lastSummaryTargetVersion ||
-      snapshot.rangeGeneration != lastSummaryRangeGeneration) {
+      snapshot.rangeGeneration != lastSummaryRangeGeneration ||
+      snapshot.trackingVersion != lastSummaryTrackingVersion) {
     lastSummaryTargetVersion = snapshot.targetVersion;
     lastSummaryRangeGeneration = snapshot.rangeGeneration;
-    updateRadarSummary(workTargets, count);
+    lastSummaryTrackingVersion = snapshot.trackingVersion;
+    updateRadarSummary(workTargets, count, snapshot);
   }
 }
 

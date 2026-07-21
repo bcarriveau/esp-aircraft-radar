@@ -20,13 +20,15 @@ namespace {
 constexpr uint32_t FRAME_INTERVAL_MS = 80;
 constexpr uint8_t PAGE_COUNT = 5;
 constexpr uint8_t NEAREST_LIST_COUNT = 5;
-constexpr uint8_t RANGE_OPTION_COUNT = 4;
+constexpr uint8_t RANGE_OPTION_COUNT = 3;
 constexpr float RADAR_RANGES[RANGE_OPTION_COUNT] = {
-  20.0f, 40.0f, 80.0f, 160.0f
+  20.0f, 40.0f, 80.0f
 };
 constexpr const char* RADAR_RANGE_NAMES[RANGE_OPTION_COUNT] = {
-  "20 MI", "40 MI", "80 MI", "160 MI"
+  "20 MI", "40 MI", "80 MI"
 };
+constexpr float TRACK_AUTO_ZOOM_EDGE_RATIO = 0.92f;
+constexpr float TRACK_AUTO_ZOOM_LOOKAHEAD_SECONDS = 30.0f;
 
 aircraft::Target* uiTargets = nullptr;
 
@@ -36,11 +38,13 @@ lv_obj_t* wifiLabel = nullptr;
 lv_obj_t* clockLabel = nullptr;
 lv_obj_t* countLabel = nullptr;
 lv_obj_t* rangeLabel = nullptr;
+lv_obj_t* aircraftModeLabel = nullptr;
 lv_obj_t* nearestCallsignLabel = nullptr;
 lv_obj_t* nearestSummaryLabel = nullptr;
+lv_obj_t* headingArrow = nullptr;
+lv_obj_t* headingLabel = nullptr;
 lv_obj_t* listLabels[NEAREST_LIST_COUNT]{};
 lv_obj_t* statusLabel = nullptr;
-lv_obj_t* radarStatusLabel = nullptr;
 lv_obj_t* radarUntrackButton = nullptr;
 lv_obj_t* radarPanels[3]{};
 lv_obj_t* tabButtons[PAGE_COUNT]{};
@@ -177,6 +181,21 @@ void setSettingsStatus(const char* text, lv_color_t color) {
   lv_obj_set_style_text_color(settingsStatusLabel, color, 0);
 }
 
+void closeSettingsKeyboard() {
+  if (!settingsKeyboard) return;
+  lv_obj_t* field = lv_keyboard_get_textarea(settingsKeyboard);
+  lv_keyboard_set_textarea(settingsKeyboard, nullptr);
+  lv_obj_add_flag(settingsKeyboard, LV_OBJ_FLAG_HIDDEN);
+  if (field) lv_obj_clear_state(field, LV_STATE_FOCUSED);
+}
+
+void settingsKeyboardEvent(lv_event_t* event) {
+  const lv_event_code_t code = lv_event_get_code(event);
+  if (code == LV_EVENT_READY || code == LV_EVENT_CANCEL) {
+    closeSettingsKeyboard();
+  }
+}
+
 void settingsFieldEvent(lv_event_t* event) {
   if (!settingsKeyboard) return;
   if (lv_event_get_code(event) == LV_EVENT_FOCUSED) {
@@ -188,8 +207,6 @@ void settingsFieldEvent(lv_event_t* event) {
             ? LV_KEYBOARD_MODE_NUMBER : LV_KEYBOARD_MODE_TEXT_LOWER);
     lv_obj_move_foreground(settingsKeyboard);
     lv_obj_clear_flag(settingsKeyboard, LV_OBJ_FLAG_HIDDEN);
-  } else if (lv_event_get_code(event) == LV_EVENT_DEFOCUSED) {
-    lv_obj_add_flag(settingsKeyboard, LV_OBJ_FLAG_HIDDEN);
   }
 }
 
@@ -321,24 +338,67 @@ void showPasswordEvent(lv_event_t*) {
   lv_obj_center(showPasswordLabel);
 }
 
+void syncRangeControls(float rangeMiles) {
+  if (rangeLabel) {
+    lv_label_set_text_fmt(rangeLabel, "RANGE // %.0f MILES", rangeMiles);
+  }
+  for (int i = 0; i < RANGE_OPTION_COUNT; ++i) {
+    if (!setupRangeButtons[i]) continue;
+    lv_obj_set_style_bg_color(
+        setupRangeButtons[i],
+        fabsf(rangeMiles - RADAR_RANGES[i]) < 1.0f
+            ? rgb(24, 128, 84) : rgb(20, 68, 82), 0);
+  }
+}
+
 void rangeEvent(lv_event_t* event) {
   int index = (int)(intptr_t)lv_event_get_user_data(event);
   index = constrain(index, 0, RANGE_OPTION_COUNT - 1);
   if (!app_state::setRadarRangeMiles(RADAR_RANGES[index])) return;
   const float rangeMiles = app_state::radarRangeMiles();
-  if (rangeLabel) {
-    lv_label_set_text_fmt(rangeLabel, "RANGE // %.0f MILES",
-                          rangeMiles);
-  }
-  for (int i = 0; i < RANGE_OPTION_COUNT; ++i) {
-    if (setupRangeButtons[i]) {
-      lv_obj_set_style_bg_color(
-          setupRangeButtons[i],
-          i == index ? rgb(24, 128, 84) : rgb(20, 68, 82), 0);
-    }
-  }
+  syncRangeControls(rangeMiles);
   Serial.printf("Radar range changed to %.0f miles\n", rangeMiles);
   adsb::requestRefresh();
+}
+
+float projectedTrackedDistance(const aircraft::Target& target,
+                               float seconds) {
+  if (!target.hasTrack || target.speedKt <= 5.0f) {
+    return target.distanceMiles;
+  }
+  const float bearingRadians = target.bearing * M_PI / 180.0f;
+  float northMiles = cosf(bearingRadians) * target.distanceMiles;
+  float eastMiles = sinf(bearingRadians) * target.distanceMiles;
+  const float travelMiles = target.speedKt * 1.15078f * seconds / 3600.0f;
+  const float trackRadians = target.track * M_PI / 180.0f;
+  northMiles += cosf(trackRadians) * travelMiles;
+  eastMiles += sinf(trackRadians) * travelMiles;
+  return sqrtf(northMiles * northMiles + eastMiles * eastMiles);
+}
+
+void autoExpandTrackedRange() {
+  app_state::Snapshot snapshot;
+  app_state::copySnapshot(uiTargets, snapshot);
+  if (!snapshot.manualTracking || snapshot.rangeMiles >= 79.9f) return;
+
+  for (uint8_t i = 0; i < snapshot.count; ++i) {
+    if (!app_state::isManuallyTracked(uiTargets[i], snapshot)) continue;
+    const float projectedDistance = projectedTrackedDistance(
+        uiTargets[i], TRACK_AUTO_ZOOM_LOOKAHEAD_SECONDS);
+    if (projectedDistance <
+        snapshot.rangeMiles * TRACK_AUTO_ZOOM_EDGE_RATIO) return;
+
+    const float expandedRange = snapshot.rangeMiles < 39.9f ? 40.0f : 80.0f;
+    if (!app_state::setRadarRangeMiles(expandedRange)) return;
+    syncRangeControls(expandedRange);
+    Serial.printf(
+        "Tracked aircraft %s nearing %.0f-mile edge (projected %.1f mi); "
+        "auto zooming to %.0f miles\n",
+        aircraft::primaryIdentifier(uiTargets[i]), snapshot.rangeMiles,
+        projectedDistance, expandedRange);
+    adsb::requestRefresh();
+    return;
+  }
 }
 
 void showTargetDetails(const aircraft::Target& target) {
@@ -396,6 +456,23 @@ void nearestTargetEvent(lv_event_t* event) {
   if (index >= count) return;
   selectPage(1);
   showTargetDetails(uiTargets[index]);
+}
+
+void primaryRadarTargetEvent(lv_event_t*) {
+  app_state::Snapshot snapshot;
+  app_state::copySnapshot(uiTargets, snapshot);
+  if (snapshot.manualTracking) {
+    for (uint8_t i = 0; i < snapshot.count; ++i) {
+      if (!app_state::isManuallyTracked(uiTargets[i], snapshot)) continue;
+      selectPage(1);
+      showTargetDetails(uiTargets[i]);
+      return;
+    }
+    return;
+  }
+  if (snapshot.count == 0) return;
+  selectPage(1);
+  showTargetDetails(uiTargets[0]);
 }
 
 void detailBackEvent(lv_event_t*) {
@@ -657,20 +734,6 @@ void updateHeader() {
   setLabelTextIfChanged(statusLabel, stateDetail);
   lv_obj_set_style_text_color(statusLabel, stateColor, 0);
 
-  char radarStatus[96];
-  if (strcmp(stateName, "LIVE") == 0) {
-    snprintf(radarStatus, sizeof(radarStatus), "%u AIRCRAFT | %.0f MI | LIVE %lus",
-             snapshot.count, snapshot.rangeMiles, (unsigned long)ageSeconds);
-  } else if (strcmp(stateName, "STALE") == 0) {
-    snprintf(radarStatus, sizeof(radarStatus), "%u AIRCRAFT | %.0f MI | STALE %lum",
-             snapshot.count, snapshot.rangeMiles,
-             (unsigned long)(ageSeconds / 60));
-  } else {
-    snprintf(radarStatus, sizeof(radarStatus), "%u AIRCRAFT | %.0f MI | %s",
-             snapshot.count, snapshot.rangeMiles, stateName);
-  }
-  setLabelTextIfChanged(radarStatusLabel, radarStatus);
-  lv_obj_set_style_text_color(radarStatusLabel, stateColor, 0);
   updatePageContent();
 }
 
@@ -694,8 +757,8 @@ bool buildRadarPanels(lv_obj_t* root) {
             rgb(100, 170, 180), 4, 4);
   countLabel = makeLabel(left, "0", &lv_font_montserrat_32,
                          rgb(255, 214, 80), 4, 26);
-  makeLabel(left, "NEAREST", &lv_font_montserrat_14,
-            rgb(100, 170, 180), 4, 88);
+  aircraftModeLabel = makeLabel(left, "NEAREST", &lv_font_montserrat_14,
+                                rgb(100, 170, 180), 4, 88);
   nearestCallsignLabel = makeLabel(left, "--", &lv_font_montserrat_20,
                                    rgb(63, 255, 155), 4, 112);
   lv_obj_set_width(nearestCallsignLabel, 104);
@@ -706,10 +769,21 @@ bool buildRadarPanels(lv_obj_t* root) {
   lv_label_set_long_mode(nearestSummaryLabel, LV_LABEL_LONG_WRAP);
   lv_obj_add_flag(nearestCallsignLabel, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_flag(nearestSummaryLabel, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(nearestCallsignLabel, nearestTargetEvent,
-                      LV_EVENT_CLICKED, (void*)(uintptr_t)0);
-  lv_obj_add_event_cb(nearestSummaryLabel, nearestTargetEvent,
-                      LV_EVENT_CLICKED, (void*)(uintptr_t)0);
+  lv_obj_add_event_cb(nearestCallsignLabel, primaryRadarTargetEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_event_cb(nearestSummaryLabel, primaryRadarTargetEvent,
+                      LV_EVENT_CLICKED, nullptr);
+
+  headingArrow = lv_line_create(left);
+  lv_obj_set_size(headingArrow, 44, 44);
+  lv_obj_set_pos(headingArrow, 4, 222);
+  lv_obj_set_style_line_width(headingArrow, 3, 0);
+  lv_obj_set_style_line_color(headingArrow, rgb(255, 214, 80), 0);
+  lv_obj_set_style_line_rounded(headingArrow, true, 0);
+  headingLabel = makeLabel(left, "HDG\n--", &lv_font_montserrat_12,
+                           rgb(255, 214, 80), 50, 227);
+  lv_obj_set_width(headingLabel, 58);
+  lv_label_set_long_mode(headingLabel, LV_LABEL_LONG_CLIP);
   makeLabel(left, "DATA STATUS", &lv_font_montserrat_12,
             rgb(100, 170, 180), 4, 278);
   statusLabel = makeLabel(left, "Starting...", &lv_font_montserrat_14,
@@ -738,15 +812,6 @@ bool buildRadarPanels(lv_obj_t* root) {
   lv_canvas_set_buffer(radarCanvas, radarBuffer, radar::WIDTH, radar::HEIGHT,
                        LV_IMG_CF_TRUE_COLOR);
   lv_obj_set_pos(radarCanvas, 1, 1);
-
-  radarStatusLabel = makeLabel(radarPanel, "0 AIRCRAFT | 80 MI | STARTING",
-                               &lv_font_montserrat_12,
-                               rgb(255, 220, 100), 10, 8);
-  lv_obj_set_style_bg_color(radarStatusLabel, rgb(2, 8, 12), 0);
-  lv_obj_set_style_bg_opa(radarStatusLabel, LV_OPA_80, 0);
-  lv_obj_set_style_pad_hor(radarStatusLabel, 6, 0);
-  lv_obj_set_style_pad_ver(radarStatusLabel, 4, 0);
-  lv_obj_set_style_radius(radarStatusLabel, 4, 0);
 
   radarUntrackButton = lv_btn_create(radarPanel);
   lv_obj_set_size(radarUntrackButton, 112, 34);
@@ -785,8 +850,11 @@ bool buildRadarPanels(lv_obj_t* root) {
   view.canvas = radarCanvas;
   view.buffer = radarBuffer;
   view.countLabel = countLabel;
+  view.aircraftModeLabel = aircraftModeLabel;
   view.nearestCallsignLabel = nearestCallsignLabel;
   view.nearestSummaryLabel = nearestSummaryLabel;
+  view.headingArrow = headingArrow;
+  view.headingLabel = headingLabel;
   for (int i = 0; i < NEAREST_LIST_COUNT; ++i) {
     view.listLabels[i] = listLabels[i];
   }
@@ -867,9 +935,20 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_style_text_font(retryLabel, &lv_font_montserrat_14, 0);
   lv_obj_center(retryLabel);
 
-  settingsKeyboard = lv_keyboard_create(pagePanel);
-  lv_obj_set_size(settingsKeyboard, 740, 160);
-  lv_obj_set_pos(settingsKeyboard, 10, 178);
+  settingsKeyboard = lv_keyboard_create(lv_scr_act());
+  lv_obj_set_size(settingsKeyboard, 800, 250);
+  lv_obj_align(settingsKeyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_bg_color(settingsKeyboard, rgb(8, 18, 26), 0);
+  lv_obj_set_style_border_color(settingsKeyboard, rgb(63, 255, 155), 0);
+  lv_obj_set_style_border_width(settingsKeyboard, 2, 0);
+  lv_obj_set_style_shadow_width(settingsKeyboard, 28, 0);
+  lv_obj_set_style_shadow_color(settingsKeyboard, rgb(0, 0, 0), 0);
+  lv_obj_set_style_shadow_opa(settingsKeyboard, LV_OPA_70, 0);
+  lv_keyboard_set_popovers(settingsKeyboard, true);
+  lv_obj_add_event_cb(settingsKeyboard, settingsKeyboardEvent,
+                      LV_EVENT_READY, nullptr);
+  lv_obj_add_event_cb(settingsKeyboard, settingsKeyboardEvent,
+                      LV_EVENT_CANCEL, nullptr);
   lv_obj_add_flag(settingsKeyboard, LV_OBJ_FLAG_HIDDEN);
 
   settingsStatusLabel = makeLabel(pagePanel, "", &lv_font_montserrat_14,
@@ -881,7 +960,6 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_pos(titleField, 390, 52);
   lv_textarea_set_placeholder_text(titleField, "Display name");
   lv_obj_add_event_cb(titleField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
-  lv_obj_add_event_cb(titleField, settingsFieldEvent, LV_EVENT_DEFOCUSED, nullptr);
   lv_textarea_set_one_line(titleField, true);
 
   ssidField = lv_textarea_create(pagePanel);
@@ -889,7 +967,6 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_pos(ssidField, 390, 92);
   lv_textarea_set_placeholder_text(ssidField, "Wi-Fi SSID");
   lv_obj_add_event_cb(ssidField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
-  lv_obj_add_event_cb(ssidField, settingsFieldEvent, LV_EVENT_DEFOCUSED, nullptr);
   lv_textarea_set_one_line(ssidField, true);
 
   passwordField = lv_textarea_create(pagePanel);
@@ -897,7 +974,6 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_pos(passwordField, 390, 132);
   lv_textarea_set_placeholder_text(passwordField, "Wi-Fi password");
   lv_obj_add_event_cb(passwordField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
-  lv_obj_add_event_cb(passwordField, settingsFieldEvent, LV_EVENT_DEFOCUSED, nullptr);
   lv_textarea_set_one_line(passwordField, true);
   lv_textarea_set_password_mode(passwordField, true);
 
@@ -917,7 +993,6 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_pos(latitudeField, 370, 174);
   lv_textarea_set_placeholder_text(latitudeField, "Latitude");
   lv_obj_add_event_cb(latitudeField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
-  lv_obj_add_event_cb(latitudeField, settingsFieldEvent, LV_EVENT_DEFOCUSED, nullptr);
   lv_textarea_set_one_line(latitudeField, true);
 
   longitudeField = lv_textarea_create(pagePanel);
@@ -925,7 +1000,6 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_pos(longitudeField, 605, 174);
   lv_textarea_set_placeholder_text(longitudeField, "Longitude");
   lv_obj_add_event_cb(longitudeField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
-  lv_obj_add_event_cb(longitudeField, settingsFieldEvent, LV_EVENT_DEFOCUSED, nullptr);
   lv_textarea_set_one_line(longitudeField, true);
 
   settingsFormLabels[0] = makeLabel(pagePanel, "DISPLAY NAME",
@@ -1086,6 +1160,7 @@ void update(uint32_t now) {
   if (now - lastFrame < FRAME_INTERVAL_MS) return;
   lastFrame = now;
   if (currentPage == 0) {
+    autoExpandTrackedRange();
     renderRadarPage();
   }
   if (now - lastHeaderUpdate >= 500) {

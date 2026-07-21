@@ -7,13 +7,18 @@
 namespace app_state {
 namespace {
 
+constexpr float MIN_RADAR_RANGE_MILES = 20.0f;
+constexpr float MAX_RADAR_RANGE_MILES = 80.0f;
+
 struct SharedState {
   aircraft::Target targets[aircraft::MAX_TARGETS];
   uint8_t targetCount = 0;
   uint32_t targetVersion = 0;
   wl_status_t wifiStatus = WL_IDLE_STATUS;
   int lastDisconnectReason = 0;
-  float radarRangeMiles = RADAR_RANGE_MILES;
+  float radarRangeMiles = constrain((float)RADAR_RANGE_MILES,
+                                    MIN_RADAR_RANGE_MILES,
+                                    MAX_RADAR_RANGE_MILES);
   uint32_t rangeGeneration = 1;
   bool manualTracking = false;
   char trackedHex[7]{};
@@ -143,6 +148,8 @@ float radarRangeMiles() {
 }
 
 bool setRadarRangeMiles(float rangeMiles) {
+  rangeMiles = constrain(rangeMiles, MIN_RADAR_RANGE_MILES,
+                         MAX_RADAR_RANGE_MILES);
   bool locked = lockState();
   bool changed = fabsf(state.radarRangeMiles - rangeMiles) >= 1.0f;
   if (changed) {
