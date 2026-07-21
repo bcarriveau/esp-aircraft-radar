@@ -3,11 +3,29 @@
 PlatformIO firmware for the exact 7-inch 800×480 Waveshare ST7262 + GT911
 board.
 
-## Product 15
+## Product 16 TLS stability candidate
 
 Current firmware marker:
 
-`7IN-20260721-PRODUCT15-HARDENED`
+`7IN-20260721-PRODUCT16-TLS-STABLE`
+
+Product 16 keeps the Product 15 display, UI, data-publication, and recovery
+architecture while correcting the repeated `OFFLINE TLS x6` disconnect cycle:
+
+- Uses the already-resolved ADS-B server address for TCP while preserving the
+  hostname for TLS SNI, avoiding a second DNS lookup to a different edge.
+- Allows 20 seconds for the TLS handshake, matching the proven CYD request
+  timeout instead of forcing a 10-second cutoff.
+- Logs the exact mbedTLS error code and text after a secure-connect failure.
+- Recycles Wi-Fi only for Wi-Fi, DNS, or TCP failures. TLS, HTTP, response-body,
+  and JSON failures now retry without deliberately disconnecting a healthy
+  station link.
+
+This candidate has passed a complete compile/link test and still requires
+physical-display testing and a 24-hour soak test. The known baseline remains
+tagged as `product-15-hardened`.
+
+## Product 15 hardened baseline
 
 Product 15 combines the reliability, workload, interface, Setup, aircraft
 classification, and diagnostics work into one release. It preserves the

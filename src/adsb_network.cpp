@@ -151,9 +151,15 @@ void fetchTask(void*) {
                     app_state::failureStageName(result.failureStage),
                     diagnostics.consecutiveFailures);
 
-      // Recovery ladder: preserve normal retries first, then recycle WiFi only
-      // after the current socket is closed, and progressively back off.
-      if (diagnostics.consecutiveFailures >= 3 &&
+      // Recycle WiFi only when the failure is below TLS. A successful DNS and
+      // TCP probe proves the station link is alive; disconnecting WiFi for a
+      // TLS, HTTP, body, or JSON failure makes recovery slower and creates the
+      // misleading OFFLINE/disconnect cycle seen on the display.
+      const bool wifiRecoveryMayHelp =
+          result.failureStage == app_state::FetchFailureStage::WIFI ||
+          result.failureStage == app_state::FetchFailureStage::DNS ||
+          result.failureStage == app_state::FetchFailureStage::TCP;
+      if (wifiRecoveryMayHelp && diagnostics.consecutiveFailures >= 3 &&
           (diagnostics.consecutiveFailures == 3 ||
            diagnostics.consecutiveFailures % 6 == 0)) {
         Serial.println("ADSB recovery ladder: recycling WiFi");

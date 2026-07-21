@@ -13,6 +13,7 @@ namespace adsb_fetch {
 namespace {
 
 constexpr uint32_t SOCKET_TIMEOUT_MS = 10000;
+constexpr uint32_t TLS_HANDSHAKE_TIMEOUT_MS = 20000;
 constexpr uint32_t TCP_PROBE_TIMEOUT_MS = 3000;
 constexpr uint32_t IDLE_TIMEOUT_MS = 15000;
 constexpr uint32_t TOTAL_TIMEOUT_MS = 90000;
@@ -88,16 +89,22 @@ AttemptResult openRequest(WiFiClientSecure& client, const String& path,
 
   client.setInsecure();
   client.setTimeout(SOCKET_TIMEOUT_MS);
-  client.setHandshakeTimeout((SOCKET_TIMEOUT_MS + 999) / 1000);
+  client.setHandshakeTimeout((TLS_HANDSHAKE_TIMEOUT_MS + 999) / 1000);
 
   const uint32_t connectStarted = millis();
-  if (!client.connect("opendata.adsb.fi", 443,
-                      static_cast<int32_t>(SOCKET_TIMEOUT_MS))) {
+  // Use the address already resolved for this attempt while retaining the
+  // hostname for TLS SNI. This prevents a second DNS lookup from selecting a
+  // different Cloudflare edge than the one used by failure diagnostics.
+  if (!client.connect(serverIp, 443, "opendata.adsb.fi", nullptr, nullptr,
+                      nullptr)) {
+    char tlsError[160]{};
+    const int tlsErrorCode = client.lastError(tlsError, sizeof(tlsError));
     const app_state::FetchFailureStage stage =
         diagnoseSecureConnectFailure(serverIp);
-    Serial.printf("ADSB.fi %s connect failed after %lu ms\n",
+    Serial.printf("ADSB.fi %s connect failed after %lu ms; TLS error=%d (%s)\n",
                   app_state::failureStageName(stage),
-                  (unsigned long)(millis() - connectStarted));
+                  (unsigned long)(millis() - connectStarted), tlsErrorCode,
+                  tlsError[0] ? tlsError : "no mbedTLS detail");
     client.stop();
     return failed(stage);
   }
