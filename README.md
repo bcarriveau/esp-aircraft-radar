@@ -3,11 +3,34 @@
 PlatformIO firmware for the exact 7-inch 800×480 Waveshare ST7262 + GT911
 board.
 
-## Product 22 large-response reliability candidate
+## Product 23 heading crash fix
 
 Current firmware marker:
 
-`7IN-20260721-PRODUCT22-LARGE-RESPONSE`
+`7IN-20260721-PRODUCT23-HEADING-CRASH-FIX`
+
+Product 23 fixes the intermittent core-1 `LoadProhibited` panic introduced by
+the Product 21 heading display. The crash occurred after aircraft publication
+when the nearest or tracked target had a valid heading. LVGL's configured
+formatter does not support floating-point conversion, so the heading label's
+mixed `%f` / `%s` format consumed the variable arguments incorrectly and
+treated part of the floating-point value as a string pointer.
+
+- Rounds and normalizes the heading to an integer from 000 through 359.
+- Uses standard `snprintf()` followed by `lv_label_set_text()` instead of
+  passing a floating-point value through `lv_label_set_text_fmt()`.
+- Removes the two remaining floating-point LVGL format calls from the range
+  label; all LVGL-formatted numeric values now use integers.
+- Preserves the rotating heading arrow and compass direction.
+- Preserves all Product 22 large-response handling and Products 19-21 UI
+  features.
+- Does not change ADS-B transport, Wi-Fi recovery, PSRAM/XIP, panel timing, or
+  the 20-scanline RGB bounce buffer.
+
+The Product 22 physical log confirmed a complete 105,690-byte HTTP response,
+189 parsed aircraft, and 100 published targets before the UI formatter panic.
+
+## Product 22 large-response reliability candidate
 
 Product 22 fixes an ADS-B body-read failure exposed by 80-mile requests. Large
 responses can briefly return `EAGAIN` from ESP-IDF while the TLS connection is
@@ -185,7 +208,7 @@ fix.
 
 Serial should show:
 
-- `Build: 7IN-20260721-PRODUCT22-LARGE-RESPONSE`
+- `Build: 7IN-20260721-PRODUCT23-HEADING-CRASH-FIX`
 - `PSRAM: YES`
 - display initialization messages
 - Wi-Fi IP and RSSI
@@ -211,9 +234,15 @@ placeholder local `config.h`:
 
 The test build did not use or overwrite the private Wi-Fi credentials.
 
-Product 22 has not yet been compile-verified. Build and upload it locally,
-then verify 80-mile loading, tracking, heading, automatic range changes, popup
-keyboard behavior, and display stability during HTTPS activity.
+Product 23 has passed a complete compile and link test with the pinned
+PlatformIO environment:
+
+- Flash: 2,048,421 / 6,553,600 bytes (31.3%)
+- Internal RAM: 197,092 / 327,680 bytes (60.1%)
+
+Product 23 still requires physical testing. Verify repeated 80-mile loading,
+nearest and tracked heading display, automatic range changes, popup keyboard
+behavior, and display stability during HTTPS activity.
 
 ## Important
 

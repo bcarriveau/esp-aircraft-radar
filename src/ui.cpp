@@ -340,7 +340,8 @@ void showPasswordEvent(lv_event_t*) {
 
 void syncRangeControls(float rangeMiles) {
   if (rangeLabel) {
-    lv_label_set_text_fmt(rangeLabel, "RANGE // %.0f MILES", rangeMiles);
+    lv_label_set_text_fmt(rangeLabel, "RANGE // %d MILES",
+                          (int)lroundf(rangeMiles));
   }
   for (int i = 0; i < RANGE_OPTION_COUNT; ++i) {
     if (!setupRangeButtons[i]) continue;
@@ -1061,8 +1062,8 @@ void buildPageShell(lv_obj_t* root) {
     lv_obj_center(label);
     lv_obj_add_flag(setupRangeButtons[i], LV_OBJ_FLAG_HIDDEN);
   }
-  lv_label_set_text_fmt(rangeLabel, "RANGE // %.0f MILES",
-                        rangeMiles);
+  lv_label_set_text_fmt(rangeLabel, "RANGE // %d MILES",
+                        (int)lroundf(rangeMiles));
   lv_obj_add_flag(setupRangeTitle, LV_OBJ_FLAG_HIDDEN);
 }
 

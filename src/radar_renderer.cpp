@@ -398,9 +398,12 @@ void updateHeadingDisplay(const aircraft::Target* target) {
                (lv_coord_t)(headBaseY - perpendicularY * 6.0f)};
   lv_line_set_points(radarView.headingArrow, points, 5);
   lv_obj_clear_flag(radarView.headingArrow, LV_OBJ_FLAG_HIDDEN);
-  lv_label_set_text_fmt(radarView.headingLabel, "HDG\n%03.0f %s",
-                        target->track,
-                        aircraft::compassDirection(target->track));
+  int headingDegrees = (int)lroundf(target->track) % 360;
+  if (headingDegrees < 0) headingDegrees += 360;
+  char headingText[24];
+  snprintf(headingText, sizeof(headingText), "HDG\n%03d %s", headingDegrees,
+           aircraft::compassDirection(target->track));
+  lv_label_set_text(radarView.headingLabel, headingText);
 }
 
 void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
