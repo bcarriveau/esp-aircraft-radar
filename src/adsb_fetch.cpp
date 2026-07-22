@@ -1,6 +1,7 @@
 #include "adsb_fetch.h"
 
 #include <ArduinoJson.h>
+#include <cerrno>
 #include <WiFiClient.h>
 #include <WiFiClientSecure.h>
 #include <esp_crt_bundle.h>
@@ -16,8 +17,9 @@ namespace adsb_fetch {
 namespace {
 
 constexpr uint32_t HTTP_NETWORK_TIMEOUT_MS = 15000;
+constexpr uint32_t BODY_READ_TIMEOUT_MS = 5000;
 constexpr uint32_t TCP_PROBE_TIMEOUT_MS = 3000;
-constexpr uint32_t IDLE_TIMEOUT_MS = 15000;
+constexpr uint32_t IDLE_TIMEOUT_MS = 30000;
 constexpr uint32_t TOTAL_TIMEOUT_MS = 90000;
 constexpr size_t MAX_RESPONSE_BYTES = 250000;
 constexpr uint8_t MAX_ATTEMPTS = 2;
@@ -268,6 +270,8 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
   const uint32_t readStarted = millis();
   uint32_t lastProgress = readStarted;
   bool readFailed = false;
+  bool waitLogged = false;
+  esp_http_client_set_timeout_ms(client, BODY_READ_TIMEOUT_MS);
   while (received < capacity) {
     uint32_t now = millis();
     if (now - lastProgress >= IDLE_TIMEOUT_MS ||
@@ -281,13 +285,27 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
     if (bytesRead > 0) {
       received += static_cast<size_t>(bytesRead);
       lastProgress = millis();
+      waitLogged = false;
     } else if (bytesRead == 0) {
       if (esp_http_client_is_complete_data_received(client)) break;
       delay(2);
-    } else if (bytesRead == -ESP_ERR_HTTP_EAGAIN) {
-      delay(2);
     } else {
-      Serial.printf("ADSB.fi native body read failed: %d\n", bytesRead);
+      const int readErrno = esp_http_client_get_errno(client);
+      const bool retryable =
+          bytesRead == -ESP_ERR_HTTP_EAGAIN || readErrno == EAGAIN ||
+          readErrno == EWOULDBLOCK || readErrno == ETIMEDOUT;
+      if (retryable && WiFi.status() == WL_CONNECTED) {
+        if (!waitLogged) {
+          Serial.printf(
+              "ADSB.fi body read waiting: received %u of %u bytes, errno=%d\n",
+              (unsigned)received, (unsigned)capacity, readErrno);
+          waitLogged = true;
+        }
+        delay(2);
+        continue;
+      }
+      Serial.printf("ADSB.fi native body read failed: %d, errno=%d\n",
+                    bytesRead, readErrno);
       readFailed = true;
       break;
     }

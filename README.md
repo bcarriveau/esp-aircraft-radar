@@ -3,36 +3,49 @@
 PlatformIO firmware for the exact 7-inch 800×480 Waveshare ST7262 + GT911
 board.
 
-## Product 21 tracked-heading candidate
+## Product 22 large-response reliability candidate
 
 Current firmware marker:
 
-`7IN-20260721-PRODUCT21-TRACKED-HEADING`
+`7IN-20260721-PRODUCT22-LARGE-RESPONSE`
 
-Product 21 builds on the physically working Product 18 TLS baseline with the
-following radar and Setup improvements:
+Product 22 fixes an ADS-B body-read failure exposed by 80-mile requests. Large
+responses can briefly return `EAGAIN` from ESP-IDF while the TLS connection is
+still valid. The previous loop treated the library's `-1` return as fatal even
+when `esp_http_client_get_errno()` reported the retryable `EAGAIN` condition.
 
-- Removes the 160-mile selection; available radar ranges are 20, 40, and 80
-  miles.
-- Predictively steps the radar outward from 20 to 40 or 40 to 80 miles before
-  the tracked aircraft leaves the current view. Tracking never automatically
-  zooms back in.
-- Uses a screen-level popup keyboard for the Setup entry fields.
-- Removes the redundant status overlay from the radar's upper-left corner.
-- Measures identifier text with LVGL so aircraft labels stay on one line.
-- Changes the left aircraft panel from `NEAREST` to `TRACKED` while tracking
-  and shows the tracked aircraft's live information.
-- Adds a rotating travel-heading arrow and heading value above Data Status for
+- Uses a five-second body-read timeout after the TLS connection and HTTP
+  headers are established.
+- Retries `ESP_ERR_HTTP_EAGAIN`, `EAGAIN`, `EWOULDBLOCK`, and `ETIMEDOUT`
+  reads while Wi-Fi remains connected.
+- Retains the existing 30-second no-progress and 90-second total-response
+  deadlines so a permanently stalled response still fails safely.
+- Preserves Product 21 tracking, auto-zoom, heading, label, and keyboard UI.
+- Does not change TLS verification, Wi-Fi recovery, rendering, PSRAM/XIP, or
+  the 20-scanline RGB bounce buffer.
+
+Product 22 requires compile and physical testing. Product 18 at commit
+`69dce612` remains the last physically confirmed TLS baseline.
+
+## Products 19-21 tracking and UI changes
+
+Products 19-21 build on the physically working Product 18 TLS baseline:
+
+- Remove the 160-mile selection; available ranges are 20, 40, and 80 miles.
+- Predictively step outward from 20 to 40 or 40 to 80 miles before a tracked
+  aircraft leaves the current view. Tracking never automatically zooms in.
+- Open Setup text entry with a full-width screen-level popup keyboard.
+- Remove the redundant upper-left radar status overlay.
+- Measure aircraft identifiers with LVGL so they remain on one line.
+- Change the left aircraft panel from `NEAREST` to `TRACKED` while tracking
+  and show the tracked aircraft's live information.
+- Add a rotating travel-heading arrow and heading value above Data Status for
   both nearest and tracked aircraft.
-- Keeps the panel in tracked mode if the selected aircraft temporarily drops
-  out of a response instead of silently substituting the nearest aircraft.
-- Opens details for whichever aircraft the left panel currently represents.
+- Keep the panel in tracked mode while waiting for a temporarily missing
+  tracked aircraft instead of silently substituting the nearest aircraft.
+- Open details for whichever aircraft the left panel currently represents.
 
-Product 21 has not yet completed a compile/link or physical-display test. The
-latest physically confirmed TLS baseline is Product 18 at commit `69dce612`.
-The permanent rollback baseline remains tagged `product-15-hardened`.
-
-## Product 18 certificate-bundle TLS baseline
+## Product 18 certificate-bundle baseline
 
 Product 18 corrects the native HTTPS configuration rejected during the first
 Product 17 physical test. It attaches Espressif's full CA certificate bundle
@@ -58,9 +71,9 @@ Product 16:
   and JSON failures now retry without deliberately disconnecting a healthy
   station link.
 
-Product 18 passed compile/link verification and the initial physical TLS test.
-It remains subject to long-term soak testing. The known Product 15 rollback
-baseline remains tagged as `product-15-hardened`.
+This candidate has passed a complete compile/link test and still requires
+physical-display testing and a 24-hour soak test. The known baseline remains
+tagged as `product-15-hardened`.
 
 ## Product 15 hardened baseline
 
@@ -93,8 +106,8 @@ proven RGB anti-rolling configuration from Product 14.
 - Copies targets, selected range, and tracking state under one mutex per radar
   frame instead of locking once per aircraft.
 - Product 15 originally showed a compact upper-left radar status line. Product
-  20 removed that overlay because it duplicated other status information and
-  interfered with aircraft-label placement.
+  20 removed it because it duplicated other status information and interfered
+  with aircraft-label placement.
 - Shows one collision-aware identifier per 20-mile contact. Airline/charter
   traffic uses flight/callsign; GA/private traffic without a separate flight
   identifier falls back to registration.
@@ -172,7 +185,7 @@ fix.
 
 Serial should show:
 
-- `Build: 7IN-20260721-PRODUCT21-TRACKED-HEADING`
+- `Build: 7IN-20260721-PRODUCT22-LARGE-RESPONSE`
 - `PSRAM: YES`
 - display initialization messages
 - Wi-Fi IP and RSSI
@@ -184,7 +197,13 @@ unavailable.
 
 ## Build-verification status
 
-Product 18 was compiled and linked with the pinned PlatformIO environment and a
+Product 21 was compiled and linked locally with the pinned PlatformIO
+environment:
+
+- Flash: 2,047,585 / 6,553,600 bytes (31.2%)
+- Internal RAM: 197,092 / 327,680 bytes (60.1%)
+
+Product 18 was previously compiled and linked with a
 placeholder local `config.h`:
 
 - Flash: 2,011,253 / 6,553,600 bytes (30.7%)
@@ -192,10 +211,9 @@ placeholder local `config.h`:
 
 The test build did not use or overwrite the private Wi-Fi credentials.
 
-Product 21 has not yet been compile-verified. Build and upload it locally, then
-confirm the marker, PSRAM detection, the 20-scanline bounce buffer, tracking,
-automatic range changes, label layout, popup keyboard, page switching, and
-screen stability during HTTPS activity.
+Product 22 has not yet been compile-verified. Build and upload it locally,
+then verify 80-mile loading, tracking, heading, automatic range changes, popup
+keyboard behavior, and display stability during HTTPS activity.
 
 ## Important
 
