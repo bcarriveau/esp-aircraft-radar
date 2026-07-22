@@ -17,10 +17,12 @@ namespace adsb_fetch {
 namespace {
 
 constexpr uint32_t HTTP_NETWORK_TIMEOUT_MS = 15000;
-constexpr uint32_t BODY_READ_TIMEOUT_MS = 5000;
+constexpr uint32_t BODY_READ_TIMEOUT_MS = 3000;
 constexpr uint32_t TCP_PROBE_TIMEOUT_MS = 3000;
-constexpr uint32_t IDLE_TIMEOUT_MS = 30000;
-constexpr uint32_t TOTAL_TIMEOUT_MS = 90000;
+constexpr uint32_t IDLE_TIMEOUT_MS = 12000;
+constexpr uint32_t TOTAL_TIMEOUT_MS = 45000;
+constexpr uint8_t MAX_CONSECUTIVE_READ_TIMEOUTS = 3;
+constexpr uint32_t TRANSPORT_RELEASE_DELAY_MS = 20;
 constexpr size_t MAX_RESPONSE_BYTES = 250000;
 constexpr uint8_t MAX_ATTEMPTS = 2;
 constexpr uint32_t RETRY_DELAY_MS = 500;
@@ -42,6 +44,44 @@ AttemptResult failed(app_state::FetchFailureStage stage,
   result.failureStage = stage;
   result.responseBytes = responseBytes;
   return result;
+}
+
+uint8_t failureProgress(app_state::FetchFailureStage stage) {
+  switch (stage) {
+    case app_state::FetchFailureStage::WIFI: return 1;
+    case app_state::FetchFailureStage::DNS: return 2;
+    case app_state::FetchFailureStage::TCP: return 3;
+    case app_state::FetchFailureStage::TLS: return 4;
+    case app_state::FetchFailureStage::HTTP_HEADERS: return 5;
+    case app_state::FetchFailureStage::HTTP_STATUS: return 6;
+    case app_state::FetchFailureStage::RESPONSE_BODY: return 7;
+    case app_state::FetchFailureStage::JSON: return 8;
+    default: return 0;
+  }
+}
+
+void preserveMostAdvancedFailure(AttemptResult& preserved,
+                                 const AttemptResult& candidate) {
+  if (candidate.success) return;
+  const bool madeMoreProgress =
+      candidate.responseBytes > preserved.responseBytes;
+  const bool reachedLaterStage =
+      candidate.responseBytes == preserved.responseBytes &&
+      failureProgress(candidate.failureStage) >
+          failureProgress(preserved.failureStage);
+  if (madeMoreProgress || reachedLaterStage ||
+      preserved.failureStage == app_state::FetchFailureStage::NONE) {
+    preserved = candidate;
+  }
+}
+
+void releaseNativeClient(esp_http_client_handle_t client, bool opened) {
+  if (!client) return;
+  if (opened) esp_http_client_close(client);
+  esp_http_client_cleanup(client);
+  // Give lwIP/esp-tls a scheduling point to release the closed socket before
+  // another HTTPS implementation creates a new connection.
+  delay(TRANSPORT_RELEASE_DELAY_MS);
 }
 
 app_state::FetchFailureStage diagnoseSecureConnectFailure(
@@ -77,6 +117,7 @@ AttemptResult fetchAttemptWithSecureClient(const String& path,
   client.setHandshakeTimeout(HTTP_NETWORK_TIMEOUT_MS / 1000);
 
   if (!client.connect("opendata.adsb.fi", 443)) {
+    client.stop();
     Serial.println("ADSB.fi fallback TLS connect failed");
     return failed(app_state::FetchFailureStage::TLS);
   }
@@ -198,7 +239,7 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
         app_state::failureStageName(stage),
         (unsigned long)(millis() - connectStarted),
         esp_err_to_name(openError), (unsigned)openError, socketError);
-    esp_http_client_cleanup(client);
+    releaseNativeClient(client, false);
     const AttemptResult fallbackResult =
         fetchAttemptWithSecureClient(path, filter, doc);
     if (fallbackResult.success) {
@@ -208,12 +249,13 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
   }
   Serial.printf("ADSB.fi native TLS connected in %lu ms\n",
                 (unsigned long)(millis() - connectStarted));
+  const bool clientOpened = true;
 
   const int64_t headerLength = esp_http_client_fetch_headers(client);
   if (headerLength < 0) {
     Serial.printf("ADSB.fi native header failure: %lld\n",
                   static_cast<long long>(headerLength));
-    esp_http_client_cleanup(client);
+    releaseNativeClient(client, clientOpened);
     const AttemptResult fallbackResult =
         fetchAttemptWithSecureClient(path, filter, doc);
     if (fallbackResult.success) {
@@ -225,7 +267,7 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
   const int statusCode = esp_http_client_get_status_code(client);
   if (statusCode != 200) {
     Serial.printf("ADSB.fi HTTP error: %d\n", statusCode);
-    esp_http_client_cleanup(client);
+    releaseNativeClient(client, clientOpened);
     const AttemptResult fallbackResult =
         fetchAttemptWithSecureClient(path, filter, doc);
     if (fallbackResult.success) {
@@ -239,7 +281,7 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
   if (lengthKnown && static_cast<uint64_t>(headerLength) > MAX_RESPONSE_BYTES) {
     Serial.printf("ADSB.fi response too large: %lld bytes\n",
                   static_cast<long long>(headerLength));
-    esp_http_client_cleanup(client);
+    releaseNativeClient(client, clientOpened);
     const AttemptResult fallbackResult =
         fetchAttemptWithSecureClient(path, filter, doc);
     if (fallbackResult.success) {
@@ -256,7 +298,7 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
   if (!payload) {
     Serial.printf("ADSB.fi payload allocation failed: need %u bytes\n",
                   (unsigned)(capacity + 1));
-    esp_http_client_cleanup(client);
+    releaseNativeClient(client, clientOpened);
     const AttemptResult fallbackResult =
         fetchAttemptWithSecureClient(path, filter, doc);
     if (fallbackResult.success) {
@@ -270,7 +312,8 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
   const uint32_t readStarted = millis();
   uint32_t lastProgress = readStarted;
   bool readFailed = false;
-  bool waitLogged = false;
+  bool endedEarly = false;
+  uint8_t consecutiveReadTimeouts = 0;
   esp_http_client_set_timeout_ms(client, BODY_READ_TIMEOUT_MS);
   while (received < capacity) {
     uint32_t now = millis();
@@ -285,23 +328,31 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
     if (bytesRead > 0) {
       received += static_cast<size_t>(bytesRead);
       lastProgress = millis();
-      waitLogged = false;
+      consecutiveReadTimeouts = 0;
     } else if (bytesRead == 0) {
       if (esp_http_client_is_complete_data_received(client)) break;
-      delay(2);
+      Serial.printf(
+          "ADSB.fi body ended early: received %u of %u bytes\n",
+          (unsigned)received, (unsigned)capacity);
+      endedEarly = true;
+      break;
     } else {
       const int readErrno = esp_http_client_get_errno(client);
       const bool retryable =
           bytesRead == -ESP_ERR_HTTP_EAGAIN || readErrno == EAGAIN ||
           readErrno == EWOULDBLOCK || readErrno == ETIMEDOUT;
       if (retryable && WiFi.status() == WL_CONNECTED) {
-        if (!waitLogged) {
-          Serial.printf(
-              "ADSB.fi body read waiting: received %u of %u bytes, errno=%d\n",
-              (unsigned)received, (unsigned)capacity, readErrno);
-          waitLogged = true;
+        ++consecutiveReadTimeouts;
+        Serial.printf(
+            "ADSB.fi body read retry %u/%u: received %u of %u bytes, "
+            "read=%d, errno=%d\n",
+            consecutiveReadTimeouts, MAX_CONSECUTIVE_READ_TIMEOUTS,
+            (unsigned)received, (unsigned)capacity, bytesRead, readErrno);
+        if (consecutiveReadTimeouts >= MAX_CONSECUTIVE_READ_TIMEOUTS) {
+          readFailed = true;
+          break;
         }
-        delay(2);
+        delay(20);
         continue;
       }
       Serial.printf("ADSB.fi native body read failed: %d, errno=%d\n",
@@ -313,10 +364,10 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
   payload[received] = 0;
   const bool responseComplete =
       esp_http_client_is_complete_data_received(client);
-  esp_http_client_cleanup(client);
+  releaseNativeClient(client, clientOpened);
 
   const bool lengthMismatch = lengthKnown && received != capacity;
-  if (readFailed || lengthMismatch || !responseComplete) {
+  if (readFailed || endedEarly || lengthMismatch || !responseComplete) {
     Serial.printf(
         "ADSB.fi incomplete response: received %u of %u bytes, complete=%s\n",
         (unsigned)received, (unsigned)capacity,
@@ -327,7 +378,11 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
     if (fallbackResult.success) {
       return fallbackResult;
     }
-    return failed(app_state::FetchFailureStage::RESPONSE_BODY, received);
+    const app_state::FetchFailureStage stage =
+        WiFi.status() == WL_CONNECTED
+            ? app_state::FetchFailureStage::RESPONSE_BODY
+            : app_state::FetchFailureStage::WIFI;
+    return failed(stage, received);
   }
   Serial.printf("ADSB.fi response complete: %u bytes in %lu ms\n",
                 (unsigned)received,
@@ -480,15 +535,26 @@ Result fetchAircraft(aircraft::Target* out) {
 
   JsonDocument doc;
   AttemptResult attemptResult;
+  AttemptResult preservedFailure;
   for (uint8_t attempt = 1; attempt <= MAX_ATTEMPTS; ++attempt) {
     attemptResult = fetchAttempt(path, filter, doc, attempt);
     if (attemptResult.success) break;
+    preserveMostAdvancedFailure(preservedFailure, attemptResult);
     waitForRetry(attempt);
   }
-  result.responseBytes = attemptResult.responseBytes;
+  result.responseBytes = attemptResult.success
+                             ? attemptResult.responseBytes
+                             : preservedFailure.responseBytes;
   if (!attemptResult.success) {
-    result.failureStage = attemptResult.failureStage;
+    result.failureStage = preservedFailure.failureStage;
     result.durationMs = millis() - fetchStarted;
+    if (result.failureStage != attemptResult.failureStage) {
+      Serial.printf(
+          "ADSB.fi preserving most advanced failure stage: %s "
+          "(final retry ended at %s)\n",
+          app_state::failureStageName(result.failureStage),
+          app_state::failureStageName(attemptResult.failureStage));
+    }
     Serial.printf("ADSB.fi request failed after %u attempts at %s stage\n",
                   MAX_ATTEMPTS,
                   app_state::failureStageName(result.failureStage));

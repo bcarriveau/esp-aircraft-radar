@@ -14,12 +14,14 @@ namespace {
 constexpr uint32_t WIFI_CONNECT_WINDOW_MS = 12000;
 constexpr uint32_t LAST_RESORT_RESTART_MS = 30UL * 60UL * 1000UL;
 constexpr uint16_t LAST_RESORT_FAILURE_COUNT = 20;
+constexpr uint32_t POST_RECOVERY_RETRY_MS = 1000;
 constexpr uint32_t COMMAND_REFRESH = 1U << 0;
 constexpr uint32_t COMMAND_WIFI_RECONNECT = 1U << 1;
 
 TaskHandle_t fetchTaskHandle = nullptr;
 portMUX_TYPE commandMux = portMUX_INITIALIZER_UNLOCKED;
 uint32_t pendingCommands = 0;
+bool controlledRestartPending = false;
 volatile uint32_t lastWifiAttempt = 0;
 uint32_t wifiAttempts = 0;
 wl_status_t lastLoggedWifiStatus = WL_IDLE_STATUS;
@@ -44,15 +46,37 @@ uint32_t takeCommands() {
   return commands;
 }
 
-void beginWifiConnection(const char* reason) {
+void requestControlledRestart() {
+  portENTER_CRITICAL(&commandMux);
+  controlledRestartPending = true;
+  portEXIT_CRITICAL(&commandMux);
+}
+
+bool isControlledRestartPending() {
+  portENTER_CRITICAL(&commandMux);
+  const bool pending = controlledRestartPending;
+  portEXIT_CRITICAL(&commandMux);
+  return pending;
+}
+
+void beginWifiConnection(const char* reason, bool restartRadio = false) {
   ++wifiAttempts;
   lastWifiAttempt = millis();
   const String ssid = settings::wifiSsid();
   const String password = settings::wifiPassword();
   Serial.printf("WiFi attempt %lu (%s): %s\n",
                 (unsigned long)wifiAttempts, reason, ssid.c_str());
-  WiFi.disconnect(false, false);
-  delay(50);
+  WiFi.setAutoReconnect(false);
+  if (restartRadio) {
+    Serial.println("WiFi recovery: restarting station radio");
+    WiFi.disconnect(true, false);
+    delay(250);
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);
+  } else {
+    WiFi.disconnect(false, false);
+    delay(100);
+  }
   WiFi.setAutoReconnect(true);
   WiFi.begin(ssid.c_str(), password.c_str());
   app_state::setWifiStatus(WiFi.status());
@@ -101,6 +125,7 @@ void fetchTask(void*) {
   Serial.println("ADSB fetch task started on core 0");
   uint32_t nextPollAt = millis();
   uint32_t outageStartedAt = 0;
+  uint8_t outageRecoveries = 0;
   for (;;) {
     uint32_t commands = takeCommands();
     if (commands & COMMAND_WIFI_RECONNECT) {
@@ -143,6 +168,7 @@ void fetchTask(void*) {
                       result.acceptedCount,
                       (unsigned long)result.durationMs);
         outageStartedAt = 0;
+        outageRecoveries = 0;
       }
     } else {
       app_state::recordFetchFailure(result.failureStage, result.durationMs,
@@ -154,33 +180,64 @@ void fetchTask(void*) {
                     app_state::failureStageName(result.failureStage),
                     diagnostics.consecutiveFailures);
 
-      // Recycle WiFi only when the failure is below TLS. A successful DNS and
-      // TCP probe proves the station link is alive; disconnecting WiFi for a
-      // TLS, HTTP, body, or JSON failure makes recovery slower and creates the
-      // misleading OFFLINE/disconnect cycle seen on the display.
-      const bool wifiRecoveryMayHelp =
+      // A single TLS error does not justify dropping a healthy station link.
+      // A stalled response body is different: the physical log shows that it
+      // can leave both HTTPS implementations unable to open another session.
+      // Escalate from an association reconnect to one station-radio restart,
+      // then continue using the normal outage backoff.
+      const bool linkFailure =
           result.failureStage == app_state::FetchFailureStage::WIFI ||
           result.failureStage == app_state::FetchFailureStage::DNS ||
           result.failureStage == app_state::FetchFailureStage::TCP;
-      if (wifiRecoveryMayHelp && diagnostics.consecutiveFailures >= 3 &&
+      const bool transportFailure =
+          result.failureStage == app_state::FetchFailureStage::TLS ||
+          result.failureStage == app_state::FetchFailureStage::HTTP_HEADERS;
+      const bool bodyFailure =
+          result.failureStage == app_state::FetchFailureStage::RESPONSE_BODY;
+      const bool linkRecoveryDue =
+          linkFailure && diagnostics.consecutiveFailures >= 3 &&
           (diagnostics.consecutiveFailures == 3 ||
-           diagnostics.consecutiveFailures % 6 == 0)) {
-        Serial.println("ADSB recovery ladder: recycling WiFi");
-        beginWifiConnection("ADSB recovery");
+           diagnostics.consecutiveFailures % 6 == 0);
+      const bool transportRecoveryDue =
+          transportFailure && diagnostics.consecutiveFailures >= 2 &&
+          (diagnostics.consecutiveFailures == 2 ||
+           diagnostics.consecutiveFailures % 3 == 0);
+      const bool recoveryDue =
+          bodyFailure || linkRecoveryDue || transportRecoveryDue;
+      bool recoveryConnected = false;
+      if (recoveryDue) {
+        const bool restartRadio = outageRecoveries > 0;
+        Serial.printf(
+            "ADSB recovery ladder: %s WiFi after %s failure\n",
+            restartRadio ? "hard-recycling" : "reconnecting",
+            app_state::failureStageName(result.failureStage));
+        beginWifiConnection(restartRadio ? "ADSB hard recovery"
+                                         : "ADSB recovery",
+                            restartRadio);
         app_state::recordNetworkRecovery();
-        waitForWifi(WIFI_CONNECT_WINDOW_MS);
+        ++outageRecoveries;
+        recoveryConnected = waitForWifi(WIFI_CONNECT_WINDOW_MS);
+        Serial.printf("ADSB recovery result: WiFi %s\n",
+                      recoveryConnected ? "connected" : "not connected");
       }
 
       if (outageStartedAt != 0 &&
           millis() - outageStartedAt >= LAST_RESORT_RESTART_MS &&
           diagnostics.consecutiveFailures >= LAST_RESORT_FAILURE_COUNT) {
         Serial.println(
-            "ADSB recovery ladder exhausted for 30 minutes; restarting ESP32");
-        delay(200);
-        ESP.restart();
+            "ADSB recovery ladder exhausted for 30 minutes; requesting "
+            "controlled restart");
+        app_state::setFetchInProgress(false);
+        requestControlledRestart();
+        // The main loop on core 1 performs the restart before calling
+        // WiFi.status() again. Suspending here prevents a cross-core restart
+        // collision with the network task.
+        vTaskSuspend(nullptr);
       }
-      nextPollAt = millis() +
-                   failureBackoffMs(diagnostics.consecutiveFailures);
+      nextPollAt = recoveryConnected
+                       ? millis() + POST_RECOVERY_RETRY_MS
+                       : millis() +
+                             failureBackoffMs(diagnostics.consecutiveFailures);
     }
 
     // A normal successful poll is scheduled from its start time, giving a
@@ -254,6 +311,13 @@ void begin() {
 }
 
 void service() {
+  if (isControlledRestartPending()) {
+    Serial.println("Main loop performing controlled ESP32 restart");
+    Serial.flush();
+    delay(100);
+    ESP.restart();
+    return;
+  }
   const uint32_t now = millis();
   const wl_status_t status = WiFi.status();
   if (status != lastLoggedWifiStatus) {

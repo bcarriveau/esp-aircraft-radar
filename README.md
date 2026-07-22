@@ -3,11 +3,47 @@
 PlatformIO firmware for the exact 7-inch 800×480 Waveshare ST7262 + GT911
 board.
 
-## Product 23 heading crash fix
+## Product 24 transport recovery candidate
 
 Current firmware marker:
 
-`7IN-20260721-PRODUCT23-HEADING-CRASH-FIX`
+`7IN-20260721-PRODUCT24-TRANSPORT-RECOVERY`
+
+Product 24 addresses the separate HTTPS recovery failure found during the
+Product 23 physical test. Product 23 successfully published repeated aircraft
+snapshots, then one response stopped at 39,699 of 45,880 bytes. The incomplete
+body was followed by persistent TLS connection failures even though Wi-Fi,
+DNS, and RSSI remained healthy. The old recovery policy would not recycle the
+connection for TLS or response-body failures and eventually restarted the
+ESP32 from core 0 while core 1 was using the Wi-Fi object.
+
+- Retries a timed-out native body read up to three times with a three-second
+  per-read timeout, while retaining independent idle and total deadlines.
+- Treats an early zero-byte read as an incomplete response instead of spinning
+  until the full idle deadline.
+- Explicitly closes the native HTTP connection before destroying its client
+  handle and gives the network stack a scheduling point before fallback or
+  retry.
+- Preserves the most advanced failure reached across both request attempts. A
+  partial response-body failure is no longer mislabeled as TLS merely because
+  the final retry could not reconnect.
+- Reconnects Wi-Fi immediately after a response-body failure, or after two
+  consecutive TLS/header failures. If that first recovery does not restore
+  HTTPS, the next recovery fully restarts the station radio.
+- Retries ADS-B one second after a successful recovery instead of waiting for
+  the prolonged-outage backoff.
+- Requests the 30-minute last-resort restart from the network task, suspends
+  that task, and performs the restart from the main loop before another
+  `WiFi.status()` call. This removes the cross-core restart collision captured
+  in the Product 23 log.
+- Keeps the last good aircraft snapshot visible throughout recovery.
+- Does not change the Product 23 heading fix, Products 19-21 UI/tracking,
+  certificate verification, PSRAM/XIP, panel timing, or the 20-scanline RGB
+  bounce buffer.
+
+Product 24 requires physical recovery testing and a 24-hour soak test.
+
+## Product 23 heading crash fix
 
 Product 23 fixes the intermittent core-1 `LoadProhibited` panic introduced by
 the Product 21 heading display. The crash occurred after aircraft publication
@@ -208,7 +244,7 @@ fix.
 
 Serial should show:
 
-- `Build: 7IN-20260721-PRODUCT23-HEADING-CRASH-FIX`
+- `Build: 7IN-20260721-PRODUCT24-TRANSPORT-RECOVERY`
 - `PSRAM: YES`
 - display initialization messages
 - Wi-Fi IP and RSSI
@@ -240,9 +276,17 @@ PlatformIO environment:
 - Flash: 2,048,421 / 6,553,600 bytes (31.3%)
 - Internal RAM: 197,092 / 327,680 bytes (60.1%)
 
-Product 23 still requires physical testing. Verify repeated 80-mile loading,
-nearest and tracked heading display, automatic range changes, popup keyboard
-behavior, and display stability during HTTPS activity.
+Product 23 passed repeated physical aircraft updates and confirmed that its
+heading formatter crash was fixed. Its soak log exposed the separate stalled
+response / transport-recovery failure addressed by Product 24.
+
+The two Product 24 networking translation units passed compile-only checks
+against the pinned ESP32-S3 12.2.0 toolchain and Arduino/ESP-IDF framework. A
+full project link was not completed in this workspace. Build it locally with
+the pinned PlatformIO environment, then verify repeated 80-mile loading,
+automatic recovery after a stalled response or router interruption, nearest
+and tracked heading display, automatic range changes, popup keyboard behavior,
+and display stability during HTTPS activity.
 
 ## Important
 
