@@ -1,13 +1,37 @@
-# BILLS Aircraft Radar — Waveshare ESP32-S3-Touch-LCD-7
+# BILLS Aircraft Radar â€” Waveshare ESP32-S3-Touch-LCD-7
 
-PlatformIO firmware for the exact 7-inch 800×480 Waveshare ST7262 + GT911
+PlatformIO firmware for the exact 7-inch 800Ã—480 Waveshare ST7262 + GT911
 board.
 
-## Product 24 transport recovery candidate
+## Product 26 radar interaction and theme candidate
 
 Current firmware marker:
 
-`7IN-20260722-PRODUCT25-NVS-DEFAULTS`
+`7IN-20260722-PRODUCT26-RADAR-INTERACTION`
+
+Product 26 is a focused radar UI and rendering update on the Product 25
+reliability baseline.
+
+- Replaces plain 20-mile identifier text with compact dark navy tags, cyan
+  identifiers, thin teal borders, and rounded corners.
+- Adds canvas-owned contact and tag hit regions keyed by stable ICAO hex. Tag
+  rectangles are tested before expanded contact-dot areas; overlap priority is
+  tracked, selected, then the closest contact to the touch point.
+- Adds a temporary 30-second selected-aircraft state with an amber double ring,
+  an amber-bordered two-line tag, and SELECTED information in the left panel.
+- Makes the primary left aircraft panel select the nearest aircraft when not
+  tracking, with INFO and TRACK actions. While tracking, the panel retains its
+  existing tracked-aircraft profile behavior.
+- Adds a compact 20/40/80 selector inside the radar. It occupies the lower-right
+  corner normally and moves directly above STOP TRACK while tracking.
+- Keeps STOP TRACK at the radar's actual lower-right corner, preserves the
+  tracked three-line label priority, and keeps predictive outward auto-zoom.
+- Does not change ADS-B networking, TLS, request deadlines, stale-response
+  rejection, panel timing, PSRAM/XIP, DMA, or the 20-scanline RGB bounce buffer.
+
+Product 26 requires physical touch, layout, screen-rolling, and soak testing.
+
+## Product 25 NVS defaults and Product 24 transport recovery
 
 Product 25 Fixes the missing NVS-key spam in first soak test.
 Product 24 addresses the separate HTTPS recovery failure found during the
@@ -291,7 +315,7 @@ and display stability during HTTPS activity.
 
 ## Important
 
-This project is for the exact **Waveshare ESP32-S3-Touch-LCD-7, 800×480,
+This project is for the exact **Waveshare ESP32-S3-Touch-LCD-7, 800Ã—480,
 ST7262 + GT911** board. It is not for the 7B, 7C-BOX, P4, or a generic 7-inch
 ESP32-S3 panel.
 
