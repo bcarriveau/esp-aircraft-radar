@@ -7,8 +7,9 @@ board.
 
 Current firmware marker:
 
-`7IN-20260721-PRODUCT24-TRANSPORT-RECOVERY`
+`7IN-20260722-PRODUCT25-NVS-DEFAULTS`
 
+Product 25 Fixes the missing NVS-key spam in first soak test.
 Product 24 addresses the separate HTTPS recovery failure found during the
 Product 23 physical test. Product 23 successfully published repeated aircraft
 snapshots, then one response stopped at 39,699 of 45,880 bytes. The incomplete

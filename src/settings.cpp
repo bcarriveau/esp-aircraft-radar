@@ -40,6 +40,26 @@ float defaultLongitude() {
 
 void initialize() {
   preferences.begin(NAMESPACE, false);
+
+  if (!preferences.isKey(KEY_TITLE)) {
+    preferences.putString(KEY_TITLE, defaultTitle());
+  }
+
+  if (!preferences.isKey(KEY_WIFI_SSID)) {
+    preferences.putString(KEY_WIFI_SSID, defaultWifiSsid());
+  }
+
+  if (!preferences.isKey(KEY_WIFI_PASS)) {
+    preferences.putString(KEY_WIFI_PASS, defaultWifiPassword());
+  }
+
+  if (!preferences.isKey(KEY_LAT)) {
+    preferences.putFloat(KEY_LAT, defaultLatitude());
+  }
+
+  if (!preferences.isKey(KEY_LON)) {
+    preferences.putFloat(KEY_LON, defaultLongitude());
+  }
 }
 
 void resetToDefaults() {
