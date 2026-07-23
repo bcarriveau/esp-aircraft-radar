@@ -178,7 +178,7 @@ bool drawPlacedTag(int dotX, int dotY, const char* const* lines,
                           labelY + 3 + line * lineHeight, labelWidth - 10,
                           &labelDescription, lines[line]);
     }
-    if (labelBoxCount < aircraft::MAX_TARGETS + 3) {
+    if (labelBoxCount < aircraft::MAX_TARGETS + 2) {
       labelBoxes[labelBoxCount++] = {
         (int16_t)labelX, (int16_t)labelY, (int16_t)x2, (int16_t)y2
       };
@@ -511,6 +511,11 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
   lv_label_set_text_fmt(radarView.countLabel, "%u", count);
 
   const aircraft::Target* nearestTarget = count > 0 ? &workTargets[0] : nullptr;
+  if (radarView.leftNearestHex) radarView.leftNearestHex[0] = 0;
+  if (nearestTarget && nearestTarget->hex[0] && radarView.leftNearestHex) {
+    strncpy(radarView.leftNearestHex, nearestTarget->hex, 6);
+    radarView.leftNearestHex[6] = 0;
+  }
   if (radarView.leftNearestModeLabel) {
     lv_label_set_text(radarView.leftNearestModeLabel, "NEAREST");
     lv_obj_set_style_text_color(radarView.leftNearestModeLabel,
@@ -588,6 +593,17 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
                                 rgb(110, 220, 255), 0);
   }
 
+  lv_obj_t* leftNearestLabels[] = {
+    radarView.leftNearestModeLabel,
+    radarView.leftNearestCallsignLabel,
+    radarView.leftNearestSummaryLabel
+  };
+  for (lv_obj_t* label : leftNearestLabels) {
+    if (!label) continue;
+    if (priorityAircraft) lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_clear_flag(label, LV_OBJ_FLAG_HIDDEN);
+  }
+
   for (int i = 0; i < 5; ++i) {
     if (radarView.listLabels[i]) {
       if (priorityAircraft) {
@@ -657,7 +673,12 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
   }
 
   for (int i = 0; i < 5; ++i) {
+    if (radarView.listHexes[i]) radarView.listHexes[i][0] = 0;
     if (i < count) {
+      if (workTargets[i].hex[0] && radarView.listHexes[i]) {
+        strncpy(radarView.listHexes[i], workTargets[i].hex, 6);
+        radarView.listHexes[i][6] = 0;
+      }
       char altitude[16];
       aircraft::formatWholeNumber(workTargets[i].altitudeFt, altitude,
                                   sizeof(altitude));

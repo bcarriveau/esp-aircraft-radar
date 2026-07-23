@@ -48,6 +48,8 @@ lv_obj_t* nearestSummaryLabel = nullptr;
 lv_obj_t* headingArrow = nullptr;
 lv_obj_t* headingLabel = nullptr;
 lv_obj_t* listLabels[NEAREST_LIST_COUNT]{};
+char leftNearestHex[7]{};
+char nearestListHex[NEAREST_LIST_COUNT][7]{};
 lv_obj_t* statusLabel = nullptr;
 lv_obj_t* radarUntrackButton = nullptr;
 lv_obj_t* radarRangeControl = nullptr;
@@ -102,7 +104,13 @@ uint32_t lastFrame = 0;
 uint32_t lastHeaderUpdate = 0;
 char selectedHex[7]{};
 uint32_t selectedAtMs = 0;
-uint8_t detailReturnPage = 1;
+
+enum class DetailOrigin : uint8_t {
+  RADAR,
+  TRACKS
+};
+
+DetailOrigin detailOrigin = DetailOrigin::TRACKS;
 
 inline lv_color_t rgb(uint8_t red, uint8_t green, uint8_t blue) {
   return lv_color_make(red, green, blue);
@@ -293,10 +301,16 @@ void resetSettingsEvent(lv_event_t*) {
 }
 
 void updatePageContent();
-void showTargetDetails(const aircraft::Target& target,
-                       uint8_t returnPage = 1);
+void showTargetDetails(const aircraft::Target& target, DetailOrigin origin);
 
 void selectPage(uint8_t page) {
+  if (detailTargetValid) {
+    if (detailOrigin == DetailOrigin::RADAR && selectedHex[0]) {
+      selectedAtMs = millis();
+    }
+    detailTargetValid = false;
+    if (detailPanel) lv_obj_add_flag(detailPanel, LV_OBJ_FLAG_HIDDEN);
+  }
   currentPage = page < PAGE_COUNT ? page : 0;
   if (currentPage == 1) {
     lastTracksVersion = UINT32_MAX;
@@ -493,9 +507,20 @@ void autoExpandTrackedRange() {
 }
 
 void showTargetDetails(const aircraft::Target& target,
-                       uint8_t returnPage) {
-  detailReturnPage = returnPage < PAGE_COUNT ? returnPage : 1;
-  if (currentPage == 0) selectPage(1);
+                       DetailOrigin origin) {
+  detailOrigin = origin;
+  if (origin == DetailOrigin::RADAR) {
+    for (lv_obj_t* panel : radarPanels) setVisible(panel, false);
+    setVisible(pagePanel, true);
+    setTracksVisible(false);
+    if (pageBody) lv_obj_add_flag(pageBody, LV_OBJ_FLAG_HIDDEN);
+    setSettingsFormVisible(false);
+    setVisible(reconnectButton, false);
+    setVisible(retryButton, false);
+    setVisible(showPasswordButton, false);
+    setVisible(setupRangeTitle, false);
+    for (lv_obj_t* button : setupRangeButtons) setVisible(button, false);
+  }
   detailTarget = target;
   detailTargetValid = true;
   lv_label_set_text_fmt(detailTitle, "%s // AIRCRAFT PROFILE", target.id);
@@ -514,6 +539,7 @@ void showTargetDetails(const aircraft::Target& target,
   lv_label_set_text(detailTrackLabel,
                     app_state::isManuallyTracked(target)
                         ? "STOP TRACKING" : "TRACK ON RADAR");
+  lv_obj_move_foreground(detailPanel);
   lv_obj_clear_flag(detailPanel, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -524,7 +550,9 @@ void tracksTableEvent(lv_event_t*) {
   uint8_t count = 0;
   app_state::copyVisibleTargets(uiTargets, count);
   uint16_t index = row - 1;
-  if (index < count) showTargetDetails(uiTargets[index]);
+  if (index < count) {
+    showTargetDetails(uiTargets[index], DetailOrigin::TRACKS);
+  }
 }
 
 void tracksTableDrawEvent(lv_event_t* event) {
@@ -544,26 +572,15 @@ void tracksTableDrawEvent(lv_event_t* event) {
 }
 
 void nearestTargetEvent(lv_event_t* event) {
-  uint8_t index = (uint8_t)(uintptr_t)lv_event_get_user_data(event);
-  uint8_t count = 0;
-  app_state::copyVisibleTargets(uiTargets, count);
-  if (index >= count || !uiTargets[index].hex[0]) return;
-  selectAircraftHex(uiTargets[index].hex);
+  const uint8_t index =
+      (uint8_t)(uintptr_t)lv_event_get_user_data(event);
+  if (index >= NEAREST_LIST_COUNT || !nearestListHex[index][0]) return;
+  selectAircraftHex(nearestListHex[index]);
 }
 
 void primaryRadarTargetEvent(lv_event_t*) {
-  app_state::Snapshot snapshot;
-  app_state::copySnapshot(uiTargets, snapshot);
-  if (snapshot.manualTracking) {
-    for (uint8_t i = 0; i < snapshot.count; ++i) {
-      if (!app_state::isManuallyTracked(uiTargets[i], snapshot)) continue;
-      showTargetDetails(uiTargets[i], 0);
-      return;
-    }
-    return;
-  }
-  if (snapshot.count == 0 || !uiTargets[0].hex[0]) return;
-  selectAircraftHex(uiTargets[0].hex);
+  if (app_state::hasManualTracking() || !leftNearestHex[0]) return;
+  selectAircraftHex(leftNearestHex);
 }
 
 void selectedInfoEvent(lv_event_t*) {
@@ -576,7 +593,7 @@ void selectedInfoEvent(lv_event_t*) {
     return;
   }
   if (!app_state::hasManualTracking()) selectedAtMs = millis();
-  showTargetDetails(target, 0);
+  showTargetDetails(target, DetailOrigin::RADAR);
 }
 
 void selectedTrackEvent(lv_event_t*) {
@@ -618,14 +635,21 @@ void radarCanvasEvent(lv_event_t*) {
   }
   aircraft::Target target;
   if (!copyVisibleTargetByHex(hit.hex, target)) return;
-  showTargetDetails(target, 0);
+  showTargetDetails(target, DetailOrigin::RADAR);
 }
 
 void detailBackEvent(lv_event_t*) {
-  const uint8_t returnPage = detailReturnPage;
+  const DetailOrigin returnOrigin = detailOrigin;
   detailTargetValid = false;
   lv_obj_add_flag(detailPanel, LV_OBJ_FLAG_HIDDEN);
-  selectPage(returnPage);
+  if (returnOrigin == DetailOrigin::RADAR) {
+    if (hasSelectedAircraft()) selectedAtMs = millis();
+    setVisible(pagePanel, false);
+    for (lv_obj_t* panel : radarPanels) setVisible(panel, true);
+    updateSelectedActions();
+  } else {
+    updatePageContent();
+  }
 }
 
 void stopManualTracking() {
@@ -665,6 +689,7 @@ void detailTrackEvent(lv_event_t*) {
     clearSelectedAircraft();
   }
   syncRadarRangeControlPosition();
+  detailTargetValid = false;
   lv_obj_add_flag(detailPanel, LV_OBJ_FLAG_HIDDEN);
   selectPage(0);
 }
@@ -916,8 +941,6 @@ bool buildRadarPanels(lv_obj_t* root) {
   lv_obj_set_pos(left, 10, 52);
   stylePanel(left);
   lv_obj_clear_flag(left, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(left, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(left, primaryRadarTargetEvent, LV_EVENT_CLICKED, nullptr);
 
   makeLabel(left, "AIRCRAFT", &lv_font_montserrat_14,
             rgb(100, 170, 180), 4, 4);
@@ -936,6 +959,15 @@ bool buildRadarPanels(lv_obj_t* root) {
                                       rgb(225, 235, 240), 4, 140);
   lv_obj_set_width(leftNearestSummaryLabel, 104);
   lv_label_set_long_mode(leftNearestSummaryLabel, LV_LABEL_LONG_WRAP);
+  lv_obj_t* leftNearestTargets[] = {
+    leftNearestModeLabel, leftNearestCallsignLabel, leftNearestSummaryLabel
+  };
+  for (lv_obj_t* targetLabel : leftNearestTargets) {
+    lv_obj_add_flag(targetLabel, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(targetLabel, 4);
+    lv_obj_add_event_cb(targetLabel, primaryRadarTargetEvent,
+                        LV_EVENT_CLICKED, nullptr);
+  }
 
   makeLabel(left, "DATA STATUS", &lv_font_montserrat_12,
             rgb(100, 170, 180), 4, 286);
@@ -1111,8 +1143,10 @@ bool buildRadarPanels(lv_obj_t* root) {
   view.nearestSummaryLabel = nearestSummaryLabel;
   view.headingArrow = headingArrow;
   view.headingLabel = headingLabel;
+  view.leftNearestHex = leftNearestHex;
   for (int i = 0; i < NEAREST_LIST_COUNT; ++i) {
     view.listLabels[i] = listLabels[i];
+    view.listHexes[i] = nearestListHex[i];
   }
   radar::configure(view);
 
@@ -1416,14 +1450,14 @@ void update(uint32_t now) {
     lv_obj_center(resetSettingsLabel);
     setSettingsStatus("Reset confirmation expired", rgb(150, 170, 180));
   }
-  if (hasSelectedAircraft() &&
+  if (hasSelectedAircraft() && !detailTargetValid &&
       (int32_t)(now - selectedAtMs) >=
           (int32_t)SELECTED_AIRCRAFT_TIMEOUT_MS) {
     clearSelectedAircraft(true);
   }
   if (now - lastFrame < FRAME_INTERVAL_MS) return;
   lastFrame = now;
-  if (currentPage == 0) {
+  if (currentPage == 0 && !detailTargetValid) {
     autoExpandTrackedRange();
     renderRadarPage();
   }
