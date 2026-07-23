@@ -406,7 +406,7 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
 void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
                        const app_state::Snapshot& snapshot,
                        const ContactFrame& frame) {
-  static LabelBox labelBoxes[aircraft::MAX_TARGETS + 3];
+  static LabelBox labelBoxes[aircraft::MAX_TARGETS + 2];
   uint8_t labelBoxCount = 0;
 
   // Reserve the compact zoom control in the lower-right for every frame.
@@ -414,13 +414,6 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
     (int16_t)(WIDTH - 124), (int16_t)(HEIGHT - 42),
     (int16_t)(WIDTH - 2), (int16_t)(HEIGHT - 2)
   };
-
-  // STOP TRACK occupies the opposite corner only during manual tracking.
-  if (snapshot.manualTracking) {
-    labelBoxes[labelBoxCount++] = {
-      2, (int16_t)(HEIGHT - 40), 118, (int16_t)(HEIGHT - 2)
-    };
-  }
 
   if (frame.trackedVisible && frame.trackedTargetIndex >= 0) {
     const aircraft::Target& trackedTarget = workTargets[frame.trackedTargetIndex];
@@ -516,6 +509,38 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
                         const char* selectedHex) {
   char text[128];
   lv_label_set_text_fmt(radarView.countLabel, "%u", count);
+
+  const aircraft::Target* nearestTarget = count > 0 ? &workTargets[0] : nullptr;
+  if (radarView.leftNearestModeLabel) {
+    lv_label_set_text(radarView.leftNearestModeLabel, "NEAREST");
+    lv_obj_set_style_text_color(radarView.leftNearestModeLabel,
+                                rgb(100, 170, 180), 0);
+  }
+  if (nearestTarget) {
+    if (radarView.leftNearestCallsignLabel) {
+      lv_label_set_text(radarView.leftNearestCallsignLabel,
+                        aircraft::primaryIdentifier(*nearestTarget));
+      lv_obj_set_style_text_color(radarView.leftNearestCallsignLabel,
+                                  rgb(63, 255, 155), 0);
+    }
+    if (radarView.leftNearestSummaryLabel) {
+      snprintf(text, sizeof(text), "%s %s\n%.1f mi %s\n%.0f ft\n%.0f MPH",
+               aircraft::kindName(nearestTarget->typeCode),
+               nearestTarget->typeCode, nearestTarget->distanceMiles,
+               aircraft::compassDirection(nearestTarget->bearing),
+               nearestTarget->altitudeFt,
+               nearestTarget->speedKt * 1.15078f);
+      lv_label_set_text(radarView.leftNearestSummaryLabel, text);
+    }
+  } else {
+    if (radarView.leftNearestCallsignLabel) {
+      lv_label_set_text(radarView.leftNearestCallsignLabel, "--");
+    }
+    if (radarView.leftNearestSummaryLabel) {
+      lv_label_set_text(radarView.leftNearestSummaryLabel,
+                        "Waiting for aircraft");
+    }
+  }
 
   const aircraft::Target* primaryTarget = nullptr;
   bool priorityAircraft = snapshot.manualTracking;
