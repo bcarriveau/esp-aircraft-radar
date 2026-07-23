@@ -24,7 +24,9 @@ struct View {
   lv_obj_t* nearestSummaryLabel = nullptr;
   lv_obj_t* headingArrow = nullptr;
   lv_obj_t* headingLabel = nullptr;
+  char* leftNearestHex = nullptr;
   lv_obj_t* listLabels[5]{};
+  char* listHexes[5]{};
 };
 
 struct HitResult {
