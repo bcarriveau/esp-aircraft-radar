@@ -178,7 +178,7 @@ bool drawPlacedTag(int dotX, int dotY, const char* const* lines,
                           labelY + 3 + line * lineHeight, labelWidth - 10,
                           &labelDescription, lines[line]);
     }
-    if (labelBoxCount < aircraft::MAX_TARGETS + 2) {
+    if (labelBoxCount < aircraft::MAX_TARGETS + 3) {
       labelBoxes[labelBoxCount++] = {
         (int16_t)labelX, (int16_t)labelY, (int16_t)x2, (int16_t)y2
       };
@@ -406,17 +406,19 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
 void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
                        const app_state::Snapshot& snapshot,
                        const ContactFrame& frame) {
-  static LabelBox labelBoxes[aircraft::MAX_TARGETS + 2];
+  static LabelBox labelBoxes[aircraft::MAX_TARGETS + 3];
   uint8_t labelBoxCount = 0;
+
+  // Reserve the compact zoom control in the lower-right for every frame.
+  labelBoxes[labelBoxCount++] = {
+    (int16_t)(WIDTH - 124), (int16_t)(HEIGHT - 42),
+    (int16_t)(WIDTH - 2), (int16_t)(HEIGHT - 2)
+  };
+
+  // STOP TRACK occupies the opposite corner only during manual tracking.
   if (snapshot.manualTracking) {
     labelBoxes[labelBoxCount++] = {
-      (int16_t)(WIDTH - 158), (int16_t)(HEIGHT - 98),
-      (int16_t)(WIDTH - 2), (int16_t)(HEIGHT - 2)
-    };
-  } else {
-    labelBoxes[labelBoxCount++] = {
-      (int16_t)(WIDTH - 158), (int16_t)(HEIGHT - 48),
-      (int16_t)(WIDTH - 2), (int16_t)(HEIGHT - 2)
+      2, (int16_t)(HEIGHT - 40), 118, (int16_t)(HEIGHT - 2)
     };
   }
 
@@ -512,20 +514,26 @@ void updateHeadingDisplay(const aircraft::Target* target) {
 void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
                         const app_state::Snapshot& snapshot,
                         const char* selectedHex) {
-  char text[96];
+  char text[128];
   lv_label_set_text_fmt(radarView.countLabel, "%u", count);
+
   const aircraft::Target* primaryTarget = nullptr;
+  bool priorityAircraft = snapshot.manualTracking;
+
   if (snapshot.manualTracking) {
     for (uint8_t i = 0; i < count; ++i) {
-      if (app_state::isManuallyTracked(workTargets[i], snapshot)) {
-        primaryTarget = &workTargets[i];
-        break;
-      }
+      if (!app_state::isManuallyTracked(workTargets[i], snapshot)) continue;
+      primaryTarget = &workTargets[i];
+      break;
     }
-    lv_label_set_text(radarView.aircraftModeLabel, "TRACKED");
+    lv_label_set_text(radarView.aircraftModeLabel, "TRACKED AIRCRAFT");
     lv_obj_set_style_text_color(radarView.aircraftModeLabel,
                                 rgb(255, 120, 100), 0);
     lv_obj_set_style_text_color(radarView.nearestCallsignLabel,
+                                rgb(255, 150, 130), 0);
+    lv_obj_set_style_line_color(radarView.headingArrow,
+                                rgb(255, 120, 100), 0);
+    lv_obj_set_style_text_color(radarView.headingLabel,
                                 rgb(255, 150, 130), 0);
   } else if (selectedHex && selectedHex[0]) {
     for (uint8_t i = 0; i < count; ++i) {
@@ -535,38 +543,85 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
         break;
       }
     }
+    priorityAircraft = primaryTarget != nullptr;
     if (primaryTarget) {
-      lv_label_set_text(radarView.aircraftModeLabel, "SELECTED");
+      lv_label_set_text(radarView.aircraftModeLabel, "SELECTED AIRCRAFT");
       lv_obj_set_style_text_color(radarView.aircraftModeLabel,
                                   rgb(255, 190, 70), 0);
       lv_obj_set_style_text_color(radarView.nearestCallsignLabel,
                                   rgb(255, 205, 90), 0);
+      lv_obj_set_style_line_color(radarView.headingArrow,
+                                  rgb(255, 190, 70), 0);
+      lv_obj_set_style_text_color(radarView.headingLabel,
+                                  rgb(255, 205, 90), 0);
     }
-  } else {
-    if (count > 0) primaryTarget = &workTargets[0];
-    lv_label_set_text(radarView.aircraftModeLabel, "NEAREST");
-    lv_obj_set_style_text_color(radarView.aircraftModeLabel,
-                                rgb(100, 170, 180), 0);
-    lv_obj_set_style_text_color(radarView.nearestCallsignLabel,
-                                rgb(63, 255, 155), 0);
-  }
-  if (!snapshot.manualTracking && !primaryTarget) {
-    if (count > 0) primaryTarget = &workTargets[0];
-    lv_label_set_text(radarView.aircraftModeLabel, "NEAREST");
-    lv_obj_set_style_text_color(radarView.aircraftModeLabel,
-                                rgb(100, 170, 180), 0);
-    lv_obj_set_style_text_color(radarView.nearestCallsignLabel,
-                                rgb(63, 255, 155), 0);
   }
 
-  if (primaryTarget) {
+  if (!priorityAircraft) {
+    lv_label_set_text(radarView.aircraftModeLabel, "NEAREST AIRCRAFT");
+    lv_obj_set_style_text_color(radarView.aircraftModeLabel,
+                                rgb(110, 220, 255), 0);
+  }
+
+  for (int i = 0; i < 5; ++i) {
+    if (radarView.listLabels[i]) {
+      if (priorityAircraft) {
+        lv_obj_add_flag(radarView.listLabels[i], LV_OBJ_FLAG_HIDDEN);
+      } else {
+        lv_obj_clear_flag(radarView.listLabels[i], LV_OBJ_FLAG_HIDDEN);
+      }
+    }
+  }
+
+  if (radarView.nearestCallsignLabel) {
+    if (priorityAircraft) {
+      lv_obj_clear_flag(radarView.nearestCallsignLabel, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(radarView.nearestCallsignLabel, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  if (radarView.nearestSummaryLabel) {
+    if (priorityAircraft) {
+      lv_obj_clear_flag(radarView.nearestSummaryLabel, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(radarView.nearestSummaryLabel, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  if (radarView.headingLabel) {
+    if (priorityAircraft) {
+      lv_obj_clear_flag(radarView.headingLabel, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(radarView.headingLabel, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  if (!priorityAircraft && radarView.headingArrow) {
+    lv_obj_add_flag(radarView.headingArrow, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  if (priorityAircraft && primaryTarget) {
     lv_label_set_text(radarView.nearestCallsignLabel,
                       aircraft::primaryIdentifier(*primaryTarget));
-    snprintf(text, sizeof(text), "%s %s\n%.1f mi %s\n%.0f ft\n%.0f MPH",
-             aircraft::kindName(primaryTarget->typeCode), primaryTarget->typeCode,
-             primaryTarget->distanceMiles,
-             aircraft::compassDirection(primaryTarget->bearing),
-             primaryTarget->altitudeFt, primaryTarget->speedKt * 1.15078f);
+    const bool distinctRegistration =
+        strcmp(primaryTarget->registration, "Unknown") != 0 &&
+        strcmp(primaryTarget->registration, primaryTarget->id) != 0;
+    if (distinctRegistration) {
+      snprintf(text, sizeof(text),
+               "%s  %s\n%s\n%.1f mi %s\n%.0f ft | %.0f MPH",
+               aircraft::kindName(primaryTarget->typeCode),
+               primaryTarget->typeCode, primaryTarget->registration,
+               primaryTarget->distanceMiles,
+               aircraft::compassDirection(primaryTarget->bearing),
+               primaryTarget->altitudeFt,
+               primaryTarget->speedKt * 1.15078f);
+    } else {
+      snprintf(text, sizeof(text),
+               "%s  %s\n%.1f mi %s\n%.0f ft | %.0f MPH",
+               aircraft::kindName(primaryTarget->typeCode),
+               primaryTarget->typeCode, primaryTarget->distanceMiles,
+               aircraft::compassDirection(primaryTarget->bearing),
+               primaryTarget->altitudeFt,
+               primaryTarget->speedKt * 1.15078f);
+    }
     lv_label_set_text(radarView.nearestSummaryLabel, text);
     updateHeadingDisplay(primaryTarget);
   } else if (snapshot.manualTracking) {
@@ -574,27 +629,26 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
     lv_label_set_text(radarView.nearestSummaryLabel,
                       "Waiting for tracked aircraft");
     updateHeadingDisplay(nullptr);
-  } else {
-    lv_label_set_text(radarView.nearestCallsignLabel, "--");
-    lv_label_set_text(radarView.nearestSummaryLabel, "Waiting for aircraft");
-    updateHeadingDisplay(nullptr);
   }
+
   for (int i = 0; i < 5; ++i) {
     if (i < count) {
       char altitude[16];
       aircraft::formatWholeNumber(workTargets[i].altitudeFt, altitude,
                                   sizeof(altitude));
-      bool distinctRegistration =
+      const bool distinctRegistration =
           strcmp(workTargets[i].registration, "Unknown") != 0 &&
           strcmp(workTargets[i].registration, workTargets[i].id) != 0;
       if (distinctRegistration) {
-        snprintf(text, sizeof(text), "%s  %s\n%s | %.1f mi %s\n%s ft | %.0f MPH",
+        snprintf(text, sizeof(text),
+                 "%s  %s\n%s | %.1f mi %s\n%s ft | %.0f MPH",
                  workTargets[i].id, workTargets[i].typeCode,
                  workTargets[i].registration, workTargets[i].distanceMiles,
                  aircraft::compassDirection(workTargets[i].bearing), altitude,
                  workTargets[i].speedKt * 1.15078f);
       } else {
-        snprintf(text, sizeof(text), "%s  %s\n%.1f mi %s\n%s ft | %.0f MPH",
+        snprintf(text, sizeof(text),
+                 "%s  %s\n%.1f mi %s\n%s ft | %.0f MPH",
                  workTargets[i].id, workTargets[i].typeCode,
                  workTargets[i].distanceMiles,
                  aircraft::compassDirection(workTargets[i].bearing), altitude,
