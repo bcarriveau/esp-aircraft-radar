@@ -24,8 +24,15 @@ struct View {
   lv_obj_t* listLabels[5]{};
 };
 
+struct HitResult {
+  char hex[7]{};
+  bool tracked = false;
+  bool selected = false;
+};
+
 void configure(const View& view);
-void render(aircraft::Target* workTargets);
+bool render(aircraft::Target* workTargets, const char* selectedHex);
+bool hitTest(int canvasX, int canvasY, HitResult& result);
 
 void drawAircraftPreview(lv_obj_t* canvas, lv_color_t* buffer,
                          const aircraft::Target& target);

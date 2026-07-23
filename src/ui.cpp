@@ -29,6 +29,7 @@ constexpr const char* RADAR_RANGE_NAMES[RANGE_OPTION_COUNT] = {
 };
 constexpr float TRACK_AUTO_ZOOM_EDGE_RATIO = 0.92f;
 constexpr float TRACK_AUTO_ZOOM_LOOKAHEAD_SECONDS = 30.0f;
+constexpr uint32_t SELECTED_AIRCRAFT_TIMEOUT_MS = 30000;
 
 aircraft::Target* uiTargets = nullptr;
 
@@ -46,6 +47,11 @@ lv_obj_t* headingLabel = nullptr;
 lv_obj_t* listLabels[NEAREST_LIST_COUNT]{};
 lv_obj_t* statusLabel = nullptr;
 lv_obj_t* radarUntrackButton = nullptr;
+lv_obj_t* radarRangeControl = nullptr;
+lv_obj_t* radarRangeButtons[RANGE_OPTION_COUNT]{};
+lv_obj_t* radarRangeButtonLabels[RANGE_OPTION_COUNT]{};
+lv_obj_t* selectedInfoButton = nullptr;
+lv_obj_t* selectedTrackButton = nullptr;
 lv_obj_t* radarPanels[3]{};
 lv_obj_t* tabButtons[PAGE_COUNT]{};
 lv_obj_t* pagePanel = nullptr;
@@ -90,6 +96,8 @@ bool resetConfirmationPending = false;
 uint32_t resetConfirmationDeadline = 0;
 uint32_t lastFrame = 0;
 uint32_t lastHeaderUpdate = 0;
+char selectedHex[7]{};
+uint32_t selectedAtMs = 0;
 
 inline lv_color_t rgb(uint8_t red, uint8_t green, uint8_t blue) {
   return lv_color_make(red, green, blue);
@@ -280,6 +288,7 @@ void resetSettingsEvent(lv_event_t*) {
 }
 
 void updatePageContent();
+void showTargetDetails(const aircraft::Target& target);
 
 void selectPage(uint8_t page) {
   currentPage = page < PAGE_COUNT ? page : 0;
@@ -338,18 +347,80 @@ void showPasswordEvent(lv_event_t*) {
   lv_obj_center(showPasswordLabel);
 }
 
+bool hasSelectedAircraft() { return selectedHex[0] != 0; }
+
+void updateSelectedActions() {
+  const bool visible = hasSelectedAircraft() &&
+                       !app_state::hasManualTracking();
+  setVisible(selectedInfoButton, visible);
+  setVisible(selectedTrackButton, visible);
+}
+
+void clearSelectedAircraft(bool announce = false) {
+  if (!hasSelectedAircraft()) return;
+  if (announce) {
+    Serial.printf("Radar selection cleared: %s\n", selectedHex);
+  }
+  selectedHex[0] = 0;
+  selectedAtMs = 0;
+  updateSelectedActions();
+}
+
+void selectAircraftHex(const char* hex) {
+  if (!hex || !hex[0] || app_state::hasManualTracking()) return;
+  strncpy(selectedHex, hex, sizeof(selectedHex) - 1);
+  selectedHex[sizeof(selectedHex) - 1] = 0;
+  selectedAtMs = millis();
+  updateSelectedActions();
+  Serial.printf("Radar aircraft selected: %s\n", selectedHex);
+}
+
+bool copyVisibleTargetByHex(const char* hex, aircraft::Target& target) {
+  if (!hex || !hex[0]) return false;
+  app_state::Snapshot snapshot;
+  app_state::copySnapshot(uiTargets, snapshot);
+  for (uint8_t i = 0; i < snapshot.count; ++i) {
+    if (uiTargets[i].hex[0] && strcmp(uiTargets[i].hex, hex) == 0) {
+      target = uiTargets[i];
+      return true;
+    }
+  }
+  return false;
+}
+
+void syncRadarRangeControlPosition() {
+  if (!radarRangeControl) return;
+  lv_obj_align(radarRangeControl, LV_ALIGN_BOTTOM_RIGHT, -8,
+               app_state::hasManualTracking() ? -50 : -8);
+}
+
 void syncRangeControls(float rangeMiles) {
   if (rangeLabel) {
     lv_label_set_text_fmt(rangeLabel, "RANGE // %d MILES",
                           (int)lroundf(rangeMiles));
   }
   for (int i = 0; i < RANGE_OPTION_COUNT; ++i) {
-    if (!setupRangeButtons[i]) continue;
-    lv_obj_set_style_bg_color(
-        setupRangeButtons[i],
-        fabsf(rangeMiles - RADAR_RANGES[i]) < 1.0f
-            ? rgb(24, 128, 84) : rgb(20, 68, 82), 0);
+    const bool active = fabsf(rangeMiles - RADAR_RANGES[i]) < 1.0f;
+    if (setupRangeButtons[i]) {
+      lv_obj_set_style_bg_color(
+          setupRangeButtons[i],
+          active ? rgb(24, 128, 84) : rgb(20, 68, 82), 0);
+    }
+    if (radarRangeButtons[i]) {
+      lv_obj_set_style_bg_color(
+          radarRangeButtons[i],
+          active ? rgb(24, 128, 84) : rgb(10, 38, 48), 0);
+      lv_obj_set_style_border_width(radarRangeButtons[i], active ? 1 : 0, 0);
+      lv_obj_set_style_border_color(radarRangeButtons[i],
+                                    rgb(63, 255, 155), 0);
+    }
+    if (radarRangeButtonLabels[i]) {
+      lv_obj_set_style_text_color(radarRangeButtonLabels[i],
+                                  active ? rgb(240, 255, 245)
+                                         : rgb(110, 220, 255), 0);
+    }
   }
+  syncRadarRangeControlPosition();
 }
 
 void rangeEvent(lv_event_t* event) {
@@ -471,9 +542,63 @@ void primaryRadarTargetEvent(lv_event_t*) {
     }
     return;
   }
+  if (hasSelectedAircraft()) {
+    selectedAtMs = millis();
+    return;
+  }
   if (snapshot.count == 0) return;
+  selectAircraftHex(uiTargets[0].hex);
+}
+
+void selectedInfoEvent(lv_event_t*) {
+  aircraft::Target target;
+  if (!copyVisibleTargetByHex(selectedHex, target)) {
+    clearSelectedAircraft(true);
+    return;
+  }
+  selectedAtMs = millis();
   selectPage(1);
-  showTargetDetails(uiTargets[0]);
+  showTargetDetails(target);
+}
+
+void selectedTrackEvent(lv_event_t*) {
+  aircraft::Target target;
+  if (!copyVisibleTargetByHex(selectedHex, target)) {
+    clearSelectedAircraft(true);
+    return;
+  }
+  app_state::selectManualTracking(target);
+  Serial.printf("Tracking selected aircraft %s (%s)\n", target.id,
+                target.hex);
+  clearSelectedAircraft();
+  setVisible(radarUntrackButton, true);
+  syncRadarRangeControlPosition();
+  selectPage(0);
+}
+
+void radarCanvasEvent(lv_event_t*) {
+  lv_indev_t* input = lv_indev_get_act();
+  if (!input || !radarCanvas) return;
+  lv_point_t point{};
+  lv_indev_get_point(input, &point);
+  lv_area_t canvasArea{};
+  lv_obj_get_coords(radarCanvas, &canvasArea);
+  const int canvasX = point.x - canvasArea.x1;
+  const int canvasY = point.y - canvasArea.y1;
+  radar::HitResult hit;
+  const bool tracking = app_state::hasManualTracking();
+  if (!radar::hitTest(canvasX, canvasY, hit)) {
+    if (!tracking) clearSelectedAircraft(true);
+    return;
+  }
+  if (!tracking) {
+    selectAircraftHex(hit.hex);
+    return;
+  }
+  aircraft::Target target;
+  if (!copyVisibleTargetByHex(hit.hex, target)) return;
+  selectPage(1);
+  showTargetDetails(target);
 }
 
 void detailBackEvent(lv_event_t*) {
@@ -489,6 +614,8 @@ void stopManualTracking() {
     lv_obj_add_flag(radarUntrackButton, LV_OBJ_FLAG_HIDDEN);
   }
   if (detailTrackLabel) lv_label_set_text(detailTrackLabel, "TRACK ON RADAR");
+  syncRadarRangeControlPosition();
+  updateSelectedActions();
 }
 
 void radarUntrackEvent(lv_event_t*) {
@@ -507,13 +634,18 @@ void detailTrackEvent(lv_event_t*) {
     if (radarUntrackButton) {
       lv_obj_clear_flag(radarUntrackButton, LV_OBJ_FLAG_HIDDEN);
     }
+    clearSelectedAircraft();
   }
+  syncRadarRangeControlPosition();
   lv_obj_add_flag(detailPanel, LV_OBJ_FLAG_HIDDEN);
   selectPage(0);
 }
 
 void renderRadarPage() {
-  radar::render(uiTargets);
+  const bool selectedAvailable = radar::render(uiTargets, selectedHex);
+  if (hasSelectedAircraft() && !selectedAvailable) {
+    clearSelectedAircraft(true);
+  }
 }
 
 void renderTracksPage() {
@@ -754,6 +886,9 @@ bool buildRadarPanels(lv_obj_t* root) {
   lv_obj_set_size(left, 128, 365);
   lv_obj_set_pos(left, 10, 52);
   stylePanel(left);
+  lv_obj_clear_flag(left, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(left, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(left, primaryRadarTargetEvent, LV_EVENT_CLICKED, nullptr);
   makeLabel(left, "AIRCRAFT", &lv_font_montserrat_14,
             rgb(100, 170, 180), 4, 4);
   countLabel = makeLabel(left, "0", &lv_font_montserrat_32,
@@ -765,7 +900,7 @@ bool buildRadarPanels(lv_obj_t* root) {
   lv_obj_set_width(nearestCallsignLabel, 104);
   nearestSummaryLabel = makeLabel(left, "Waiting for aircraft",
                                   &lv_font_montserrat_14,
-                                  rgb(225, 235, 240), 4, 145);
+                                  rgb(225, 235, 240), 4, 140);
   lv_obj_set_width(nearestSummaryLabel, 104);
   lv_label_set_long_mode(nearestSummaryLabel, LV_LABEL_LONG_WRAP);
   lv_obj_add_flag(nearestCallsignLabel, LV_OBJ_FLAG_CLICKABLE);
@@ -775,20 +910,52 @@ bool buildRadarPanels(lv_obj_t* root) {
   lv_obj_add_event_cb(nearestSummaryLabel, primaryRadarTargetEvent,
                       LV_EVENT_CLICKED, nullptr);
 
+  selectedInfoButton = lv_btn_create(left);
+  lv_obj_set_size(selectedInfoButton, 50, 30);
+  lv_obj_set_pos(selectedInfoButton, 4, 207);
+  lv_obj_set_style_bg_color(selectedInfoButton, rgb(20, 68, 82), 0);
+  lv_obj_set_style_border_color(selectedInfoButton, rgb(80, 180, 190), 0);
+  lv_obj_set_style_border_width(selectedInfoButton, 1, 0);
+  lv_obj_set_style_radius(selectedInfoButton, 5, 0);
+  lv_obj_add_event_cb(selectedInfoButton, selectedInfoEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* selectedInfoLabel = lv_label_create(selectedInfoButton);
+  lv_label_set_text(selectedInfoLabel, "INFO");
+  lv_obj_set_style_text_font(selectedInfoLabel, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(selectedInfoLabel, rgb(150, 230, 255), 0);
+  lv_obj_center(selectedInfoLabel);
+  lv_obj_add_flag(selectedInfoButton, LV_OBJ_FLAG_HIDDEN);
+
+  selectedTrackButton = lv_btn_create(left);
+  lv_obj_set_size(selectedTrackButton, 50, 30);
+  lv_obj_set_pos(selectedTrackButton, 58, 207);
+  lv_obj_set_style_bg_color(selectedTrackButton, rgb(24, 128, 84), 0);
+  lv_obj_set_style_border_color(selectedTrackButton, rgb(63, 255, 155), 0);
+  lv_obj_set_style_border_width(selectedTrackButton, 1, 0);
+  lv_obj_set_style_radius(selectedTrackButton, 5, 0);
+  lv_obj_add_event_cb(selectedTrackButton, selectedTrackEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* selectedTrackLabel = lv_label_create(selectedTrackButton);
+  lv_label_set_text(selectedTrackLabel, "TRACK");
+  lv_obj_set_style_text_font(selectedTrackLabel, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(selectedTrackLabel, rgb(240, 255, 245), 0);
+  lv_obj_center(selectedTrackLabel);
+  lv_obj_add_flag(selectedTrackButton, LV_OBJ_FLAG_HIDDEN);
+
   headingArrow = lv_line_create(left);
   lv_obj_set_size(headingArrow, 44, 44);
-  lv_obj_set_pos(headingArrow, 4, 222);
+  lv_obj_set_pos(headingArrow, 4, 242);
   lv_obj_set_style_line_width(headingArrow, 3, 0);
   lv_obj_set_style_line_color(headingArrow, rgb(255, 214, 80), 0);
   lv_obj_set_style_line_rounded(headingArrow, true, 0);
   headingLabel = makeLabel(left, "HDG\n--", &lv_font_montserrat_12,
-                           rgb(255, 214, 80), 50, 227);
+                           rgb(255, 214, 80), 50, 247);
   lv_obj_set_width(headingLabel, 58);
   lv_label_set_long_mode(headingLabel, LV_LABEL_LONG_CLIP);
   makeLabel(left, "DATA STATUS", &lv_font_montserrat_12,
-            rgb(100, 170, 180), 4, 278);
+            rgb(100, 170, 180), 4, 286);
   statusLabel = makeLabel(left, "Starting...", &lv_font_montserrat_14,
-                          rgb(150, 170, 180), 4, 300);
+                          rgb(150, 170, 180), 4, 302);
   lv_obj_set_width(statusLabel, 104);
   lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_WRAP);
 
@@ -813,6 +980,36 @@ bool buildRadarPanels(lv_obj_t* root) {
   lv_canvas_set_buffer(radarCanvas, radarBuffer, radar::WIDTH, radar::HEIGHT,
                        LV_IMG_CF_TRUE_COLOR);
   lv_obj_set_pos(radarCanvas, 1, 1);
+  lv_obj_add_flag(radarCanvas, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(radarCanvas, radarCanvasEvent, LV_EVENT_CLICKED, nullptr);
+
+  radarRangeControl = lv_obj_create(radarPanel);
+  lv_obj_set_size(radarRangeControl, 144, 38);
+  lv_obj_align(radarRangeControl, LV_ALIGN_BOTTOM_RIGHT, -8, -8);
+  lv_obj_clear_flag(radarRangeControl, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_pad_all(radarRangeControl, 0, 0);
+  lv_obj_set_style_bg_color(radarRangeControl, rgb(5, 18, 25), 0);
+  lv_obj_set_style_border_color(radarRangeControl, rgb(35, 105, 108), 0);
+  lv_obj_set_style_border_width(radarRangeControl, 1, 0);
+  lv_obj_set_style_radius(radarRangeControl, 5, 0);
+  for (int i = 0; i < RANGE_OPTION_COUNT; ++i) {
+    radarRangeButtons[i] = lv_btn_create(radarRangeControl);
+    lv_obj_set_size(radarRangeButtons[i], 46, 34);
+    lv_obj_set_pos(radarRangeButtons[i], 2 + i * 46, 2);
+    lv_obj_set_style_radius(radarRangeButtons[i], 3, 0);
+    lv_obj_set_style_shadow_width(radarRangeButtons[i], 0, 0);
+    lv_obj_add_event_cb(radarRangeButtons[i], rangeEvent, LV_EVENT_CLICKED,
+                        (void*)(intptr_t)i);
+    radarRangeButtonLabels[i] = lv_label_create(radarRangeButtons[i]);
+    char rangeText[4];
+    snprintf(rangeText, sizeof(rangeText), "%d",
+             (int)lroundf(RADAR_RANGES[i]));
+    lv_label_set_text(radarRangeButtonLabels[i], rangeText);
+    lv_obj_set_style_text_font(radarRangeButtonLabels[i],
+                               &lv_font_montserrat_12, 0);
+    lv_obj_center(radarRangeButtonLabels[i]);
+  }
+  syncRangeControls(app_state::radarRangeMiles());
 
   radarUntrackButton = lv_btn_create(radarPanel);
   lv_obj_set_size(radarUntrackButton, 112, 34);
@@ -1157,6 +1354,11 @@ void update(uint32_t now) {
     setLabelTextIfChanged(resetSettingsLabel, "RESET DEFAULTS");
     lv_obj_center(resetSettingsLabel);
     setSettingsStatus("Reset confirmation expired", rgb(150, 170, 180));
+  }
+  if (hasSelectedAircraft() &&
+      (int32_t)(now - selectedAtMs) >=
+          (int32_t)SELECTED_AIRCRAFT_TIMEOUT_MS) {
+    clearSelectedAircraft(true);
   }
   if (now - lastFrame < FRAME_INTERVAL_MS) return;
   lastFrame = now;
