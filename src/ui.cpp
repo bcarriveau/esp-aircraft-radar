@@ -30,8 +30,16 @@ constexpr const char* RADAR_RANGE_NAMES[RANGE_OPTION_COUNT] = {
 constexpr float TRACK_AUTO_ZOOM_EDGE_RATIO = 0.92f;
 constexpr float TRACK_AUTO_ZOOM_LOOKAHEAD_SECONDS = 30.0f;
 constexpr uint32_t SELECTED_AIRCRAFT_TIMEOUT_MS = 30000;
+constexpr uint8_t RADAR_SIDE_ICON_COUNT = NEAREST_LIST_COUNT + 2;
+constexpr uint8_t LEFT_NEAREST_ICON_INDEX = 0;
+constexpr uint8_t PRIORITY_ICON_INDEX = 1;
+constexpr uint8_t LIST_ICON_BASE_INDEX = 2;
+static_assert(LIST_ICON_BASE_INDEX + NEAREST_LIST_COUNT ==
+                  RADAR_SIDE_ICON_COUNT,
+              "Radar side-icon indexes do not match allocation");
 
 aircraft::Target* uiTargets = nullptr;
+lv_color_t* radarSideIconBuffers = nullptr;
 
 lv_obj_t* radarCanvas = nullptr;
 lv_color_t* radarBuffer = nullptr;
@@ -42,12 +50,17 @@ lv_obj_t* rangeLabel = nullptr;
 lv_obj_t* leftNearestModeLabel = nullptr;
 lv_obj_t* leftNearestCallsignLabel = nullptr;
 lv_obj_t* leftNearestSummaryLabel = nullptr;
+lv_obj_t* leftNearestIcon = nullptr;
+lv_obj_t* leftNearestHeadingArrow = nullptr;
+lv_obj_t* leftNearestHeadingLabel = nullptr;
 lv_obj_t* aircraftModeLabel = nullptr;
 lv_obj_t* nearestCallsignLabel = nullptr;
 lv_obj_t* nearestSummaryLabel = nullptr;
+lv_obj_t* priorityAircraftIcon = nullptr;
 lv_obj_t* headingArrow = nullptr;
 lv_obj_t* headingLabel = nullptr;
 lv_obj_t* listLabels[NEAREST_LIST_COUNT]{};
+lv_obj_t* listIcons[NEAREST_LIST_COUNT]{};
 char leftNearestHex[7]{};
 char nearestListHex[NEAREST_LIST_COUNT][7]{};
 lv_obj_t* statusLabel = nullptr;
@@ -132,6 +145,23 @@ lv_obj_t* makeLabel(lv_obj_t* parent, const char* text,
   lv_obj_set_style_text_color(label, color, 0);
   lv_obj_set_pos(label, x, y);
   return label;
+}
+
+lv_color_t* radarSideIconBuffer(uint8_t index) {
+  if (!radarSideIconBuffers || index >= RADAR_SIDE_ICON_COUNT) return nullptr;
+  return radarSideIconBuffers +
+      index * radar::SIDE_ICON_WIDTH * radar::SIDE_ICON_HEIGHT;
+}
+
+lv_obj_t* makeRadarSideIcon(lv_obj_t* parent, uint8_t index, int x, int y) {
+  lv_color_t* buffer = radarSideIconBuffer(index);
+  if (!buffer) return nullptr;
+  lv_obj_t* canvas = lv_canvas_create(parent);
+  lv_canvas_set_buffer(canvas, buffer, radar::SIDE_ICON_WIDTH,
+                       radar::SIDE_ICON_HEIGHT, LV_IMG_CF_TRUE_COLOR);
+  lv_obj_set_pos(canvas, x, y);
+  lv_obj_add_flag(canvas, LV_OBJ_FLAG_HIDDEN);
+  return canvas;
 }
 
 void setLabelTextIfChanged(lv_obj_t* label, const char* text) {
@@ -940,6 +970,20 @@ void buildHeader(lv_obj_t* root) {
 }
 
 bool buildRadarPanels(lv_obj_t* root) {
+  if (!radarSideIconBuffers) {
+    radarSideIconBuffers = static_cast<lv_color_t*>(heap_caps_calloc(
+        RADAR_SIDE_ICON_COUNT * radar::SIDE_ICON_WIDTH *
+            radar::SIDE_ICON_HEIGHT,
+        sizeof(lv_color_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  }
+  if (!radarSideIconBuffers) {
+    Serial.println("FATAL: radar side-icon PSRAM allocation failed");
+    return false;
+  }
+  Serial.printf("Radar side-icon buffers in PSRAM: %u bytes\n",
+                (unsigned)(RADAR_SIDE_ICON_COUNT * radar::SIDE_ICON_WIDTH *
+                           radar::SIDE_ICON_HEIGHT * sizeof(lv_color_t)));
+
   lv_obj_t* left = lv_obj_create(root);
   radarPanels[0] = left;
   lv_obj_set_size(left, 128, 365);
@@ -955,6 +999,13 @@ bool buildRadarPanels(lv_obj_t* root) {
   leftNearestModeLabel = makeLabel(left, "NEAREST",
                                    &lv_font_montserrat_14,
                                    rgb(100, 170, 180), 4, 88);
+  leftNearestIcon = makeRadarSideIcon(
+      left, LEFT_NEAREST_ICON_INDEX, 76, 86);
+  if (!leftNearestIcon) return false;
+  lv_obj_add_flag(leftNearestIcon, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(leftNearestIcon, 5);
+  lv_obj_add_event_cb(leftNearestIcon, primaryRadarTargetEvent,
+                      LV_EVENT_CLICKED, nullptr);
   leftNearestCallsignLabel = makeLabel(left, "--",
                                        &lv_font_montserrat_20,
                                        rgb(63, 255, 155), 4, 112);
@@ -964,6 +1015,29 @@ bool buildRadarPanels(lv_obj_t* root) {
                                       rgb(225, 235, 240), 4, 140);
   lv_obj_set_width(leftNearestSummaryLabel, 104);
   lv_label_set_long_mode(leftNearestSummaryLabel, LV_LABEL_LONG_WRAP);
+
+  leftNearestHeadingArrow = lv_line_create(left);
+  lv_obj_set_size(leftNearestHeadingArrow, 44, 44);
+  lv_obj_set_pos(leftNearestHeadingArrow, 4, 220);
+  lv_obj_set_style_line_width(leftNearestHeadingArrow, 3, 0);
+  lv_obj_set_style_line_color(leftNearestHeadingArrow,
+                              rgb(63, 255, 155), 0);
+  lv_obj_set_style_line_rounded(leftNearestHeadingArrow, true, 0);
+  lv_obj_add_flag(leftNearestHeadingArrow, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(leftNearestHeadingArrow, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(leftNearestHeadingArrow, 5);
+  lv_obj_add_event_cb(leftNearestHeadingArrow, primaryRadarTargetEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  leftNearestHeadingLabel = makeLabel(left, "HDG\n--",
+                                      &lv_font_montserrat_12,
+                                      rgb(63, 255, 155), 50, 225);
+  lv_obj_set_width(leftNearestHeadingLabel, 68);
+  lv_label_set_long_mode(leftNearestHeadingLabel, LV_LABEL_LONG_CLIP);
+  lv_obj_add_flag(leftNearestHeadingLabel, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(leftNearestHeadingLabel, 5);
+  lv_obj_add_event_cb(leftNearestHeadingLabel, primaryRadarTargetEvent,
+                      LV_EVENT_CLICKED, nullptr);
+
   lv_obj_t* leftNearestTargets[] = {
     leftNearestModeLabel, leftNearestCallsignLabel, leftNearestSummaryLabel
   };
@@ -1040,12 +1114,15 @@ bool buildRadarPanels(lv_obj_t* root) {
   stylePanel(right);
   lv_obj_clear_flag(right, LV_OBJ_FLAG_SCROLLABLE);
 
-  aircraftModeLabel = makeLabel(right, "NEAREST AIRCRAFT",
+  aircraftModeLabel = makeLabel(right, "NEAREST 5 AIRCRAFT",
                                 &lv_font_montserrat_16,
                                 rgb(110, 220, 255), 3, 3);
+  priorityAircraftIcon = makeRadarSideIcon(
+      right, PRIORITY_ICON_INDEX, 148, 38);
+  if (!priorityAircraftIcon) return false;
   nearestCallsignLabel = makeLabel(right, "--", &lv_font_montserrat_20,
                                    rgb(255, 205, 90), 4, 40);
-  lv_obj_set_width(nearestCallsignLabel, 175);
+  lv_obj_set_width(nearestCallsignLabel, 136);
   nearestSummaryLabel = makeLabel(right, "", &lv_font_montserrat_14,
                                   rgb(225, 235, 240), 4, 72);
   lv_obj_set_width(nearestSummaryLabel, 175);
@@ -1127,9 +1204,17 @@ bool buildRadarPanels(lv_obj_t* root) {
   lv_obj_add_flag(selectedClearButton, LV_OBJ_FLAG_HIDDEN);
 
   for (int i = 0; i < NEAREST_LIST_COUNT; ++i) {
+    listIcons[i] = makeRadarSideIcon(
+        right, LIST_ICON_BASE_INDEX + i, 4, 40 + i * 56);
+    if (!listIcons[i]) return false;
+    lv_obj_add_flag(listIcons[i], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(listIcons[i], 6);
+    lv_obj_add_event_cb(listIcons[i], nearestTargetEvent, LV_EVENT_CLICKED,
+                        (void*)(uintptr_t)i);
+
     listLabels[i] = makeLabel(right, "", &lv_font_montserrat_12,
-                              rgb(225, 235, 240), 4, 36 + i * 56);
-    lv_obj_set_width(listLabels[i], 175);
+                              rgb(225, 235, 240), 38, 36 + i * 56);
+    lv_obj_set_width(listLabels[i], 143);
     lv_obj_add_flag(listLabels[i], LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_ext_click_area(listLabels[i], 8);
     lv_obj_add_event_cb(listLabels[i], nearestTargetEvent, LV_EVENT_CLICKED,
@@ -1143,14 +1228,24 @@ bool buildRadarPanels(lv_obj_t* root) {
   view.leftNearestModeLabel = leftNearestModeLabel;
   view.leftNearestCallsignLabel = leftNearestCallsignLabel;
   view.leftNearestSummaryLabel = leftNearestSummaryLabel;
+  view.leftNearestIcon = leftNearestIcon;
+  view.leftNearestIconBuffer =
+      radarSideIconBuffer(LEFT_NEAREST_ICON_INDEX);
+  view.leftNearestHeadingArrow = leftNearestHeadingArrow;
+  view.leftNearestHeadingLabel = leftNearestHeadingLabel;
   view.aircraftModeLabel = aircraftModeLabel;
   view.nearestCallsignLabel = nearestCallsignLabel;
   view.nearestSummaryLabel = nearestSummaryLabel;
+  view.priorityIcon = priorityAircraftIcon;
+  view.priorityIconBuffer = radarSideIconBuffer(PRIORITY_ICON_INDEX);
   view.headingArrow = headingArrow;
   view.headingLabel = headingLabel;
   view.leftNearestHex = leftNearestHex;
   for (int i = 0; i < NEAREST_LIST_COUNT; ++i) {
     view.listLabels[i] = listLabels[i];
+    view.listIcons[i] = listIcons[i];
+    view.listIconBuffers[i] =
+        radarSideIconBuffer(LIST_ICON_BASE_INDEX + i);
     view.listHexes[i] = nearestListHex[i];
   }
   radar::configure(view);
