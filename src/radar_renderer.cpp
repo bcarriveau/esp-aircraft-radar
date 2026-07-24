@@ -18,6 +18,8 @@ constexpr int RADIUS = 168;
 
 View radarView;
 float sweepDegrees = 0;
+lv_point_t leftNearestHeadingPoints[5]{};
+lv_point_t priorityHeadingPoints[5]{};
 
 inline lv_color_t rgb(uint8_t red, uint8_t green, uint8_t blue) {
   return lv_color_make(red, green, blue);
@@ -289,6 +291,33 @@ void drawAircraftPreview(lv_obj_t* canvas, lv_color_t* buffer,
   lv_obj_invalidate(canvas);
 }
 
+void drawSideBitmapIcon(lv_obj_t* canvas, lv_color_t* buffer,
+                        AircraftBitmapId bitmapId) {
+  if (!canvas || !buffer) return;
+  const lv_color_t background = rgb(10, 18, 25);
+  for (int i = 0; i < SIDE_ICON_WIDTH * SIDE_ICON_HEIGHT; ++i) {
+    buffer[i] = background;
+  }
+
+  const uint16_t* sprite = aircraftBitmap(bitmapId);
+  for (int destinationY = 0; destinationY < SIDE_ICON_HEIGHT;
+       ++destinationY) {
+    const int sourceY =
+        destinationY * AIRCRAFT_BITMAP_H / SIDE_ICON_HEIGHT;
+    for (int destinationX = 0; destinationX < SIDE_ICON_WIDTH;
+         ++destinationX) {
+      const int sourceX =
+          destinationX * AIRCRAFT_BITMAP_W / SIDE_ICON_WIDTH;
+      const uint16_t pixel = pgm_read_word(
+          sprite + sourceY * AIRCRAFT_BITMAP_W + sourceX);
+      if (!pixel) continue;
+      buffer[destinationY * SIDE_ICON_WIDTH + destinationX] =
+          bitmapColor(pixel);
+    }
+  }
+  lv_obj_invalidate(canvas);
+}
+
 void drawTrackBitmapIcon(lv_draw_ctx_t* drawContext, int centerX, int centerY,
                          AircraftBitmapId bitmapId) {
   constexpr int iconWidth = 28;
@@ -504,15 +533,28 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
   }
 }
 
-void updateHeadingDisplay(const aircraft::Target* target) {
-  if (!radarView.headingArrow || !radarView.headingLabel) return;
+void updateSideIcon(lv_obj_t* canvas, lv_color_t* buffer,
+                    const aircraft::Target* target, bool visible) {
+  if (!canvas || !buffer) return;
+  if (!visible || !target) {
+    lv_obj_add_flag(canvas, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  drawSideBitmapIcon(canvas, buffer,
+                     aircraft::bitmapForType(target->typeCode));
+  lv_obj_clear_flag(canvas, LV_OBJ_FLAG_HIDDEN);
+}
+
+void updateHeadingDisplay(lv_obj_t* arrow, lv_obj_t* label,
+                          lv_point_t* points,
+                          const aircraft::Target* target) {
+  if (!arrow || !label || !points) return;
   if (!target || !target->hasTrack) {
-    lv_obj_add_flag(radarView.headingArrow, LV_OBJ_FLAG_HIDDEN);
-    lv_label_set_text(radarView.headingLabel, "HDG\n--");
+    lv_obj_add_flag(arrow, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(label, "HDG\n--");
     return;
   }
 
-  static lv_point_t points[5];
   constexpr float center = 21.0f;
   const float radians = target->track * M_PI / 180.0f;
   const float directionX = sinf(radians);
@@ -531,14 +573,14 @@ void updateHeadingDisplay(const aircraft::Target* target) {
   points[3] = points[1];
   points[4] = {(lv_coord_t)(headBaseX - perpendicularX * 6.0f),
                (lv_coord_t)(headBaseY - perpendicularY * 6.0f)};
-  lv_line_set_points(radarView.headingArrow, points, 5);
-  lv_obj_clear_flag(radarView.headingArrow, LV_OBJ_FLAG_HIDDEN);
+  lv_line_set_points(arrow, points, 5);
+  lv_obj_clear_flag(arrow, LV_OBJ_FLAG_HIDDEN);
   int headingDegrees = (int)lroundf(target->track) % 360;
   if (headingDegrees < 0) headingDegrees += 360;
   char headingText[24];
   snprintf(headingText, sizeof(headingText), "HDG\n%03d %s", headingDegrees,
            aircraft::compassDirection(target->track));
-  lv_label_set_text(radarView.headingLabel, headingText);
+  lv_label_set_text(label, headingText);
 }
 
 void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
@@ -566,7 +608,8 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
                                   rgb(63, 255, 155), 0);
     }
     if (radarView.leftNearestSummaryLabel) {
-      snprintf(text, sizeof(text), "%s %s\n%.1f mi %s\n%.0f ft\n%.0f MPH",
+      snprintf(text, sizeof(text),
+               "%s %s\n%.1f mi %s\n%.0f ft\n%.0f MPH",
                aircraft::kindName(nearestTarget->typeCode),
                nearestTarget->typeCode, nearestTarget->distanceMiles,
                aircraft::compassDirection(nearestTarget->bearing),
@@ -625,7 +668,7 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
   }
 
   if (!priorityAircraft) {
-    lv_label_set_text(radarView.aircraftModeLabel, "NEAREST AIRCRAFT");
+    lv_label_set_text(radarView.aircraftModeLabel, "NEAREST 5 AIRCRAFT");
     lv_obj_set_style_text_color(radarView.aircraftModeLabel,
                                 rgb(110, 220, 255), 0);
   }
@@ -640,6 +683,28 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
     if (priorityAircraft) lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_clear_flag(label, LV_OBJ_FLAG_HIDDEN);
   }
+  updateSideIcon(radarView.leftNearestIcon,
+                 radarView.leftNearestIconBuffer, nearestTarget,
+                 !priorityAircraft && nearestTarget);
+  if (radarView.leftNearestHeadingLabel) {
+    if (priorityAircraft) {
+      lv_obj_add_flag(radarView.leftNearestHeadingLabel,
+                      LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_clear_flag(radarView.leftNearestHeadingLabel,
+                        LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  if (priorityAircraft) {
+    if (radarView.leftNearestHeadingArrow) {
+      lv_obj_add_flag(radarView.leftNearestHeadingArrow,
+                      LV_OBJ_FLAG_HIDDEN);
+    }
+  } else {
+    updateHeadingDisplay(radarView.leftNearestHeadingArrow,
+                         radarView.leftNearestHeadingLabel,
+                         leftNearestHeadingPoints, nearestTarget);
+  }
 
   for (int i = 0; i < 5; ++i) {
     if (radarView.listLabels[i]) {
@@ -648,6 +713,9 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
       } else {
         lv_obj_clear_flag(radarView.listLabels[i], LV_OBJ_FLAG_HIDDEN);
       }
+    }
+    if (priorityAircraft && radarView.listIcons[i]) {
+      lv_obj_add_flag(radarView.listIcons[i], LV_OBJ_FLAG_HIDDEN);
     }
   }
 
@@ -701,13 +769,17 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
                primaryTarget->speedKt * 1.15078f);
     }
     lv_label_set_text(radarView.nearestSummaryLabel, text);
-    updateHeadingDisplay(primaryTarget);
+    updateHeadingDisplay(radarView.headingArrow, radarView.headingLabel,
+                         priorityHeadingPoints, primaryTarget);
   } else if (snapshot.manualTracking) {
     lv_label_set_text(radarView.nearestCallsignLabel, "--");
     lv_label_set_text(radarView.nearestSummaryLabel,
                       "Waiting for tracked aircraft");
-    updateHeadingDisplay(nullptr);
+    updateHeadingDisplay(radarView.headingArrow, radarView.headingLabel,
+                         priorityHeadingPoints, nullptr);
   }
+  updateSideIcon(radarView.priorityIcon, radarView.priorityIconBuffer,
+                 primaryTarget, priorityAircraft && primaryTarget);
 
   for (int i = 0; i < 5; ++i) {
     if (radarView.listHexes[i]) radarView.listHexes[i][0] = 0;
@@ -738,8 +810,13 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
                  workTargets[i].speedKt * 1.15078f);
       }
       lv_label_set_text(radarView.listLabels[i], text);
+      updateSideIcon(radarView.listIcons[i],
+                     radarView.listIconBuffers[i], &workTargets[i],
+                     !priorityAircraft);
     } else {
       lv_label_set_text(radarView.listLabels[i], "");
+      updateSideIcon(radarView.listIcons[i],
+                     radarView.listIconBuffers[i], nullptr, false);
     }
   }
 }

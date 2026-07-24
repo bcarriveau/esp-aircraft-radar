@@ -380,3 +380,899 @@ ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22
 ADSB.fi native HTTPS attempt 1
 Heap before request: 81888, free PSRAM: 4410324, RSSI: -74 dBm
 ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 922 ms
+ADSB.fi HTTP 200, content length: 12401, chunked: no
+ADSB.fi response complete: 12401 bytes in 69 ms
+ADSB JSON parsed: 23 aircraft received, overflow=no
+ADSB accepted=14 eligible=14 capacity-dropped=0 missing-position=0 ground=3 outside-range=6 tracked-forced=no
+Published 14 aircraft (14 eligible, 0 capacity-dropped) in 1167 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -67 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 960 ms
+ADSB.fi HTTP 200, content length: 13114, chunked: no
+ADSB.fi response complete: 13114 bytes in 68 ms
+ADSB JSON parsed: 24 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=3 outside-range=10 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1221 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -74 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 892 ms
+ADSB.fi HTTP 200, content length: 12566, chunked: no
+ADSB.fi response complete: 12566 bytes in 74 ms
+ADSB JSON parsed: 23 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=3 outside-range=9 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1147 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -74 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 912 ms
+ADSB.fi HTTP 200, content length: 12562, chunked: no
+ADSB.fi response complete: 12562 bytes in 79 ms
+ADSB JSON parsed: 23 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=3 outside-range=9 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1174 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410352, RSSI: -73 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 920 ms
+ADSB.fi HTTP 200, content length: 11920, chunked: no
+ADSB.fi response complete: 11920 bytes in 60 ms
+ADSB JSON parsed: 22 aircraft received, overflow=no
+ADSB accepted=12 eligible=12 capacity-dropped=0 missing-position=0 ground=3 outside-range=7 tracked-forced=no
+Published 12 aircraft (12 eligible, 0 capacity-dropped) in 1187 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -72 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 935 ms
+ADSB.fi HTTP 200, content length: 11485, chunked: no
+ADSB.fi response complete: 11485 bytes in 59 ms
+ADSB JSON parsed: 21 aircraft received, overflow=no
+ADSB accepted=12 eligible=12 capacity-dropped=0 missing-position=0 ground=2 outside-range=7 tracked-forced=no
+Published 12 aircraft (12 eligible, 0 capacity-dropped) in 1185 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -71 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 908 ms
+ADSB.fi HTTP 200, content length: 11004, chunked: no
+ADSB.fi response complete: 11004 bytes in 48 ms
+ADSB JSON parsed: 20 aircraft received, overflow=no
+ADSB accepted=13 eligible=13 capacity-dropped=0 missing-position=0 ground=2 outside-range=5 tracked-forced=no
+Published 13 aircraft (13 eligible, 0 capacity-dropped) in 1140 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -74 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 889 ms
+ADSB.fi HTTP 200, content length: 11037, chunked: no
+ADSB.fi response complete: 11037 bytes in 85 ms
+ADSB JSON parsed: 20 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=2 outside-range=7 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1163 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -74 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 907 ms
+ADSB.fi HTTP 200, content length: 11092, chunked: no
+ADSB.fi response complete: 11092 bytes in 56 ms
+ADSB JSON parsed: 20 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=2 outside-range=7 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1159 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -73 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 900 ms
+ADSB.fi HTTP 200, content length: 11097, chunked: no
+ADSB.fi response complete: 11097 bytes in 92 ms
+ADSB JSON parsed: 20 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=2 outside-range=7 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1263 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -75 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 918 ms
+ADSB.fi HTTP 200, content length: 11142, chunked: no
+ADSB.fi response complete: 11142 bytes in 57 ms
+ADSB JSON parsed: 20 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=2 outside-range=7 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1160 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -75 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 913 ms
+ADSB.fi HTTP 200, content length: 11086, chunked: no
+ADSB.fi response complete: 11086 bytes in 58 ms
+ADSB JSON parsed: 20 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=2 outside-range=7 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1153 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -71 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 944 ms
+ADSB.fi HTTP 200, content length: 10997, chunked: no
+ADSB.fi response complete: 10997 bytes in 61 ms
+ADSB JSON parsed: 20 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=2 outside-range=7 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1193 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -73 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 903 ms
+ADSB.fi HTTP 200, content length: 10513, chunked: no
+ADSB.fi response complete: 10513 bytes in 57 ms
+ADSB JSON parsed: 19 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=2 outside-range=6 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1141 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -73 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 172.67.72.239
+ADSB.fi native TLS connected in 910 ms
+ADSB.fi HTTP 200, content length: 9463, chunked: no
+ADSB.fi response complete: 9463 bytes in 47 ms
+ADSB JSON parsed: 17 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=1 outside-range=5 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1157 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -75 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 172.67.72.239
+ADSB.fi native TLS connected in 903 ms
+ADSB.fi HTTP 200, content length: 10069, chunked: no
+ADSB.fi response complete: 10069 bytes in 46 ms
+ADSB JSON parsed: 18 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=1 outside-range=6 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1383 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -73 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 172.67.72.239
+ADSB.fi native TLS connected in 912 ms
+ADSB.fi HTTP 200, content length: 9890, chunked: no
+ADSB.fi response complete: 9890 bytes in 62 ms
+ADSB JSON parsed: 18 aircraft received, overflow=no
+ADSB accepted=12 eligible=12 capacity-dropped=0 missing-position=0 ground=1 outside-range=5 tracked-forced=no
+Published 12 aircraft (12 eligible, 0 capacity-dropped) in 1161 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -73 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 172.67.72.239
+ADSB.fi native TLS connected in 906 ms
+ADSB.fi HTTP 200, content length: 10504, chunked: no
+ADSB.fi response complete: 10504 bytes in 96 ms
+ADSB JSON parsed: 19 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=1 outside-range=7 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1187 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -75 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 172.67.72.239
+ADSB.fi native TLS connected in 923 ms
+ADSB.fi HTTP 200, content length: 11579, chunked: no
+ADSB.fi response complete: 11579 bytes in 68 ms
+ADSB JSON parsed: 21 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=2 outside-range=8 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1168 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -74 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 172.67.72.239
+ADSB.fi native TLS connected in 913 ms
+ADSB.fi HTTP 200, content length: 11576, chunked: no
+ADSB.fi response complete: 11576 bytes in 71 ms
+ADSB JSON parsed: 21 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=2 outside-range=8 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1167 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -75 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 172.67.72.239
+ADSB.fi native TLS connected in 937 ms
+ADSB.fi HTTP 200, content length: 10946, chunked: no
+ADSB.fi response complete: 10946 bytes in 65 ms
+ADSB JSON parsed: 20 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=2 outside-range=7 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1184 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -73 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 172.67.72.239
+ADSB.fi native TLS connected in 918 ms
+ADSB.fi HTTP 200, content length: 10887, chunked: no
+ADSB.fi response complete: 10887 bytes in 73 ms
+ADSB JSON parsed: 20 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=2 outside-range=7 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1177 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -73 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 172.67.72.239
+ADSB.fi native TLS connected in 913 ms
+ADSB.fi HTTP 200, content length: 11059, chunked: no
+ADSB.fi response complete: 11059 bytes in 63 ms
+ADSB JSON parsed: 20 aircraft received, overflow=no
+ADSB accepted=10 eligible=10 capacity-dropped=0 missing-position=0 ground=2 outside-range=8 tracked-forced=no
+Published 10 aircraft (10 eligible, 0 capacity-dropped) in 1168 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -72 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 172.67.72.239
+ADSB.fi native TLS connected in 905 ms
+ADSB.fi HTTP 200, content length: 11084, chunked: no
+ADSB.fi response complete: 11084 bytes in 66 ms
+ADSB JSON parsed: 20 aircraft received, overflow=no
+ADSB accepted=10 eligible=10 capacity-dropped=0 missing-position=0 ground=2 outside-range=8 tracked-forced=no
+Published 10 aircraft (10 eligible, 0 capacity-dropped) in 1161 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410352, RSSI: -69 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 924 ms
+ADSB.fi HTTP 200, content length: 11553, chunked: no
+ADSB.fi response complete: 11553 bytes in 65 ms
+ADSB JSON parsed: 21 aircraft received, overflow=no
+ADSB accepted=10 eligible=10 capacity-dropped=0 missing-position=0 ground=3 outside-range=8 tracked-forced=no
+Published 10 aircraft (10 eligible, 0 capacity-dropped) in 1190 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -73 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 901 ms
+ADSB.fi HTTP 200, content length: 11047, chunked: no
+ADSB.fi response complete: 11047 bytes in 56 ms
+ADSB JSON parsed: 20 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=3 outside-range=6 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1138 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -75 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 909 ms
+ADSB.fi HTTP 200, content length: 11066, chunked: no
+ADSB.fi response complete: 11066 bytes in 53 ms
+ADSB JSON parsed: 20 aircraft received, overflow=no
+ADSB accepted=13 eligible=13 capacity-dropped=0 missing-position=0 ground=3 outside-range=4 tracked-forced=no
+Published 13 aircraft (13 eligible, 0 capacity-dropped) in 1155 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -73 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 907 ms
+ADSB.fi HTTP 200, content length: 11103, chunked: no
+ADSB.fi response complete: 11103 bytes in 62 ms
+ADSB JSON parsed: 20 aircraft received, overflow=no
+ADSB accepted=12 eligible=12 capacity-dropped=0 missing-position=0 ground=3 outside-range=5 tracked-forced=no
+Published 12 aircraft (12 eligible, 0 capacity-dropped) in 1202 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -69 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 924 ms
+ADSB.fi HTTP 200, content length: 10709, chunked: no
+ADSB.fi response complete: 10709 bytes in 63 ms
+ADSB JSON parsed: 19 aircraft received, overflow=no
+ADSB accepted=12 eligible=12 capacity-dropped=0 missing-position=0 ground=2 outside-range=5 tracked-forced=no
+Published 12 aircraft (12 eligible, 0 capacity-dropped) in 1170 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -74 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 910 ms
+ADSB.fi HTTP 200, content length: 11706, chunked: no
+ADSB.fi response complete: 11706 bytes in 61 ms
+ADSB JSON parsed: 21 aircraft received, overflow=no
+ADSB accepted=12 eligible=12 capacity-dropped=0 missing-position=0 ground=3 outside-range=6 tracked-forced=no
+Published 12 aircraft (12 eligible, 0 capacity-dropped) in 1155 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -75 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 924 ms
+ADSB.fi HTTP 200, content length: 10468, chunked: no
+ADSB.fi response complete: 10468 bytes in 65 ms
+ADSB JSON parsed: 19 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=3 outside-range=5 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1177 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -71 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 897 ms
+ADSB.fi HTTP 200, content length: 10618, chunked: no
+ADSB.fi response complete: 10618 bytes in 59 ms
+ADSB JSON parsed: 19 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=2 outside-range=6 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1151 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -74 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 897 ms
+ADSB.fi HTTP 200, content length: 11001, chunked: no
+ADSB.fi response complete: 11001 bytes in 73 ms
+ADSB JSON parsed: 20 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=3 outside-range=6 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1170 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -75 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 912 ms
+ADSB.fi HTTP 200, content length: 10573, chunked: no
+ADSB.fi response complete: 10573 bytes in 64 ms
+ADSB JSON parsed: 19 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=2 outside-range=6 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1211 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -75 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 920 ms
+ADSB.fi HTTP 200, content length: 10529, chunked: no
+ADSB.fi response complete: 10529 bytes in 60 ms
+ADSB JSON parsed: 19 aircraft received, overflow=no
+ADSB accepted=10 eligible=10 capacity-dropped=0 missing-position=0 ground=2 outside-range=7 tracked-forced=no
+Published 10 aircraft (10 eligible, 0 capacity-dropped) in 1171 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -74 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 895 ms
+ADSB.fi HTTP 200, content length: 10569, chunked: no
+ADSB.fi response complete: 10569 bytes in 75 ms
+ADSB JSON parsed: 19 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=2 outside-range=6 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1152 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -73 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 906 ms
+ADSB.fi HTTP 200, content length: 10598, chunked: no
+ADSB.fi response complete: 10598 bytes in 78 ms
+ADSB JSON parsed: 19 aircraft received, overflow=no
+ADSB accepted=11 eligible=11 capacity-dropped=0 missing-position=0 ground=3 outside-range=5 tracked-forced=no
+Published 11 aircraft (11 eligible, 0 capacity-dropped) in 1258 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -75 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 900 ms
+ADSB.fi HTTP 200, content length: 11668, chunked: no
+ADSB.fi response complete: 11668 bytes in 68 ms
+ADSB JSON parsed: 21 aircraft received, overflow=no
+ADSB accepted=10 eligible=10 capacity-dropped=0 missing-position=0 ground=5 outside-range=6 tracked-forced=no
+Published 10 aircraft (10 eligible, 0 capacity-dropped) in 1145 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -71 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 895 ms
+ADSB.fi HTTP 200, content length: 10988, chunked: no
+ADSB.fi response complete: 10988 bytes in 82 ms
+ADSB JSON parsed: 20 aircraft received, overflow=no
+ADSB accepted=9 eligible=9 capacity-dropped=0 missing-position=0 ground=5 outside-range=6 tracked-forced=no
+Published 9 aircraft (9 eligible, 0 capacity-dropped) in 1149 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -70 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 898 ms
+ADSB.fi HTTP 200, content length: 10644, chunked: no
+ADSB.fi response complete: 10644 bytes in 54 ms
+ADSB JSON parsed: 19 aircraft received, overflow=no
+ADSB accepted=8 eligible=8 capacity-dropped=0 missing-position=0 ground=5 outside-range=6 tracked-forced=no
+Published 8 aircraft (8 eligible, 0 capacity-dropped) in 1363 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -75 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 890 ms
+ADSB.fi HTTP 200, content length: 10367, chunked: no
+ADSB.fi response complete: 10367 bytes in 110 ms
+ADSB JSON parsed: 19 aircraft received, overflow=no
+ADSB accepted=7 eligible=7 capacity-dropped=0 missing-position=0 ground=5 outside-range=7 tracked-forced=no
+Published 7 aircraft (7 eligible, 0 capacity-dropped) in 1191 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -73 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 1094 ms
+ADSB.fi HTTP 200, content length: 10473, chunked: no
+ADSB.fi response complete: 10473 bytes in 62 ms
+ADSB JSON parsed: 19 aircraft received, overflow=no
+ADSB accepted=7 eligible=7 capacity-dropped=0 missing-position=0 ground=5 outside-range=7 tracked-forced=no
+Published 7 aircraft (7 eligible, 0 capacity-dropped) in 1343 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -71 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 892 ms
+ADSB.fi HTTP 200, content length: 9861, chunked: no
+ADSB.fi response complete: 9861 bytes in 80 ms
+ADSB JSON parsed: 18 aircraft received, overflow=no
+ADSB accepted=8 eligible=8 capacity-dropped=0 missing-position=0 ground=5 outside-range=5 tracked-forced=no
+Published 8 aircraft (8 eligible, 0 capacity-dropped) in 1163 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -74 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 901 ms
+ADSB.fi HTTP 200, content length: 9059, chunked: no
+ADSB.fi response complete: 9059 bytes in 85 ms
+ADSB JSON parsed: 17 aircraft received, overflow=no
+ADSB accepted=8 eligible=8 capacity-dropped=0 missing-position=0 ground=5 outside-range=4 tracked-forced=no
+Published 8 aircraft (8 eligible, 0 capacity-dropped) in 1153 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -75 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 896 ms
+ADSB.fi HTTP 200, content length: 8600, chunked: no
+ADSB.fi response complete: 8600 bytes in 49 ms
+ADSB JSON parsed: 16 aircraft received, overflow=no
+ADSB accepted=6 eligible=6 capacity-dropped=0 missing-position=0 ground=5 outside-range=5 tracked-forced=no
+Published 6 aircraft (6 eligible, 0 capacity-dropped) in 1134 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -72 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 882 ms
+ADSB.fi HTTP 200, content length: 8665, chunked: no
+ADSB.fi response complete: 8665 bytes in 74 ms
+ADSB JSON parsed: 16 aircraft received, overflow=no
+ADSB accepted=6 eligible=6 capacity-dropped=0 missing-position=0 ground=5 outside-range=5 tracked-forced=no
+Published 6 aircraft (6 eligible, 0 capacity-dropped) in 1138 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -75 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 877 ms
+ADSB.fi HTTP 200, content length: 8733, chunked: no
+ADSB.fi response complete: 8733 bytes in 51 ms
+ADSB JSON parsed: 16 aircraft received, overflow=no
+ADSB accepted=7 eligible=7 capacity-dropped=0 missing-position=0 ground=5 outside-range=4 tracked-forced=no
+Published 7 aircraft (7 eligible, 0 capacity-dropped) in 1114 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -70 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 891 ms
+ADSB.fi HTTP 200, content length: 8645, chunked: no
+ADSB.fi response complete: 8645 bytes in 51 ms
+ADSB JSON parsed: 16 aircraft received, overflow=no
+ADSB accepted=7 eligible=7 capacity-dropped=0 missing-position=0 ground=5 outside-range=4 tracked-forced=no
+Published 7 aircraft (7 eligible, 0 capacity-dropped) in 1118 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -73 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 873 ms
+ADSB.fi HTTP 200, content length: 7716, chunked: no
+ADSB.fi response complete: 7716 bytes in 46 ms
+ADSB JSON parsed: 14 aircraft received, overflow=no
+ADSB accepted=6 eligible=6 capacity-dropped=0 missing-position=0 ground=3 outside-range=5 tracked-forced=no
+Published 6 aircraft (6 eligible, 0 capacity-dropped) in 1114 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410324, RSSI: -76 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 893 ms
+ADSB.fi HTTP 200, content length: 7692, chunked: no
+ADSB.fi response complete: 7692 bytes in 54 ms
+ADSB JSON parsed: 14 aircraft received, overflow=no
+ADSB accepted=6 eligible=6 capacity-dropped=0 missing-position=0 ground=3 outside-range=5 tracked-forced=no
+Published 6 aircraft (6 eligible, 0 capacity-dropped) in 1175 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410352, RSSI: -74 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 889 ms
+ADSB.fi HTTP 200, content length: 7702, chunked: no
+ADSB.fi response complete: 7702 bytes in 52 ms
+ADSB JSON parsed: 14 aircraft received, overflow=no
+ADSB accepted=6 eligible=6 capacity-dropped=0 missing-position=0 ground=3 outside-range=5 tracked-forced=no
+Published 6 aircraft (6 eligible, 0 capacity-dropped) in 1138 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -73 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 915 ms
+ADSB.fi HTTP 200, content length: 7831, chunked: no
+ADSB.fi response complete: 7831 bytes in 40 ms
+ADSB JSON parsed: 14 aircraft received, overflow=no
+ADSB accepted=7 eligible=7 capacity-dropped=0 missing-position=0 ground=2 outside-range=5 tracked-forced=no
+Published 7 aircraft (7 eligible, 0 capacity-dropped) in 1144 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -72 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 878 ms
+ADSB.fi HTTP 200, content length: 7838, chunked: no
+ADSB.fi response complete: 7838 bytes in 59 ms
+ADSB JSON parsed: 14 aircraft received, overflow=no
+ADSB accepted=6 eligible=6 capacity-dropped=0 missing-position=0 ground=2 outside-range=6 tracked-forced=no
+Published 6 aircraft (6 eligible, 0 capacity-dropped) in 1122 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -74 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 893 ms
+ADSB.fi HTTP 200, content length: 7748, chunked: no
+ADSB.fi response complete: 7748 bytes in 62 ms
+ADSB JSON parsed: 14 aircraft received, overflow=no
+ADSB accepted=6 eligible=6 capacity-dropped=0 missing-position=0 ground=2 outside-range=6 tracked-forced=no
+Published 6 aircraft (6 eligible, 0 capacity-dropped) in 1132 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -74 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 886 ms
+ADSB.fi HTTP 200, content length: 6867, chunked: no
+ADSB.fi response complete: 6867 bytes in 42 ms
+ADSB JSON parsed: 12 aircraft received, overflow=no
+ADSB accepted=5 eligible=5 capacity-dropped=0 missing-position=0 ground=1 outside-range=6 tracked-forced=no
+Published 5 aircraft (5 eligible, 0 capacity-dropped) in 1116 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -75 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 871 ms
+ADSB.fi HTTP 200, content length: 6851, chunked: no
+ADSB.fi response complete: 6851 bytes in 53 ms
+ADSB JSON parsed: 12 aircraft received, overflow=no
+ADSB accepted=5 eligible=5 capacity-dropped=0 missing-position=0 ground=1 outside-range=6 tracked-forced=no
+Published 5 aircraft (5 eligible, 0 capacity-dropped) in 1099 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -75 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 879 ms
+ADSB.fi HTTP 200, content length: 6284, chunked: no
+ADSB.fi response complete: 6284 bytes in 38 ms
+ADSB JSON parsed: 11 aircraft received, overflow=no
+ADSB accepted=6 eligible=6 capacity-dropped=0 missing-position=0 ground=1 outside-range=4 tracked-forced=no
+Published 6 aircraft (6 eligible, 0 capacity-dropped) in 1097 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -74 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 892 ms
+ADSB.fi HTTP 200, content length: 5688, chunked: no
+ADSB.fi response complete: 5688 bytes in 35 ms
+ADSB JSON parsed: 10 aircraft received, overflow=no
+ADSB accepted=6 eligible=6 capacity-dropped=0 missing-position=0 ground=1 outside-range=3 tracked-forced=no
+Published 6 aircraft (6 eligible, 0 capacity-dropped) in 1103 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -73 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 874 ms
+ADSB.fi HTTP 200, content length: 5191, chunked: no
+ADSB.fi response complete: 5191 bytes in 38 ms
+ADSB JSON parsed: 9 aircraft received, overflow=no
+ADSB accepted=5 eligible=5 capacity-dropped=0 missing-position=0 ground=0 outside-range=4 tracked-forced=no
+Published 5 aircraft (5 eligible, 0 capacity-dropped) in 1087 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -72 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 883 ms
+ADSB.fi HTTP 200, content length: 6092, chunked: no
+ADSB.fi response complete: 6092 bytes in 38 ms
+ADSB JSON parsed: 11 aircraft received, overflow=no
+ADSB accepted=4 eligible=4 capacity-dropped=0 missing-position=0 ground=1 outside-range=6 tracked-forced=no
+Published 4 aircraft (4 eligible, 0 capacity-dropped) in 1107 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -68 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 890 ms
+ADSB.fi HTTP 200, content length: 6708, chunked: no
+ADSB.fi response complete: 6708 bytes in 37 ms
+ADSB JSON parsed: 12 aircraft received, overflow=no
+ADSB accepted=4 eligible=4 capacity-dropped=0 missing-position=0 ground=1 outside-range=7 tracked-forced=no
+Published 4 aircraft (4 eligible, 0 capacity-dropped) in 1114 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -70 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 890 ms
+ADSB.fi HTTP 200, content length: 5048, chunked: no
+ADSB.fi response complete: 5048 bytes in 37 ms
+ADSB JSON parsed: 9 aircraft received, overflow=no
+ADSB accepted=3 eligible=3 capacity-dropped=0 missing-position=0 ground=1 outside-range=5 tracked-forced=no
+Published 3 aircraft (3 eligible, 0 capacity-dropped) in 1108 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -71 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 882 ms
+ADSB.fi HTTP 200, content length: 5618, chunked: no
+ADSB.fi response complete: 5618 bytes in 45 ms
+ADSB JSON parsed: 10 aircraft received, overflow=no
+ADSB accepted=3 eligible=3 capacity-dropped=0 missing-position=0 ground=1 outside-range=6 tracked-forced=no
+Published 3 aircraft (3 eligible, 0 capacity-dropped) in 1099 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -70 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 879 ms
+ADSB.fi HTTP 200, content length: 5616, chunked: no
+ADSB.fi response complete: 5616 bytes in 36 ms
+ADSB JSON parsed: 10 aircraft received, overflow=no
+ADSB accepted=3 eligible=3 capacity-dropped=0 missing-position=0 ground=1 outside-range=6 tracked-forced=no
+Published 3 aircraft (3 eligible, 0 capacity-dropped) in 1101 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -69 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 869 ms
+ADSB.fi HTTP 200, content length: 5610, chunked: no
+ADSB.fi response complete: 5610 bytes in 36 ms
+ADSB JSON parsed: 10 aircraft received, overflow=no
+ADSB accepted=3 eligible=3 capacity-dropped=0 missing-position=0 ground=1 outside-range=6 tracked-forced=no
+Published 3 aircraft (3 eligible, 0 capacity-dropped) in 1086 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -70 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 877 ms
+ADSB.fi HTTP 200, content length: 6199, chunked: no
+ADSB.fi response complete: 6199 bytes in 38 ms
+ADSB JSON parsed: 11 aircraft received, overflow=no
+ADSB accepted=3 eligible=3 capacity-dropped=0 missing-position=0 ground=1 outside-range=7 tracked-forced=no
+Published 3 aircraft (3 eligible, 0 capacity-dropped) in 1090 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -68 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 872 ms
+ADSB.fi HTTP 200, content length: 6184, chunked: no
+ADSB.fi response complete: 6184 bytes in 38 ms
+ADSB JSON parsed: 11 aircraft received, overflow=no
+ADSB accepted=3 eligible=3 capacity-dropped=0 missing-position=0 ground=1 outside-range=7 tracked-forced=no
+Published 3 aircraft (3 eligible, 0 capacity-dropped) in 1096 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -70 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 879 ms
+ADSB.fi HTTP 200, content length: 6218, chunked: no
+ADSB.fi response complete: 6218 bytes in 40 ms
+ADSB JSON parsed: 11 aircraft received, overflow=no
+ADSB accepted=3 eligible=3 capacity-dropped=0 missing-position=0 ground=1 outside-range=7 tracked-forced=no
+Published 3 aircraft (3 eligible, 0 capacity-dropped) in 1105 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -70 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 879 ms
+ADSB.fi HTTP 200, content length: 5555, chunked: no
+ADSB.fi response complete: 5555 bytes in 36 ms
+ADSB JSON parsed: 10 aircraft received, overflow=no
+ADSB accepted=4 eligible=4 capacity-dropped=0 missing-position=0 ground=1 outside-range=5 tracked-forced=no
+Published 4 aircraft (4 eligible, 0 capacity-dropped) in 1101 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -69 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.14.99
+ADSB.fi native TLS connected in 891 ms
+ADSB.fi HTTP 200, content length: 5062, chunked: no
+ADSB.fi response complete: 5062 bytes in 37 ms
+ADSB JSON parsed: 9 aircraft received, overflow=no
+ADSB accepted=3 eligible=3 capacity-dropped=0 missing-position=0 ground=1 outside-range=5 tracked-forced=no
+Published 3 aircraft (3 eligible, 0 capacity-dropped) in 1104 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410352, RSSI: -73 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 172.67.72.239
+ADSB.fi native TLS connected in 867 ms
+ADSB.fi HTTP 200, content length: 4503, chunked: no
+ADSB.fi response complete: 4503 bytes in 34 ms
+ADSB JSON parsed: 8 aircraft received, overflow=no
+ADSB accepted=4 eligible=4 capacity-dropped=0 missing-position=0 ground=1 outside-range=3 tracked-forced=no
+Published 4 aircraft (4 eligible, 0 capacity-dropped) in 1101 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -72 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 172.67.72.239
+ADSB.fi native TLS connected in 887 ms
+ADSB.fi HTTP 200, content length: 4500, chunked: no
+ADSB.fi response complete: 4500 bytes in 29 ms
+ADSB JSON parsed: 8 aircraft received, overflow=no
+ADSB accepted=4 eligible=4 capacity-dropped=0 missing-position=0 ground=1 outside-range=3 tracked-forced=no
+Published 4 aircraft (4 eligible, 0 capacity-dropped) in 1095 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -70 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 172.67.72.239
+ADSB.fi native TLS connected in 877 ms
+ADSB.fi HTTP 200, content length: 4464, chunked: no
+ADSB.fi response complete: 4464 bytes in 31 ms
+ADSB JSON parsed: 8 aircraft received, overflow=no
+ADSB accepted=5 eligible=5 capacity-dropped=0 missing-position=0 ground=1 outside-range=2 tracked-forced=no
+Published 5 aircraft (5 eligible, 0 capacity-dropped) in 1088 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -67 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 172.67.72.239
+ADSB.fi native TLS connected in 888 ms
+ADSB.fi HTTP 200, content length: 5023, chunked: no
+ADSB.fi response complete: 5023 bytes in 36 ms
+ADSB JSON parsed: 9 aircraft received, overflow=no
+ADSB accepted=5 eligible=5 capacity-dropped=0 missing-position=0 ground=2 outside-range=2 tracked-forced=no
+Published 5 aircraft (5 eligible, 0 capacity-dropped) in 1107 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -72 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 172.67.72.239
+ADSB.fi native TLS connected in 880 ms
+ADSB.fi HTTP 200, content length: 5484, chunked: no
+ADSB.fi response complete: 5484 bytes in 43 ms
+ADSB JSON parsed: 10 aircraft received, overflow=no
+ADSB accepted=5 eligible=5 capacity-dropped=0 missing-position=0 ground=2 outside-range=3 tracked-forced=no
+Published 5 aircraft (5 eligible, 0 capacity-dropped) in 1100 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -69 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 894 ms
+ADSB.fi HTTP 200, content length: 5488, chunked: no
+ADSB.fi response complete: 5488 bytes in 31 ms
+ADSB JSON parsed: 10 aircraft received, overflow=no
+ADSB accepted=5 eligible=5 capacity-dropped=0 missing-position=0 ground=2 outside-range=3 tracked-forced=no
+Published 5 aircraft (5 eligible, 0 capacity-dropped) in 1108 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -72 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 893 ms
+ADSB.fi HTTP 200, content length: 5108, chunked: no
+ADSB.fi response complete: 5108 bytes in 37 ms
+ADSB JSON parsed: 9 aircraft received, overflow=no
+ADSB accepted=5 eligible=5 capacity-dropped=0 missing-position=0 ground=2 outside-range=2 tracked-forced=no
+Published 5 aircraft (5 eligible, 0 capacity-dropped) in 1114 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -70 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 898 ms
+ADSB.fi HTTP 200, content length: 6874, chunked: no
+ADSB.fi response complete: 6874 bytes in 43 ms
+ADSB JSON parsed: 12 aircraft received, overflow=no
+ADSB accepted=5 eligible=5 capacity-dropped=0 missing-position=0 ground=2 outside-range=5 tracked-forced=no
+Published 5 aircraft (5 eligible, 0 capacity-dropped) in 1122 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -69 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 881 ms
+ADSB.fi HTTP 200, content length: 7329, chunked: no
+ADSB.fi response complete: 7329 bytes in 44 ms
+ADSB JSON parsed: 13 aircraft received, overflow=no
+ADSB accepted=5 eligible=5 capacity-dropped=0 missing-position=0 ground=2 outside-range=6 tracked-forced=no
+Published 5 aircraft (5 eligible, 0 capacity-dropped) in 1104 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -70 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 892 ms
+ADSB.fi HTTP 200, content length: 7763, chunked: no
+ADSB.fi response complete: 7763 bytes in 38 ms
+ADSB JSON parsed: 14 aircraft received, overflow=no
+ADSB accepted=5 eligible=5 capacity-dropped=0 missing-position=0 ground=3 outside-range=6 tracked-forced=no
+Published 5 aircraft (5 eligible, 0 capacity-dropped) in 1116 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -71 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 900 ms
+ADSB.fi HTTP 200, content length: 7834, chunked: no
+ADSB.fi response complete: 7834 bytes in 49 ms
+ADSB JSON parsed: 14 aircraft received, overflow=no
+ADSB accepted=6 eligible=6 capacity-dropped=0 missing-position=0 ground=3 outside-range=5 tracked-forced=no
+Published 6 aircraft (6 eligible, 0 capacity-dropped) in 1132 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -68 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 878 ms
+ADSB.fi HTTP 200, content length: 7247, chunked: no
+ADSB.fi response complete: 7247 bytes in 42 ms
+ADSB JSON parsed: 13 aircraft received, overflow=no
+ADSB accepted=6 eligible=6 capacity-dropped=0 missing-position=0 ground=4 outside-range=3 tracked-forced=no
+Published 6 aircraft (6 eligible, 0 capacity-dropped) in 1103 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -69 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 890 ms
+ADSB.fi HTTP 200, content length: 7877, chunked: no
+ADSB.fi response complete: 7877 bytes in 57 ms
+ADSB JSON parsed: 14 aircraft received, overflow=no
+ADSB accepted=6 eligible=6 capacity-dropped=0 missing-position=0 ground=4 outside-range=4 tracked-forced=no
+Published 6 aircraft (6 eligible, 0 capacity-dropped) in 1129 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -69 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 871 ms
+ADSB.fi HTTP 200, content length: 7875, chunked: no
+ADSB.fi response complete: 7875 bytes in 45 ms
+ADSB JSON parsed: 14 aircraft received, overflow=no
+ADSB accepted=6 eligible=6 capacity-dropped=0 missing-position=0 ground=4 outside-range=4 tracked-forced=no
+Published 6 aircraft (6 eligible, 0 capacity-dropped) in 1104 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -68 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 903 ms
+ADSB.fi HTTP 200, content length: 7847, chunked: no
+ADSB.fi response complete: 7847 bytes in 46 ms
+ADSB JSON parsed: 14 aircraft received, overflow=no
+ADSB accepted=5 eligible=5 capacity-dropped=0 missing-position=0 ground=4 outside-range=5 tracked-forced=no
+Published 5 aircraft (5 eligible, 0 capacity-dropped) in 1130 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410352, RSSI: -70 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 876 ms
+ADSB.fi HTTP 200, content length: 8257, chunked: no
+ADSB.fi response complete: 8257 bytes in 46 ms
+ADSB JSON parsed: 15 aircraft received, overflow=no
+ADSB accepted=6 eligible=6 capacity-dropped=0 missing-position=0 ground=4 outside-range=5 tracked-forced=no
+Published 6 aircraft (6 eligible, 0 capacity-dropped) in 1119 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -71 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 886 ms
+ADSB.fi HTTP 200, content length: 8218, chunked: no
+ADSB.fi response complete: 8218 bytes in 53 ms
+ADSB JSON parsed: 15 aircraft received, overflow=no
+ADSB accepted=7 eligible=7 capacity-dropped=0 missing-position=0 ground=4 outside-range=4 tracked-forced=no
+Published 7 aircraft (7 eligible, 0 capacity-dropped) in 1118 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -74 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 881 ms
+ADSB.fi HTTP 200, content length: 7806, chunked: no
+ADSB.fi response complete: 7806 bytes in 44 ms
+ADSB JSON parsed: 14 aircraft received, overflow=no
+ADSB accepted=7 eligible=7 capacity-dropped=0 missing-position=0 ground=3 outside-range=4 tracked-forced=no
+Published 7 aircraft (7 eligible, 0 capacity-dropped) in 1107 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -67 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 893 ms
+ADSB.fi HTTP 200, content length: 7822, chunked: no
+ADSB.fi response complete: 7822 bytes in 51 ms
+ADSB JSON parsed: 14 aircraft received, overflow=no
+ADSB accepted=8 eligible=8 capacity-dropped=0 missing-position=0 ground=3 outside-range=3 tracked-forced=no
+Published 8 aircraft (8 eligible, 0 capacity-dropped) in 1122 ms
+ADSB request: https://opendata.adsb.fi/api/v3/lat/42.83047/lon/-88.16204/dist/22.4 [generation 10]
+ADSB.fi native HTTPS attempt 1
+Heap before request: 81888, free PSRAM: 4410320, RSSI: -66 dBm
+ADSB DNS attempt 1: opendata.adsb.fi -> 104.26.15.99
+ADSB.fi native TLS connected in 901 ms
+ADSB.fi HTTP 200, content length: 7833, chunked: no
+ADSB.fi response complete: 7833 bytes in 52 ms
+ADSB JSON parsed: 14 aircraft received, overflow=no
+ADSB accepted=8 eligible=8 capacity-dropped=0 missing-position=0 ground=3 outside-range=3 tracked-forced=no
+Published 8 aircraft (8 eligible, 0 capacity-dropped) in 1164 ms
