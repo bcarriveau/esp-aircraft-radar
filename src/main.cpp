@@ -8,12 +8,16 @@
 #include "settings.h"
 #include "ui.h"
 
+namespace {
+bool startupComplete = false;
+}
+
 void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.println("BILLS Aircraft Radar 7-inch bring-up");
   Serial.printf("Build: %s, max targets=%u\n", BUILD_ID,
-                aircraft::MAX_TARGETS);
+                (unsigned)aircraft::MAX_TARGETS);
   Serial.printf("PSRAM: %s, size=%u\n", psramFound() ? "YES" : "NO",
                 ESP.getPsramSize());
 
@@ -27,9 +31,15 @@ void setup() {
   lvgl_port_unlock();
 
   adsb::begin();
+  startupComplete = true;
 }
 
 void loop() {
+  if (!startupComplete) {
+    delay(1000);
+    return;
+  }
+
   uint32_t now = millis();
   adsb::service();
   lvgl_port_lock(-1);

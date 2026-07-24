@@ -7,7 +7,10 @@
 
 namespace aircraft {
 
-constexpr uint8_t MAX_TARGETS = 100;
+constexpr size_t MAX_TARGETS = 200;
+static_assert(MAX_TARGETS > 0, "MAX_TARGETS must be positive");
+static_assert(MAX_TARGETS <= 255,
+              "MAX_TARGETS exceeds uint8_t count/index capacity");
 
 struct Target {
   char id[10]{};
