@@ -810,7 +810,8 @@ void renderSystemPage() {
   char body[900]{};
   snprintf(body, sizeof(body),
       "Build: %s\nUptime: %lu sec    WiFi: %s    RSSI: %d dBm    IP: %s\n"
-      "Aircraft: API %u / stored %u / visible %u    Data age: %lu sec\n"
+      "Aircraft: API %u / eligible %u / stored %u / visible %u\n"
+      "Capacity: %u max / %u dropped    Data age: %lu sec\n"
       "Last fetch: %lu ms / %lu bytes    Failures: %u (%s)\n"
       "Recovery cycles: %lu    Discarded old-range replies: %lu\n"
       "Heap: %u current / %u minimum    PSRAM: %u current / %u minimum / %u total",
@@ -818,8 +819,12 @@ void renderSystemPage() {
       adsb::wifiStatusName(wifiStatus),
       wifiConnected ? WiFi.RSSI() : 0,
       wifiConnected ? WiFi.localIP().toString().c_str() : "--",
-      diagnostics.lastReceivedCount, diagnostics.lastAcceptedCount,
-      snapshot.count, (unsigned long)dataAgeSeconds,
+      (unsigned)diagnostics.lastReceivedCount,
+      (unsigned)diagnostics.lastEligibleCount,
+      (unsigned)diagnostics.lastAcceptedCount, (unsigned)snapshot.count,
+      (unsigned)aircraft::MAX_TARGETS,
+      (unsigned)diagnostics.lastCapacityDroppedCount,
+      (unsigned long)dataAgeSeconds,
       (unsigned long)diagnostics.lastDurationMs,
       (unsigned long)diagnostics.lastResponseBytes,
       diagnostics.consecutiveFailures,
@@ -1414,17 +1419,26 @@ void buildDetailPanel() {
 }  // namespace
 
 bool allocateTargetBuffer() {
+  if (!app_state::targetStorageReady()) {
+    Serial.println("FATAL: App-state target storage is unavailable");
+    return false;
+  }
+
   uiTargets = static_cast<aircraft::Target*>(heap_caps_calloc(
       aircraft::MAX_TARGETS, sizeof(aircraft::Target),
       MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (!uiTargets) {
-    uiTargets = static_cast<aircraft::Target*>(
-        calloc(aircraft::MAX_TARGETS, sizeof(aircraft::Target)));
-  }
-  if (!uiTargets) {
-    Serial.println("FATAL: UI target buffer allocation failed");
+    Serial.println("FATAL: UI target-buffer PSRAM allocation failed");
     return false;
   }
+  if (!radar::allocateWorkingBuffers()) {
+    free(uiTargets);
+    uiTargets = nullptr;
+    return false;
+  }
+  Serial.printf("UI target buffer in PSRAM: %u bytes\n",
+                (unsigned)(aircraft::MAX_TARGETS *
+                           sizeof(aircraft::Target)));
   return true;
 }
 

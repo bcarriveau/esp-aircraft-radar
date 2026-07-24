@@ -113,15 +113,19 @@ void fetchTask(void*) {
       aircraft::MAX_TARGETS, sizeof(aircraft::Target),
       MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (!incoming) {
-    incoming = static_cast<aircraft::Target*>(
-        calloc(aircraft::MAX_TARGETS, sizeof(aircraft::Target)));
-  }
-  if (!incoming) {
-    Serial.println("FATAL: ADSB target buffer allocation failed");
+    Serial.println("FATAL: ADSB target-buffer PSRAM allocation failed");
     vTaskDelete(nullptr);
     return;
   }
 
+  Serial.printf("ADSB target buffer in PSRAM: %u bytes\n",
+                (unsigned)(aircraft::MAX_TARGETS *
+                           sizeof(aircraft::Target)));
+  Serial.printf(
+      "ADSB memory ready: heap=%u, largest internal=%u, free PSRAM=%u\n",
+      ESP.getFreeHeap(),
+      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+      ESP.getFreePsram());
   Serial.println("ADSB fetch task started on core 0");
   uint32_t nextPollAt = millis();
   uint32_t outageStartedAt = 0;
@@ -157,16 +161,21 @@ void fetchTask(void*) {
             (unsigned long)app_state::rangeGeneration());
         app_state::recordDiscardedResponse(
             result.durationMs, result.responseBytes, result.receivedCount,
-            result.acceptedCount);
+            result.eligibleCount, result.acceptedCount,
+            result.capacityDroppedCount);
         immediateFollowup = true;
       } else {
         app_state::publishTargets(incoming, result.acceptedCount, millis());
         app_state::recordFetchSuccess(
             result.durationMs, result.responseBytes, result.receivedCount,
-            result.acceptedCount);
-        Serial.printf("Published %u aircraft in %lu ms\n",
-                      result.acceptedCount,
-                      (unsigned long)result.durationMs);
+            result.eligibleCount, result.acceptedCount,
+            result.capacityDroppedCount);
+        Serial.printf(
+            "Published %u aircraft (%u eligible, %u capacity-dropped) "
+            "in %lu ms\n",
+            (unsigned)result.acceptedCount, (unsigned)result.eligibleCount,
+            (unsigned)result.capacityDroppedCount,
+            (unsigned long)result.durationMs);
         outageStartedAt = 0;
         outageRecoveries = 0;
       }

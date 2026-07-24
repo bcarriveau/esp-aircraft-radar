@@ -35,6 +35,7 @@ struct HitResult {
   bool selected = false;
 };
 
+bool allocateWorkingBuffers();
 void configure(const View& view);
 bool render(aircraft::Target* workTargets, const char* selectedHex);
 bool hitTest(int canvasX, int canvasY, HitResult& result);

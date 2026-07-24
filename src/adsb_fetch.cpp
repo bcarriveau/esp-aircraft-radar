@@ -408,15 +408,44 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
   return result;
 }
 
+bool containsHex(const aircraft::Target* targets, uint8_t count,
+                 const char* hex) {
+  if (!targets || !hex || !hex[0]) return false;
+  for (uint8_t i = 0; i < count; ++i) {
+    if (strcmp(targets[i].hex, hex) == 0) return true;
+  }
+  return false;
+}
+
+void insertSorted(aircraft::Target* out, int insertAt,
+                  const aircraft::Target& target) {
+  while (insertAt > 0 &&
+         target.distanceMiles < out[insertAt - 1].distanceMiles) {
+    out[insertAt] = out[insertAt - 1];
+    --insertAt;
+  }
+  out[insertAt] = target;
+}
+
 void parseAircraft(JsonDocument& doc, float requestedRangeMiles,
                    double homeLatitude, double homeLongitude,
                    aircraft::Target* out, uint8_t& outCount,
-                   uint16_t& receivedCount) {
+                   uint16_t& receivedCount, uint16_t& eligibleCount,
+                   uint16_t& capacityDroppedCount) {
   outCount = 0;
+  eligibleCount = 0;
+  capacityDroppedCount = 0;
   JsonArray aircraftJson = doc["ac"].as<JsonArray>();
   receivedCount = aircraftJson.size();
   Serial.printf("ADSB JSON parsed: %u aircraft received, overflow=%s\n",
                 (unsigned)receivedCount, doc.overflowed() ? "YES" : "no");
+
+  char trackedHex[7]{};
+  const bool trackingActive =
+      app_state::copyTrackedHex(trackedHex, sizeof(trackedHex));
+  aircraft::Target trackedCandidate;
+  bool trackedCandidateFound = false;
+  bool forcedTrackedRetention = false;
 
   uint16_t missingPosition = 0;
   uint16_t onGround = 0;
@@ -440,6 +469,7 @@ void parseAircraft(JsonDocument& doc, float requestedRangeMiles,
       ++outsideRange;
       continue;
     }
+    ++eligibleCount;
 
     aircraft::Target target;
     const char* flight = plane["flight"] | "";
@@ -481,23 +511,36 @@ void parseAircraft(JsonDocument& doc, float requestedRangeMiles,
     target.verticalRateFpm = plane["baro_rate"] | 0.0f;
     target.valid = true;
 
+    if (trackingActive && target.hex[0] &&
+        strcmp(target.hex, trackedHex) == 0) {
+      trackedCandidate = target;
+      trackedCandidateFound = true;
+    }
+
     int insertAt = -1;
     if (outCount < aircraft::MAX_TARGETS) {
       insertAt = outCount++;
     } else if (target.distanceMiles < out[outCount - 1].distanceMiles) {
       insertAt = outCount - 1;
     }
-    if (insertAt >= 0) {
-      while (insertAt > 0 &&
-             target.distanceMiles < out[insertAt - 1].distanceMiles) {
-        out[insertAt] = out[insertAt - 1];
-        --insertAt;
-      }
-      out[insertAt] = target;
-    }
+    if (insertAt >= 0) insertSorted(out, insertAt, target);
   }
-  Serial.printf("ADSB accepted=%u missing-position=%u ground=%u outside-range=%u\n",
-                outCount, missingPosition, onGround, outsideRange);
+
+  if (trackedCandidateFound && outCount > 0 &&
+      !containsHex(out, outCount, trackedHex)) {
+    insertSorted(out, outCount - 1, trackedCandidate);
+    forcedTrackedRetention = true;
+  }
+  capacityDroppedCount = eligibleCount > outCount
+                             ? eligibleCount - outCount
+                             : 0;
+  Serial.printf(
+      "ADSB accepted=%u eligible=%u capacity-dropped=%u "
+      "missing-position=%u ground=%u outside-range=%u tracked-forced=%s\n",
+      (unsigned)outCount, (unsigned)eligibleCount,
+      (unsigned)capacityDroppedCount, (unsigned)missingPosition,
+      (unsigned)onGround, (unsigned)outsideRange,
+      forcedTrackedRetention ? "yes" : "no");
 }
 
 }  // namespace
@@ -562,7 +605,8 @@ Result fetchAircraft(aircraft::Target* out) {
   }
 
   parseAircraft(doc, result.requestedRangeMiles, homeLatitude, homeLongitude,
-                out, result.acceptedCount, result.receivedCount);
+                out, result.acceptedCount, result.receivedCount,
+                result.eligibleCount, result.capacityDroppedCount);
   result.success = true;
   result.failureStage = app_state::FetchFailureStage::NONE;
   result.durationMs = millis() - fetchStarted;

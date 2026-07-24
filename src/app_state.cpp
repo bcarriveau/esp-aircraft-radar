@@ -11,7 +11,7 @@ constexpr float MIN_RADAR_RANGE_MILES = 20.0f;
 constexpr float MAX_RADAR_RANGE_MILES = 80.0f;
 
 struct SharedState {
-  aircraft::Target targets[aircraft::MAX_TARGETS];
+  aircraft::Target* targets = nullptr;
   uint8_t targetCount = 0;
   uint32_t targetVersion = 0;
   wl_status_t wifiStatus = WL_IDLE_STATUS;
@@ -55,13 +55,33 @@ void observeMemoryLocked() {
 }  // namespace
 
 void initialize() {
-  if (!stateMutex) stateMutex = xSemaphoreCreateMutex();
+  if (!stateMutex) {
+    stateMutex = xSemaphoreCreateMutex();
+    if (!stateMutex) Serial.println("FATAL: App-state mutex allocation failed");
+  }
+  if (!state.targets) {
+    state.targets = static_cast<aircraft::Target*>(heap_caps_calloc(
+        aircraft::MAX_TARGETS, sizeof(aircraft::Target),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!state.targets) {
+      Serial.println("FATAL: App-state target buffer PSRAM allocation failed");
+    } else {
+      Serial.printf("App-state target buffer in PSRAM: %u bytes\n",
+                    (unsigned)(aircraft::MAX_TARGETS *
+                               sizeof(aircraft::Target)));
+    }
+  }
   observeMemory();
 }
 
+bool targetStorageReady() { return stateMutex && state.targets; }
+
 void publishTargets(const aircraft::Target* targets, uint8_t count,
                     uint32_t updatedAtMs) {
-  count = min(count, aircraft::MAX_TARGETS);
+  if (!state.targets || !targets) return;
+  if (count > aircraft::MAX_TARGETS) {
+    count = static_cast<uint8_t>(aircraft::MAX_TARGETS);
+  }
   bool locked = lockState();
   if (count > 0) {
     memcpy(state.targets, targets, sizeof(aircraft::Target) * count);
@@ -74,7 +94,7 @@ void publishTargets(const aircraft::Target* targets, uint8_t count,
 
 void copySnapshot(aircraft::Target* out, Snapshot& snapshot) {
   snapshot = Snapshot{};
-  if (!out) return;
+  if (!out || !state.targets) return;
   bool locked = lockState();
   snapshot.rangeMiles = state.radarRangeMiles;
   snapshot.targetVersion = state.targetVersion;
@@ -197,6 +217,19 @@ bool hasManualTracking() {
   return active;
 }
 
+bool copyTrackedHex(char* out, size_t outSize) {
+  if (!out || outSize == 0) return false;
+  out[0] = 0;
+  bool locked = lockState();
+  const bool active = state.manualTracking && state.trackedHex[0];
+  if (active) {
+    strncpy(out, state.trackedHex, outSize - 1);
+    out[outSize - 1] = 0;
+  }
+  unlockState(locked);
+  return active;
+}
+
 bool isManuallyTracked(const aircraft::Target& target) {
   bool locked = lockState();
   bool tracked = state.manualTracking && target.hex[0] &&
@@ -241,14 +274,18 @@ void beginFetch() {
 }
 
 void recordFetchSuccess(uint32_t durationMs, uint32_t responseBytes,
-                        uint16_t receivedCount, uint8_t acceptedCount) {
+                        uint16_t receivedCount, uint16_t eligibleCount,
+                        uint8_t acceptedCount,
+                        uint16_t capacityDroppedCount) {
   bool locked = lockState();
   state.fetchInProgress = false;
   state.diagnostics.lastSuccessMs = millis();
   state.diagnostics.lastDurationMs = durationMs;
   state.diagnostics.lastResponseBytes = responseBytes;
   state.diagnostics.lastReceivedCount = receivedCount;
+  state.diagnostics.lastEligibleCount = eligibleCount;
   state.diagnostics.lastAcceptedCount = acceptedCount;
+  state.diagnostics.lastCapacityDroppedCount = capacityDroppedCount;
   state.diagnostics.consecutiveFailures = 0;
   state.diagnostics.lastFailureStage = FetchFailureStage::NONE;
   observeMemoryLocked();
@@ -268,15 +305,18 @@ void recordFetchFailure(FetchFailureStage stage, uint32_t durationMs,
 }
 
 void recordDiscardedResponse(uint32_t durationMs, uint32_t responseBytes,
-                             uint16_t receivedCount,
-                             uint8_t acceptedCount) {
+                             uint16_t receivedCount, uint16_t eligibleCount,
+                             uint8_t acceptedCount,
+                             uint16_t capacityDroppedCount) {
   bool locked = lockState();
   state.fetchInProgress = false;
   ++state.diagnostics.discardedResponses;
   state.diagnostics.lastDurationMs = durationMs;
   state.diagnostics.lastResponseBytes = responseBytes;
   state.diagnostics.lastReceivedCount = receivedCount;
+  state.diagnostics.lastEligibleCount = eligibleCount;
   state.diagnostics.lastAcceptedCount = acceptedCount;
+  state.diagnostics.lastCapacityDroppedCount = capacityDroppedCount;
   state.diagnostics.lastFailureStage = FetchFailureStage::STALE_RESULT;
   observeMemoryLocked();
   unlockState(locked);

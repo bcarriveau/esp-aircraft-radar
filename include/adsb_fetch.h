@@ -16,7 +16,9 @@ struct Result {
   uint32_t responseBytes = 0;
   uint32_t requestGeneration = 0;
   uint16_t receivedCount = 0;
+  uint16_t eligibleCount = 0;
   uint8_t acceptedCount = 0;
+  uint16_t capacityDroppedCount = 0;
   float requestedRangeMiles = 0;
 };
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <stddef.h>
 #include <WiFi.h>
 
 #include "aircraft_data.h"
@@ -43,12 +44,15 @@ struct Diagnostics {
   uint32_t minimumFreeHeap = 0;
   uint32_t minimumFreePsram = 0;
   uint16_t lastReceivedCount = 0;
+  uint16_t lastEligibleCount = 0;
   uint8_t lastAcceptedCount = 0;
+  uint16_t lastCapacityDroppedCount = 0;
   uint16_t consecutiveFailures = 0;
   FetchFailureStage lastFailureStage = FetchFailureStage::NONE;
 };
 
 void initialize();
+bool targetStorageReady();
 
 void publishTargets(const aircraft::Target* targets, uint8_t count,
                     uint32_t updatedAtMs);
@@ -70,6 +74,7 @@ void invalidateRequests();
 void selectManualTracking(const aircraft::Target& target);
 void clearManualTracking();
 bool hasManualTracking();
+bool copyTrackedHex(char* out, size_t outSize);
 bool isManuallyTracked(const aircraft::Target& target);
 bool isManuallyTracked(const aircraft::Target& target,
                        const Snapshot& snapshot);
@@ -80,12 +85,15 @@ uint32_t lastUpdateMs();
 
 void beginFetch();
 void recordFetchSuccess(uint32_t durationMs, uint32_t responseBytes,
-                        uint16_t receivedCount, uint8_t acceptedCount);
+                        uint16_t receivedCount, uint16_t eligibleCount,
+                        uint8_t acceptedCount,
+                        uint16_t capacityDroppedCount);
 void recordFetchFailure(FetchFailureStage stage, uint32_t durationMs,
                         uint32_t responseBytes = 0);
 void recordDiscardedResponse(uint32_t durationMs, uint32_t responseBytes,
-                             uint16_t receivedCount,
-                             uint8_t acceptedCount);
+                             uint16_t receivedCount, uint16_t eligibleCount,
+                             uint8_t acceptedCount,
+                             uint16_t capacityDroppedCount);
 void recordNetworkRecovery();
 void observeMemory();
 void copyDiagnostics(Diagnostics& diagnostics);

@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <limits.h>
+#include <esp_heap_caps.h>
 #include <math.h>
 
 #include "adsb_network.h"
@@ -115,7 +116,19 @@ struct HitRegion {
   LabelBox tag{};
 };
 
-HitRegion renderedHits[aircraft::MAX_TARGETS];
+struct ContactFrame {
+  ScreenContact* contacts = nullptr;
+  uint8_t count = 0;
+  bool trackedVisible = false;
+  int trackedX = 0;
+  int trackedY = 0;
+  int trackedTargetIndex = -1;
+};
+
+HitRegion* renderedHits = nullptr;
+ScreenContact* renderedContacts = nullptr;
+LabelBox* renderedLabelBoxes = nullptr;
+ContactFrame contactFrame;
 uint8_t renderedHitCount = 0;
 
 bool drawPlacedTag(int dotX, int dotY, const char* const* lines,
@@ -195,6 +208,39 @@ bool drawPlacedTag(int dotX, int dotY, const char* const* lines,
 }
 
 }  // namespace
+
+bool allocateWorkingBuffers() {
+  if (renderedHits && renderedContacts && renderedLabelBoxes) return true;
+
+  renderedHits = static_cast<HitRegion*>(heap_caps_calloc(
+      aircraft::MAX_TARGETS, sizeof(HitRegion),
+      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  renderedContacts = static_cast<ScreenContact*>(heap_caps_calloc(
+      aircraft::MAX_TARGETS, sizeof(ScreenContact),
+      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  renderedLabelBoxes = static_cast<LabelBox*>(heap_caps_calloc(
+      aircraft::MAX_TARGETS + 2, sizeof(LabelBox),
+      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+
+  if (!renderedHits || !renderedContacts || !renderedLabelBoxes) {
+    free(renderedHits);
+    free(renderedContacts);
+    free(renderedLabelBoxes);
+    renderedHits = nullptr;
+    renderedContacts = nullptr;
+    renderedLabelBoxes = nullptr;
+    contactFrame.contacts = nullptr;
+    Serial.println("FATAL: Radar working-buffer PSRAM allocation failed");
+    return false;
+  }
+
+  contactFrame.contacts = renderedContacts;
+  Serial.printf("Radar working buffers in PSRAM: %u bytes\n",
+                (unsigned)(aircraft::MAX_TARGETS * sizeof(HitRegion) +
+                           aircraft::MAX_TARGETS * sizeof(ScreenContact) +
+                           (aircraft::MAX_TARGETS + 2) * sizeof(LabelBox)));
+  return true;
+}
 
 void configure(const View& view) { radarView = view; }
 
@@ -288,15 +334,6 @@ void drawTrackBitmapIcon(lv_draw_ctx_t* drawContext, int centerX, int centerY,
 
 // Radar frames are rendered in stable background, contact, label, and summary phases.
 namespace {
-
-struct ContactFrame {
-  ScreenContact contacts[aircraft::MAX_TARGETS];
-  uint8_t count = 0;
-  bool trackedVisible = false;
-  int trackedX = 0;
-  int trackedY = 0;
-  int trackedTargetIndex = -1;
-};
 
 void drawRadarBackground() {
   const lv_color_t background = rgb(2, 8, 12);
@@ -406,7 +443,7 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
 void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
                        const app_state::Snapshot& snapshot,
                        const ContactFrame& frame) {
-  static LabelBox labelBoxes[aircraft::MAX_TARGETS + 2];
+  LabelBox* labelBoxes = renderedLabelBoxes;
   uint8_t labelBoxCount = 0;
 
   // Reserve the compact zoom control in the lower-right for every frame.
@@ -711,7 +748,11 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
 
 bool render(aircraft::Target* workTargets, const char* selectedHex) {
   sweepDegrees = fmodf(sweepDegrees + 2.2f, 360.0f);
-  if (!radarView.buffer || !radarView.canvas || !workTargets) return false;
+  if (!radarView.buffer || !radarView.canvas || !workTargets ||
+      !renderedHits || !renderedContacts || !renderedLabelBoxes ||
+      !contactFrame.contacts) {
+    return false;
+  }
   drawRadarBackground();
 
   app_state::Snapshot snapshot;
@@ -734,10 +775,9 @@ bool render(aircraft::Target* workTargets, const char* selectedHex) {
     }
   }
 
-  static ContactFrame frame;
   drawContacts(workTargets, count, projectionSeconds, rangeMiles, snapshot,
-               selectedHex, frame);
-  drawContactLabels(workTargets, rangeMiles, snapshot, frame);
+               selectedHex, contactFrame);
+  drawContactLabels(workTargets, rangeMiles, snapshot, contactFrame);
   lv_obj_invalidate(radarView.canvas);
 
   static uint32_t lastSummaryTargetVersion = UINT32_MAX;
@@ -762,6 +802,7 @@ bool render(aircraft::Target* workTargets, const char* selectedHex) {
 
 bool hitTest(int canvasX, int canvasY, HitResult& result) {
   result = HitResult{};
+  if (!renderedHits) return false;
   int bestIndex = -1;
   int bestPriority = -1;
   int bestDistanceSquared = INT_MAX;
