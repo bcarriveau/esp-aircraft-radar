@@ -14,11 +14,69 @@ GitHub or preserved evidence does not confirm the changes.
 
 ## Current status
 
-- **Current source:** Product 36 R3
-- **Current build marker:** `7IN-20260725-PRODUCT36-RADAR-HEADING-SPRITES-R3`
+- **Current source:** Product 36 R4
+- **Current build marker:** `7IN-20260725-PRODUCT36-RADAR-OVERLAP-PRIORITY-R4`
 - **Current branch:** `main`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
+
+## Product 36 R4 - 2026-07-25
+
+**Build:** `7IN-20260725-PRODUCT36-RADAR-OVERLAP-PRIORITY-R4`  
+**Status:** Host-verified release candidate; full PlatformIO and physical verification pending
+
+### Changed
+
+- Added 20-mile radar contact overlap suppression so multiple 25 x 25 heading
+  sprites no longer combine into unreadable cyan blobs.
+- Applied deterministic visual priority in the existing project order:
+  tracked aircraft first, selected aircraft second, then the closest aircraft.
+- Suppressed both the lower-priority overlapping icon and its radar tag while
+  retaining that aircraft in the snapshot, nearest-aircraft list, and contact
+  hit data.
+- Increased icon-to-tag clearance from the old dot-oriented spacing to 16 pixels
+  for 20-mile bitmap contacts.
+- Kept the existing compact tag spacing for 40-mile and 80-mile dot contacts.
+- Updated hit evaluation so tracked and selected contact priority is preserved
+  even when a lower-priority tag overlaps the contact touch area.
+
+### Bounds and performance
+
+- Overlap handling uses a fixed 16-pixel center-distance threshold and a bounded
+  200-entry stack order table.
+- Priority ordering is deterministic and uses tracked state, selected state,
+  aircraft distance, then target index as a final stable tie breaker.
+- No render-loop heap allocation, PSRAM allocation, temporary image buffer,
+  runtime image rotation, or per-contact LVGL object was added.
+- Overlap suppression remains limited to the 20-mile bitmap view; 40-mile and
+  80-mile dots retain their previous rendering behavior.
+
+### Preserved
+
+- Six asset-derived categories and sixteen 22.5-degree heading positions.
+- Product 35 type-code-first and description-fallback classification through
+  `bitmapForTarget()`.
+- Stable ICAO selection/tracking, tracked red and selected amber state, rings,
+  tags, MPH display, STOP TRACK, auto-zoom, and nearest-aircraft panels.
+- Core-0 ADS-B networking, native HTTPS and fallback, 15-second cadence,
+  deadlines, stale-response rejection, last-good retention, display timing, DMA,
+  XIP/OPI PSRAM, and the 20-scanline bounce buffer.
+
+### Verification
+
+- Host C++17 syntax check passed with warnings treated as errors.
+- ASan/UBSan overlap-priority tests passed for normal-nearest, selected, tracked,
+  separated contacts, 40-mile behavior, retained hit data, and 200 targets.
+- Existing host renderer tests passed for zero, one, selected, tracked, and
+  200-target scenarios after the hit-priority adjustment.
+
+### Pending verification
+
+- Full PlatformIO compile and link.
+- Flash and internal-RAM usage report.
+- Physical validation of dense 20-mile overlap scenes, tag clearance, touch
+  priority, selection/tracking, 20/40/80 range changes, page switching, no screen
+  rolling, heap/PSRAM stability, and normal ADS-B/TLS/Wi-Fi recovery.
 
 ## Product 36 R3 - 2026-07-25
 

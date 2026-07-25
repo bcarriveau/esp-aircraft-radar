@@ -19,6 +19,9 @@ constexpr int RADIUS = 168;
 constexpr uint8_t PRIORITY_OTHER_COUNT = 3;
 constexpr int RANGE_CONTROL_X1 = WIDTH - 120;
 constexpr int RANGE_CONTROL_Y1 = HEIGHT - 52;
+constexpr int RADAR_CONTACT_OVERLAP_RADIUS = 16;
+constexpr int RADAR_CONTACT_TAG_CLEARANCE = 16;
+constexpr int DOT_TAG_CLEARANCE = 7;
 
 View radarView;
 float sweepDegrees = 0;
@@ -108,6 +111,9 @@ struct ScreenContact {
   int16_t y;
   bool tracked;
   bool selected;
+  bool visible;
+  bool sweepBright;
+  uint8_t headingIndex;
 };
 
 struct LabelBox { int16_t x1, y1, x2, y2; };
@@ -140,8 +146,8 @@ uint8_t renderedHitCount = 0;
 bool drawPlacedTag(int dotX, int dotY, const char* const* lines,
                    const lv_color_t* lineColors, uint8_t lineCount,
                    lv_color_t backgroundColor, lv_color_t borderColor,
-                   int maxWidth, uint8_t hitIndex, LabelBox* labelBoxes,
-                   uint8_t& labelBoxCount) {
+                   int maxWidth, int contactClearance, uint8_t hitIndex,
+                   LabelBox* labelBoxes, uint8_t& labelBoxCount) {
   if (!lines || !lineColors || lineCount == 0 || !lines[0] || !lines[0][0]) {
     return false;
   }
@@ -156,12 +162,14 @@ bool drawPlacedTag(int dotX, int dotY, const char* const* lines,
   const int labelHeight = lineHeight * lineCount + 6;
   const int labelWidth = constrain(widestText + 10, 44, maxWidth);
   int candidateX[6] = {
-    dotX + 7, dotX - labelWidth - 7, dotX - labelWidth / 2,
-    dotX - labelWidth / 2, dotX + 7, dotX - labelWidth - 7
+    dotX + contactClearance, dotX - labelWidth - contactClearance,
+    dotX - labelWidth / 2, dotX - labelWidth / 2,
+    dotX + contactClearance, dotX - labelWidth - contactClearance
   };
   int candidateY[6] = {
     dotY - labelHeight / 2, dotY - labelHeight / 2,
-    dotY - labelHeight - 7, dotY + 7, dotY + 7, dotY + 7
+    dotY - labelHeight - contactClearance, dotY + contactClearance,
+    dotY + contactClearance, dotY + contactClearance
   };
   for (int candidate = 0; candidate < 6; ++candidate) {
     int labelX = constrain(candidateX[candidate], 2, WIDTH - labelWidth - 2);
@@ -471,28 +479,7 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
     bool contactIsSelected = !snapshot.manualTracking && selectedHex &&
                              selectedHex[0] && workTargets[i].hex[0] &&
                              strcmp(workTargets[i].hex, selectedHex) == 0;
-    if (rangeMiles <= 20.1f) {
-      const lv_color_t iconColor =
-          contactIsTracked ? red
-                           : (contactIsSelected ? amber
-                                                : (behind < 24.0f ? green : cyan));
-      const uint8_t headingIndex =
-          workTargets[i].hasTrack
-              ? radarContactHeadingIndex(workTargets[i].track)
-              : 0;
-      drawRadarBitmapContact(x, y, aircraft::bitmapForTarget(workTargets[i]),
-                             headingIndex, iconColor);
-    } else {
-      fillCircle(x, y, contactIsTracked ? 4 : 2,
-                 contactIsTracked ? red
-                                  : (contactIsSelected ? cyan
-                                                       : (behind < 24.0f
-                                                              ? bright : cyan)));
-    }
-    if (contactIsSelected) {
-      drawCircle(x, y, 8, amber);
-      drawCircle(x, y, 12, amber);
-    }
+
     uint8_t hitIndex = UINT8_MAX;
     if (workTargets[i].hex[0] && renderedHitCount < aircraft::MAX_TARGETS) {
       hitIndex = renderedHitCount++;
@@ -505,17 +492,100 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
       hit.selected = contactIsSelected;
     }
     if (frame.count < aircraft::MAX_TARGETS) {
+      const uint8_t headingIndex =
+          workTargets[i].hasTrack
+              ? radarContactHeadingIndex(workTargets[i].track)
+              : 0;
       frame.contacts[frame.count++] = {
         i, hitIndex, (int16_t)x, (int16_t)y, contactIsTracked,
-        contactIsSelected
+        contactIsSelected, true, behind < 24.0f, headingIndex
       };
     }
-    if (contactIsTracked) {
-      drawCircle(x, y, 10, red);
+  }
+
+  if (rangeMiles <= 20.1f) {
+    uint8_t priorityOrder[aircraft::MAX_TARGETS]{};
+    for (uint8_t contact = 0; contact < frame.count; ++contact) {
+      priorityOrder[contact] = contact;
+      frame.contacts[contact].visible = false;
+    }
+
+    auto higherPriority = [&](uint8_t leftIndex, uint8_t rightIndex) {
+      const ScreenContact& left = frame.contacts[leftIndex];
+      const ScreenContact& right = frame.contacts[rightIndex];
+      const uint8_t leftPriority = left.tracked ? 2 : (left.selected ? 1 : 0);
+      const uint8_t rightPriority =
+          right.tracked ? 2 : (right.selected ? 1 : 0);
+      if (leftPriority != rightPriority) return leftPriority > rightPriority;
+      const float leftDistance = workTargets[left.targetIndex].distanceMiles;
+      const float rightDistance = workTargets[right.targetIndex].distanceMiles;
+      if (leftDistance != rightDistance) return leftDistance < rightDistance;
+      return left.targetIndex < right.targetIndex;
+    };
+
+    for (uint8_t contact = 1; contact < frame.count; ++contact) {
+      const uint8_t candidate = priorityOrder[contact];
+      uint8_t position = contact;
+      while (position > 0 &&
+             higherPriority(candidate, priorityOrder[position - 1])) {
+        priorityOrder[position] = priorityOrder[position - 1];
+        --position;
+      }
+      priorityOrder[position] = candidate;
+    }
+
+    constexpr int overlapDistanceSquared =
+        RADAR_CONTACT_OVERLAP_RADIUS * RADAR_CONTACT_OVERLAP_RADIUS;
+    for (uint8_t rank = 0; rank < frame.count; ++rank) {
+      ScreenContact& candidate = frame.contacts[priorityOrder[rank]];
+      bool overlapsVisible = false;
+      for (uint8_t acceptedRank = 0; acceptedRank < rank; ++acceptedRank) {
+        const ScreenContact& accepted =
+            frame.contacts[priorityOrder[acceptedRank]];
+        if (!accepted.visible) continue;
+        const int deltaX = candidate.x - accepted.x;
+        const int deltaY = candidate.y - accepted.y;
+        if (deltaX * deltaX + deltaY * deltaY <= overlapDistanceSquared) {
+          overlapsVisible = true;
+          break;
+        }
+      }
+      candidate.visible = !overlapsVisible;
+    }
+  }
+
+  for (uint8_t contact = 0; contact < frame.count; ++contact) {
+    const ScreenContact& screen = frame.contacts[contact];
+    if (rangeMiles <= 20.1f) {
+      if (!screen.visible) continue;
+      const lv_color_t iconColor =
+          screen.tracked ? red
+                         : (screen.selected
+                                ? amber
+                                : (screen.sweepBright ? green : cyan));
+      drawRadarBitmapContact(
+          screen.x, screen.y,
+          aircraft::bitmapForTarget(workTargets[screen.targetIndex]),
+          screen.headingIndex, iconColor);
+    } else {
+      fillCircle(screen.x, screen.y, screen.tracked ? 4 : 2,
+                 screen.tracked
+                     ? red
+                     : (screen.selected
+                            ? cyan
+                            : (screen.sweepBright ? bright : cyan)));
+    }
+
+    if (screen.selected) {
+      drawCircle(screen.x, screen.y, 8, amber);
+      drawCircle(screen.x, screen.y, 12, amber);
+    }
+    if (screen.tracked) {
+      drawCircle(screen.x, screen.y, 10, red);
       frame.trackedVisible = true;
-      frame.trackedX = x;
-      frame.trackedY = y;
-      frame.trackedTargetIndex = i;
+      frame.trackedX = screen.x;
+      frame.trackedY = screen.y;
+      frame.trackedTargetIndex = screen.targetIndex;
     }
   }
 }
@@ -549,14 +619,16 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
         break;
       }
     }
-    drawPlacedTag(frame.trackedX, frame.trackedY, lines, colors, 3,
-                  rgb(35, 12, 18), rgb(255, 105, 95), 118, hitIndex,
-                  labelBoxes, labelBoxCount);
+    drawPlacedTag(
+        frame.trackedX, frame.trackedY, lines, colors, 3, rgb(35, 12, 18),
+        rgb(255, 105, 95), 118,
+        rangeMiles <= 20.1f ? RADAR_CONTACT_TAG_CLEARANCE : DOT_TAG_CLEARANCE,
+        hitIndex, labelBoxes, labelBoxCount);
   }
 
   for (uint8_t contact = 0; contact < frame.count; ++contact) {
     const ScreenContact& screen = frame.contacts[contact];
-    if (!screen.selected || screen.tracked) continue;
+    if (!screen.visible || !screen.selected || screen.tracked) continue;
     const aircraft::Target& target = workTargets[screen.targetIndex];
     const char* identifier = aircraft::primaryIdentifier(target);
     char distanceText[20];
@@ -564,22 +636,25 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
              target.distanceMiles);
     const char* lines[] = {identifier, distanceText};
     const lv_color_t colors[] = {rgb(110, 225, 255), rgb(255, 195, 75)};
-    drawPlacedTag(screen.x, screen.y, lines, colors, 2, rgb(7, 22, 27),
-                  rgb(255, 190, 70), 104, screen.hitIndex, labelBoxes,
-                  labelBoxCount);
+    drawPlacedTag(
+        screen.x, screen.y, lines, colors, 2, rgb(7, 22, 27),
+        rgb(255, 190, 70), 104,
+        rangeMiles <= 20.1f ? RADAR_CONTACT_TAG_CLEARANCE : DOT_TAG_CLEARANCE,
+        screen.hitIndex, labelBoxes, labelBoxCount);
   }
 
   if (rangeMiles <= 20.1f) {
     for (uint8_t contact = 0; contact < frame.count; ++contact) {
       const ScreenContact& screen = frame.contacts[contact];
-      if (screen.tracked || screen.selected) continue;
+      if (!screen.visible || screen.tracked || screen.selected) continue;
       const aircraft::Target& target = workTargets[screen.targetIndex];
       const char* identifier = aircraft::primaryIdentifier(target);
       const char* lines[] = {identifier};
       const lv_color_t colors[] = {rgb(115, 225, 255)};
-      drawPlacedTag(screen.x, screen.y, lines, colors, 1, rgb(5, 20, 28),
-                    rgb(28, 100, 104), 88, screen.hitIndex, labelBoxes,
-                    labelBoxCount);
+      drawPlacedTag(
+          screen.x, screen.y, lines, colors, 1, rgb(5, 20, 28),
+          rgb(28, 100, 104), 88, RADAR_CONTACT_TAG_CLEARANCE,
+          screen.hitIndex, labelBoxes, labelBoxCount);
     }
   }
 }
@@ -1009,18 +1084,16 @@ bool hitTest(int canvasX, int canvasY, HitResult& result) {
     }
   }
 
-  if (bestIndex < 0) {
-    constexpr int CONTACT_TOUCH_RADIUS = 18;
-    constexpr int CONTACT_TOUCH_RADIUS_SQUARED =
-        CONTACT_TOUCH_RADIUS * CONTACT_TOUCH_RADIUS;
-    for (uint8_t i = 0; i < renderedHitCount; ++i) {
-      const HitRegion& hit = renderedHits[i];
-      const int deltaX = canvasX - hit.contactX;
-      const int deltaY = canvasY - hit.contactY;
-      if (deltaX * deltaX + deltaY * deltaY <=
-          CONTACT_TOUCH_RADIUS_SQUARED) {
-        consider(i);
-      }
+  constexpr int CONTACT_TOUCH_RADIUS = 18;
+  constexpr int CONTACT_TOUCH_RADIUS_SQUARED =
+      CONTACT_TOUCH_RADIUS * CONTACT_TOUCH_RADIUS;
+  for (uint8_t i = 0; i < renderedHitCount; ++i) {
+    const HitRegion& hit = renderedHits[i];
+    const int deltaX = canvasX - hit.contactX;
+    const int deltaY = canvasY - hit.contactY;
+    if (deltaX * deltaX + deltaY * deltaY <=
+        CONTACT_TOUCH_RADIUS_SQUARED) {
+      consider(i);
     }
   }
 
