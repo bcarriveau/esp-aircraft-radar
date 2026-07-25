@@ -15,6 +15,7 @@ namespace {
 constexpr int CENTER_X = WIDTH / 2;
 constexpr int CENTER_Y = HEIGHT / 2;
 constexpr int RADIUS = 168;
+constexpr uint8_t PRIORITY_OTHER_COUNT = 3;
 
 View radarView;
 float sweepDegrees = 0;
@@ -475,10 +476,10 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
   LabelBox* labelBoxes = renderedLabelBoxes;
   uint8_t labelBoxCount = 0;
 
-  // Reserve the compact zoom control in the lower-right for every frame.
+  // Reserve the visible range control, including its MILES caption.
   labelBoxes[labelBoxCount++] = {
-    (int16_t)(WIDTH - 124), (int16_t)(HEIGHT - 42),
-    (int16_t)(WIDTH - 2), (int16_t)(HEIGHT - 2)
+    (int16_t)(WIDTH - 120), (int16_t)(HEIGHT - 52),
+    (int16_t)(WIDTH - 1), (int16_t)(HEIGHT - 1)
   };
 
   if (frame.trackedVisible && frame.trackedTargetIndex >= 0) {
@@ -704,6 +705,50 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
     updateHeadingDisplay(radarView.leftNearestHeadingArrow,
                          radarView.leftNearestHeadingLabel,
                          leftNearestHeadingPoints, nearestTarget);
+  }
+
+  if (radarView.leftOtherModeLabel) {
+    if (priorityAircraft) {
+      lv_obj_clear_flag(radarView.leftOtherModeLabel, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(radarView.leftOtherModeLabel, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  for (uint8_t i = 0; i < PRIORITY_OTHER_COUNT; ++i) {
+    if (radarView.leftOtherHexes[i]) radarView.leftOtherHexes[i][0] = 0;
+    if (radarView.leftOtherLabels[i]) {
+      lv_label_set_text(radarView.leftOtherLabels[i], "");
+      lv_obj_add_flag(radarView.leftOtherLabels[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    updateSideIcon(radarView.leftOtherIcons[i],
+                   radarView.leftOtherIconBuffers[i], nullptr, false);
+  }
+  if (priorityAircraft) {
+    uint8_t otherIndex = 0;
+    for (uint8_t targetIndex = 0;
+         targetIndex < count && otherIndex < PRIORITY_OTHER_COUNT;
+         ++targetIndex) {
+      const aircraft::Target& target = workTargets[targetIndex];
+      if (primaryTarget && target.hex[0] && primaryTarget->hex[0] &&
+          strcmp(target.hex, primaryTarget->hex) == 0) {
+        continue;
+      }
+      if (radarView.leftOtherHexes[otherIndex] && target.hex[0]) {
+        strncpy(radarView.leftOtherHexes[otherIndex], target.hex, 6);
+        radarView.leftOtherHexes[otherIndex][6] = 0;
+      }
+      snprintf(text, sizeof(text), "%s\n%.1f MI %s",
+               aircraft::primaryIdentifier(target), target.distanceMiles,
+               aircraft::compassDirection(target.bearing));
+      if (radarView.leftOtherLabels[otherIndex]) {
+        lv_label_set_text(radarView.leftOtherLabels[otherIndex], text);
+        lv_obj_clear_flag(radarView.leftOtherLabels[otherIndex],
+                          LV_OBJ_FLAG_HIDDEN);
+      }
+      updateSideIcon(radarView.leftOtherIcons[otherIndex],
+                     radarView.leftOtherIconBuffers[otherIndex], &target, true);
+      ++otherIndex;
+    }
   }
 
   for (int i = 0; i < 5; ++i) {

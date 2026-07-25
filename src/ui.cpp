@@ -20,23 +20,40 @@ namespace {
 constexpr uint32_t FRAME_INTERVAL_MS = 80;
 constexpr uint8_t PAGE_COUNT = 5;
 constexpr uint8_t NEAREST_LIST_COUNT = 5;
+constexpr uint8_t PRIORITY_OTHER_COUNT = 3;
+constexpr uint8_t AIRSPACE_CATEGORY_COUNT = 6;
+constexpr uint8_t AIRSPACE_METRIC_COUNT = 4;
 constexpr uint8_t RANGE_OPTION_COUNT = 3;
 constexpr float RADAR_RANGES[RANGE_OPTION_COUNT] = {
   20.0f, 40.0f, 80.0f
 };
-constexpr const char* RADAR_RANGE_NAMES[RANGE_OPTION_COUNT] = {
-  "20 MI", "40 MI", "80 MI"
-};
 constexpr float TRACK_AUTO_ZOOM_EDGE_RATIO = 0.92f;
 constexpr float TRACK_AUTO_ZOOM_LOOKAHEAD_SECONDS = 30.0f;
 constexpr uint32_t SELECTED_AIRCRAFT_TIMEOUT_MS = 30000;
-constexpr uint8_t RADAR_SIDE_ICON_COUNT = NEAREST_LIST_COUNT + 2;
 constexpr uint8_t LEFT_NEAREST_ICON_INDEX = 0;
 constexpr uint8_t PRIORITY_ICON_INDEX = 1;
 constexpr uint8_t LIST_ICON_BASE_INDEX = 2;
-static_assert(LIST_ICON_BASE_INDEX + NEAREST_LIST_COUNT ==
-                  RADAR_SIDE_ICON_COUNT,
+constexpr uint8_t PRIORITY_OTHER_ICON_BASE_INDEX =
+    LIST_ICON_BASE_INDEX + NEAREST_LIST_COUNT;
+constexpr uint8_t AIRSPACE_ICON_BASE_INDEX =
+    PRIORITY_OTHER_ICON_BASE_INDEX + PRIORITY_OTHER_COUNT;
+constexpr uint8_t RADAR_SIDE_ICON_COUNT =
+    AIRSPACE_ICON_BASE_INDEX + AIRSPACE_CATEGORY_COUNT;
+static_assert(RADAR_SIDE_ICON_COUNT == 16,
               "Radar side-icon indexes do not match allocation");
+
+constexpr AircraftBitmapId AIRSPACE_CATEGORY_BITMAPS[AIRSPACE_CATEGORY_COUNT] = {
+  AircraftBitmapId::AIRLINER,
+  AircraftBitmapId::BUSINESS_JET,
+  AircraftBitmapId::TURBOPROP,
+  AircraftBitmapId::PISTON,
+  AircraftBitmapId::HELICOPTER,
+  AircraftBitmapId::UNKNOWN
+};
+constexpr const char* AIRSPACE_CATEGORY_NAMES[AIRSPACE_CATEGORY_COUNT] = {
+  "AIRLINERS", "BUSINESS JETS", "TURBOPROPS",
+  "PISTON", "HELICOPTERS", "MILITARY / OTHER"
+};
 
 aircraft::Target* uiTargets = nullptr;
 lv_color_t* radarSideIconBuffers = nullptr;
@@ -46,13 +63,16 @@ lv_color_t* radarBuffer = nullptr;
 lv_obj_t* wifiLabel = nullptr;
 lv_obj_t* clockLabel = nullptr;
 lv_obj_t* countLabel = nullptr;
-lv_obj_t* rangeLabel = nullptr;
 lv_obj_t* leftNearestModeLabel = nullptr;
 lv_obj_t* leftNearestCallsignLabel = nullptr;
 lv_obj_t* leftNearestSummaryLabel = nullptr;
 lv_obj_t* leftNearestIcon = nullptr;
 lv_obj_t* leftNearestHeadingArrow = nullptr;
 lv_obj_t* leftNearestHeadingLabel = nullptr;
+lv_obj_t* leftOtherModeLabel = nullptr;
+lv_obj_t* leftOtherLabels[PRIORITY_OTHER_COUNT]{};
+lv_obj_t* leftOtherIcons[PRIORITY_OTHER_COUNT]{};
+char leftOtherHex[PRIORITY_OTHER_COUNT][7]{};
 lv_obj_t* aircraftModeLabel = nullptr;
 lv_obj_t* nearestCallsignLabel = nullptr;
 lv_obj_t* nearestSummaryLabel = nullptr;
@@ -92,9 +112,14 @@ lv_obj_t* reconnectButton = nullptr;
 lv_obj_t* retryButton = nullptr;
 lv_obj_t* showPasswordButton = nullptr;
 lv_obj_t* showPasswordLabel = nullptr;
-lv_obj_t* setupRangeTitle = nullptr;
-lv_obj_t* setupRangeButtons[RANGE_OPTION_COUNT]{};
 lv_obj_t* tracksTable = nullptr;
+lv_obj_t* airspaceDashboard = nullptr;
+lv_obj_t* airspaceMetricValueLabels[AIRSPACE_METRIC_COUNT]{};
+lv_obj_t* airspaceCategoryCountLabels[AIRSPACE_CATEGORY_COUNT]{};
+lv_obj_t* airspaceCategoryPercentLabels[AIRSPACE_CATEGORY_COUNT]{};
+lv_obj_t* airspaceCategoryIcons[AIRSPACE_CATEGORY_COUNT]{};
+lv_obj_t* airspaceHighlightsLabel = nullptr;
+lv_obj_t* systemCreditPanel = nullptr;
 lv_obj_t* detailPanel = nullptr;
 lv_obj_t* detailTitle = nullptr;
 lv_obj_t* detailBody = nullptr;
@@ -135,6 +160,15 @@ void stylePanel(lv_obj_t* object) {
   lv_obj_set_style_border_width(object, 1, 0);
   lv_obj_set_style_radius(object, 8, 0);
   lv_obj_set_style_pad_all(object, 10, 0);
+}
+
+void styleDashboardCard(lv_obj_t* object) {
+  lv_obj_set_style_bg_color(object, rgb(7, 20, 28), 0);
+  lv_obj_set_style_border_color(object, rgb(32, 88, 96), 0);
+  lv_obj_set_style_border_width(object, 1, 0);
+  lv_obj_set_style_radius(object, 6, 0);
+  lv_obj_set_style_pad_all(object, 6, 0);
+  lv_obj_clear_flag(object, LV_OBJ_FLAG_SCROLLABLE);
 }
 
 lv_obj_t* makeLabel(lv_obj_t* parent, const char* text,
@@ -193,6 +227,14 @@ void setVisible(lv_obj_t* object, bool visible) {
 
 void setTracksVisible(bool visible) {
   setVisible(tracksTable, visible);
+}
+
+void setAirspaceVisible(bool visible) {
+  setVisible(airspaceDashboard, visible);
+}
+
+void setSystemCreditVisible(bool visible) {
+  setVisible(systemCreditPanel, visible);
 }
 
 void setSettingsFormVisible(bool visible) {
@@ -364,14 +406,12 @@ void selectPage(uint8_t page) {
     setVisible(panel, currentPage == 0);
   }
   setVisible(pagePanel, currentPage != 0);
+  setAirspaceVisible(currentPage == 2);
+  setSystemCreditVisible(currentPage == 3);
   setSettingsFormVisible(currentPage == 4);
   setVisible(reconnectButton, currentPage == 4);
   setVisible(retryButton, currentPage == 4);
   setVisible(showPasswordButton, currentPage == 4);
-  setVisible(setupRangeTitle, currentPage == 4);
-  for (lv_obj_t* button : setupRangeButtons) {
-    setVisible(button, currentPage == 4);
-  }
   updatePageContent();
 }
 
@@ -454,21 +494,12 @@ bool copyTrackedTarget(aircraft::Target& target) {
 
 void syncRadarRangeControlPosition() {
   if (!radarRangeControl) return;
-  lv_obj_align(radarRangeControl, LV_ALIGN_BOTTOM_RIGHT, -8, -8);
+  lv_obj_align(radarRangeControl, LV_ALIGN_BOTTOM_RIGHT, -4, -4);
 }
 
 void syncRangeControls(float rangeMiles) {
-  if (rangeLabel) {
-    lv_label_set_text_fmt(rangeLabel, "RANGE // %d MILES",
-                          (int)lroundf(rangeMiles));
-  }
   for (int i = 0; i < RANGE_OPTION_COUNT; ++i) {
     const bool active = fabsf(rangeMiles - RADAR_RANGES[i]) < 1.0f;
-    if (setupRangeButtons[i]) {
-      lv_obj_set_style_bg_color(
-          setupRangeButtons[i],
-          active ? rgb(24, 128, 84) : rgb(20, 68, 82), 0);
-    }
     if (radarRangeButtons[i]) {
       lv_obj_set_style_bg_color(
           radarRangeButtons[i],
@@ -545,11 +576,11 @@ void showTargetDetails(const aircraft::Target& target,
     setTracksVisible(false);
     if (pageBody) lv_obj_add_flag(pageBody, LV_OBJ_FLAG_HIDDEN);
     setSettingsFormVisible(false);
+    setAirspaceVisible(false);
+    setSystemCreditVisible(false);
     setVisible(reconnectButton, false);
     setVisible(retryButton, false);
     setVisible(showPasswordButton, false);
-    setVisible(setupRangeTitle, false);
-    for (lv_obj_t* button : setupRangeButtons) setVisible(button, false);
   }
   detailTarget = target;
   detailTargetValid = true;
@@ -606,6 +637,20 @@ void nearestTargetEvent(lv_event_t* event) {
       (uint8_t)(uintptr_t)lv_event_get_user_data(event);
   if (index >= NEAREST_LIST_COUNT || !nearestListHex[index][0]) return;
   selectAircraftHex(nearestListHex[index]);
+}
+
+void priorityOtherTargetEvent(lv_event_t* event) {
+  const uint8_t index =
+      (uint8_t)(uintptr_t)lv_event_get_user_data(event);
+  if (index >= PRIORITY_OTHER_COUNT || !leftOtherHex[index][0]) return;
+  if (!app_state::hasManualTracking()) {
+    selectAircraftHex(leftOtherHex[index]);
+    return;
+  }
+  aircraft::Target target;
+  if (copyVisibleTargetByHex(leftOtherHex[index], target)) {
+    showTargetDetails(target, DetailOrigin::RADAR);
+  }
 }
 
 void primaryRadarTargetEvent(lv_event_t*) {
@@ -739,6 +784,8 @@ void renderTracksPage() {
   setLabelTextIfChanged(pageTitle, "TRACKS // NEAREST AIRCRAFT");
   lv_obj_add_flag(pageBody, LV_OBJ_FLAG_HIDDEN);
   setTracksVisible(true);
+  setAirspaceVisible(false);
+  setSystemCreditVisible(false);
   if (lastTracksVersion == snapshot.targetVersion &&
       lastTracksRangeGeneration == snapshot.rangeGeneration) return;
   lastTracksVersion = snapshot.targetVersion;
@@ -777,51 +824,81 @@ void renderAirspacePage() {
   app_state::copySnapshot(uiTargets, snapshot);
   const uint8_t count = snapshot.count;
   setTracksVisible(false);
-  lv_obj_clear_flag(pageBody, LV_OBJ_FLAG_HIDDEN);
+  setSystemCreditVisible(false);
+  setAirspaceVisible(true);
+  lv_obj_add_flag(pageBody, LV_OBJ_FLAG_HIDDEN);
   setLabelTextIfChanged(pageTitle, "AIRSPACE // LIVE SUMMARY");
-  configurePageBody(&lv_font_montserrat_18, 14, 62, 735);
   if (lastAirspaceVersion == snapshot.targetVersion &&
       lastAirspaceRangeGeneration == snapshot.rangeGeneration) return;
   lastAirspaceVersion = snapshot.targetVersion;
   lastAirspaceRangeGeneration = snapshot.rangeGeneration;
-  uint16_t airliners = 0, businessJets = 0, military = 0;
-  uint16_t turboprops = 0, pistons = 0, helicopters = 0, unknown = 0;
-  uint16_t inside20 = 0, inside40 = 0;
-  float fastestMph = 0;
-  float lowestAltitude = 0;
+
+  uint16_t categoryCounts[AIRSPACE_CATEGORY_COUNT]{};
+  uint16_t inside20 = 0;
+  uint16_t inside40 = 0;
+  const aircraft::Target* fastestTarget = nullptr;
+  const aircraft::Target* lowestTarget = nullptr;
   for (uint8_t i = 0; i < count; ++i) {
+    uint8_t categoryIndex = AIRSPACE_CATEGORY_COUNT - 1;
     switch (aircraft::categoryForType(uiTargets[i].typeCode)) {
-      case aircraft::Category::AIRLINER: ++airliners; break;
-      case aircraft::Category::BUSINESS_JET: ++businessJets; break;
-      case aircraft::Category::MILITARY_HEAVY: ++military; break;
-      case aircraft::Category::TURBOPROP: ++turboprops; break;
-      case aircraft::Category::PISTON: ++pistons; break;
-      case aircraft::Category::HELICOPTER: ++helicopters; break;
-      default: ++unknown; break;
+      case aircraft::Category::AIRLINER: categoryIndex = 0; break;
+      case aircraft::Category::BUSINESS_JET: categoryIndex = 1; break;
+      case aircraft::Category::TURBOPROP: categoryIndex = 2; break;
+      case aircraft::Category::PISTON: categoryIndex = 3; break;
+      case aircraft::Category::HELICOPTER: categoryIndex = 4; break;
+      case aircraft::Category::MILITARY_HEAVY:
+      default: categoryIndex = 5; break;
     }
+    ++categoryCounts[categoryIndex];
     if (uiTargets[i].distanceMiles <= 20.0f) ++inside20;
     if (uiTargets[i].distanceMiles <= 40.0f) ++inside40;
-    fastestMph = max(fastestMph, uiTargets[i].speedKt * 1.15078f);
+    if (!fastestTarget || uiTargets[i].speedKt > fastestTarget->speedKt) {
+      fastestTarget = &uiTargets[i];
+    }
     if (uiTargets[i].altitudeFt > 0 &&
-        (lowestAltitude == 0 || uiTargets[i].altitudeFt < lowestAltitude)) {
-      lowestAltitude = uiTargets[i].altitudeFt;
+        (!lowestTarget || uiTargets[i].altitudeFt < lowestTarget->altitudeFt)) {
+      lowestTarget = &uiTargets[i];
     }
   }
-  char body[900]{};
-  snprintf(body, sizeof(body),
-      "Aircraft in current %.0f-mile range: %u\n\n"
-      "Airliners: %u    Business jets: %u    Military/heavy: %u\n"
-      "Turboprops: %u    Piston: %u    Helicopters: %u    Unknown: %u\n"
-      "Within 20 miles: %u    Within 40 miles: %u\n\n"
-      "Nearest: %s at %.1f miles %s\n"
-      "Fastest observed: %.0f MPH\nLowest airborne altitude: %.0f feet",
-      snapshot.rangeMiles, count, airliners, businessJets, military,
-      turboprops, pistons, helicopters, unknown, inside20, inside40,
+
+  setLabelTextFmtIfChanged(airspaceMetricValueLabels[0], "%u", count);
+  setLabelTextFmtIfChanged(airspaceMetricValueLabels[1], "%u", inside20);
+  setLabelTextFmtIfChanged(airspaceMetricValueLabels[2], "%u", inside40);
+  setLabelTextFmtIfChanged(airspaceMetricValueLabels[3], "%.0f MI",
+                           snapshot.rangeMiles);
+
+  uint8_t dominantIndex = 0;
+  for (uint8_t i = 0; i < AIRSPACE_CATEGORY_COUNT; ++i) {
+    if (categoryCounts[i] > categoryCounts[dominantIndex]) dominantIndex = i;
+    const unsigned percentage = count
+        ? (unsigned)lroundf(categoryCounts[i] * 100.0f / count)
+        : 0;
+    setLabelTextFmtIfChanged(airspaceCategoryCountLabels[i], "%u",
+                             categoryCounts[i]);
+    setLabelTextFmtIfChanged(airspaceCategoryPercentLabels[i], "%u%%",
+                             percentage);
+  }
+
+  char lowestAltitude[20] = "--";
+  if (lowestTarget) {
+    aircraft::formatWholeNumber(lowestTarget->altitudeFt, lowestAltitude,
+                                sizeof(lowestAltitude));
+  }
+  char highlights[320];
+  snprintf(highlights, sizeof(highlights),
+      "NEAREST\n%s  %.1f MI %s\n\n"
+      "FASTEST\n%s  %.0f MPH\n\n"
+      "LOWEST AIRBORNE\n%s  %s FT\n\n"
+      "DOMINANT\n%s  %u",
       count ? aircraft::primaryIdentifier(uiTargets[0]) : "--",
-      count ? uiTargets[0].distanceMiles : 0,
+      count ? uiTargets[0].distanceMiles : 0.0f,
       count ? aircraft::compassDirection(uiTargets[0].bearing) : "--",
-      fastestMph, lowestAltitude);
-  setLabelTextIfChanged(pageBody, body);
+      fastestTarget ? aircraft::primaryIdentifier(*fastestTarget) : "--",
+      fastestTarget ? fastestTarget->speedKt * 1.15078f : 0.0f,
+      lowestTarget ? aircraft::primaryIdentifier(*lowestTarget) : "--",
+      lowestAltitude, count ? AIRSPACE_CATEGORY_NAMES[dominantIndex] : "NONE",
+      count ? categoryCounts[dominantIndex] : 0);
+  setLabelTextIfChanged(airspaceHighlightsLabel, highlights);
 }
 
 void renderSystemPage() {
@@ -830,6 +907,8 @@ void renderSystemPage() {
   app_state::Diagnostics diagnostics;
   app_state::copyDiagnostics(diagnostics);
   setTracksVisible(false);
+  setAirspaceVisible(false);
+  setSystemCreditVisible(true);
   lv_obj_clear_flag(pageBody, LV_OBJ_FLAG_HIDDEN);
   setLabelTextIfChanged(pageTitle, "SYSTEM // ESP32-S3");
   configurePageBody(&lv_font_montserrat_16, 14, 58, 735);
@@ -868,8 +947,10 @@ void renderSystemPage() {
 
 void renderSetupPage() {
   setTracksVisible(false);
+  setAirspaceVisible(false);
+  setSystemCreditVisible(false);
   lv_obj_clear_flag(pageBody, LV_OBJ_FLAG_HIDDEN);
-  setLabelTextIfChanged(pageTitle, "SETUP // RADAR & NETWORK");
+  setLabelTextIfChanged(pageTitle, "SETUP // DEVICE & NETWORK");
   configurePageBody(&lv_font_montserrat_14, 14, 58, 245);
   const wl_status_t wifiStatus = app_state::wifiStatus();
   const bool wifiConnected = wifiStatus == WL_CONNECTED;
@@ -1048,6 +1129,30 @@ bool buildRadarPanels(lv_obj_t* root) {
                         LV_EVENT_CLICKED, nullptr);
   }
 
+  leftOtherModeLabel = makeLabel(left, "NEAREST AIRCRAFT",
+                                 &lv_font_montserrat_12,
+                                 rgb(110, 220, 255), 4, 88);
+  lv_obj_add_flag(leftOtherModeLabel, LV_OBJ_FLAG_HIDDEN);
+  for (uint8_t i = 0; i < PRIORITY_OTHER_COUNT; ++i) {
+    leftOtherIcons[i] = makeRadarSideIcon(
+        left, PRIORITY_OTHER_ICON_BASE_INDEX + i, 4, 112 + i * 54);
+    if (!leftOtherIcons[i]) return false;
+    lv_obj_add_flag(leftOtherIcons[i], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(leftOtherIcons[i], 6);
+    lv_obj_add_event_cb(leftOtherIcons[i], priorityOtherTargetEvent,
+                        LV_EVENT_CLICKED, (void*)(uintptr_t)i);
+
+    leftOtherLabels[i] = makeLabel(left, "", &lv_font_montserrat_12,
+                                   rgb(225, 235, 240), 36, 108 + i * 54);
+    lv_obj_set_width(leftOtherLabels[i], 78);
+    lv_label_set_long_mode(leftOtherLabels[i], LV_LABEL_LONG_WRAP);
+    lv_obj_add_flag(leftOtherLabels[i], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(leftOtherLabels[i], LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_ext_click_area(leftOtherLabels[i], 7);
+    lv_obj_add_event_cb(leftOtherLabels[i], priorityOtherTargetEvent,
+                        LV_EVENT_CLICKED, (void*)(uintptr_t)i);
+  }
+
   makeLabel(left, "DATA STATUS", &lv_font_montserrat_12,
             rgb(100, 170, 180), 4, 286);
   statusLabel = makeLabel(left, "Starting...", &lv_font_montserrat_14,
@@ -1081,13 +1186,19 @@ bool buildRadarPanels(lv_obj_t* root) {
 
   radarRangeControl = lv_obj_create(radarPanel);
   lv_obj_set_size(radarRangeControl, 114, 32);
-  lv_obj_align(radarRangeControl, LV_ALIGN_BOTTOM_RIGHT, -8, -8);
+  lv_obj_align(radarRangeControl, LV_ALIGN_BOTTOM_RIGHT, -4, -4);
   lv_obj_clear_flag(radarRangeControl, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_pad_all(radarRangeControl, 0, 0);
   lv_obj_set_style_bg_color(radarRangeControl, rgb(5, 18, 25), 0);
   lv_obj_set_style_border_color(radarRangeControl, rgb(35, 105, 108), 0);
   lv_obj_set_style_border_width(radarRangeControl, 1, 0);
   lv_obj_set_style_radius(radarRangeControl, 5, 0);
+  lv_obj_t* milesLabel = makeLabel(radarPanel, "MILES",
+                                   &lv_font_montserrat_12,
+                                   rgb(100, 170, 180),
+                                   radar::WIDTH - 40, radar::HEIGHT - 49);
+  lv_obj_set_width(milesLabel, 38);
+  lv_obj_set_style_text_align(milesLabel, LV_TEXT_ALIGN_RIGHT, 0);
   for (int i = 0; i < RANGE_OPTION_COUNT; ++i) {
     radarRangeButtons[i] = lv_btn_create(radarRangeControl);
     lv_obj_set_size(radarRangeButtons[i], 36, 28);
@@ -1233,6 +1344,14 @@ bool buildRadarPanels(lv_obj_t* root) {
       radarSideIconBuffer(LEFT_NEAREST_ICON_INDEX);
   view.leftNearestHeadingArrow = leftNearestHeadingArrow;
   view.leftNearestHeadingLabel = leftNearestHeadingLabel;
+  view.leftOtherModeLabel = leftOtherModeLabel;
+  for (uint8_t i = 0; i < PRIORITY_OTHER_COUNT; ++i) {
+    view.leftOtherLabels[i] = leftOtherLabels[i];
+    view.leftOtherIcons[i] = leftOtherIcons[i];
+    view.leftOtherIconBuffers[i] =
+        radarSideIconBuffer(PRIORITY_OTHER_ICON_BASE_INDEX + i);
+    view.leftOtherHexes[i] = leftOtherHex[i];
+  }
   view.aircraftModeLabel = aircraftModeLabel;
   view.nearestCallsignLabel = nearestCallsignLabel;
   view.nearestSummaryLabel = nearestSummaryLabel;
@@ -1307,6 +1426,85 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_add_event_cb(tracksTable, tracksTableDrawEvent,
                       LV_EVENT_DRAW_PART_END, nullptr);
   setTracksVisible(false);
+
+  airspaceDashboard = lv_obj_create(pagePanel);
+  lv_obj_set_size(airspaceDashboard, 742, 270);
+  lv_obj_set_pos(airspaceDashboard, 8, 58);
+  lv_obj_set_style_bg_opa(airspaceDashboard, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(airspaceDashboard, 0, 0);
+  lv_obj_set_style_pad_all(airspaceDashboard, 0, 0);
+  lv_obj_clear_flag(airspaceDashboard, LV_OBJ_FLAG_SCROLLABLE);
+
+  const char* metricTitles[AIRSPACE_METRIC_COUNT] = {
+    "TOTAL", "WITHIN 20 MI", "WITHIN 40 MI", "CURRENT RANGE"
+  };
+  for (uint8_t i = 0; i < AIRSPACE_METRIC_COUNT; ++i) {
+    lv_obj_t* card = lv_obj_create(airspaceDashboard);
+    lv_obj_set_size(card, 176, 58);
+    lv_obj_set_pos(card, i * 186, 0);
+    styleDashboardCard(card);
+    makeLabel(card, metricTitles[i], &lv_font_montserrat_12,
+              rgb(100, 170, 180), 5, 2);
+    airspaceMetricValueLabels[i] = makeLabel(
+        card, "0", &lv_font_montserrat_24, rgb(63, 255, 155), 5, 20);
+  }
+
+  for (uint8_t i = 0; i < AIRSPACE_CATEGORY_COUNT; ++i) {
+    const uint8_t column = i % 3;
+    const uint8_t row = i / 3;
+    lv_obj_t* card = lv_obj_create(airspaceDashboard);
+    lv_obj_set_size(card, 165, 84);
+    lv_obj_set_pos(card, column * 172, 68 + row * 92);
+    styleDashboardCard(card);
+
+    airspaceCategoryIcons[i] = makeRadarSideIcon(
+        card, AIRSPACE_ICON_BASE_INDEX + i, 6, 14);
+    if (airspaceCategoryIcons[i]) {
+      radar::drawSideBitmapIcon(
+          airspaceCategoryIcons[i],
+          radarSideIconBuffer(AIRSPACE_ICON_BASE_INDEX + i),
+          AIRSPACE_CATEGORY_BITMAPS[i]);
+      lv_obj_clear_flag(airspaceCategoryIcons[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_t* title = makeLabel(card, AIRSPACE_CATEGORY_NAMES[i],
+                                &lv_font_montserrat_12,
+                                rgb(110, 220, 255), 42, 5);
+    lv_obj_set_width(title, 110);
+    lv_label_set_long_mode(title, LV_LABEL_LONG_WRAP);
+    airspaceCategoryCountLabels[i] = makeLabel(
+        card, "0", &lv_font_montserrat_24, rgb(255, 214, 80), 42, 32);
+    airspaceCategoryPercentLabels[i] = makeLabel(
+        card, "0%", &lv_font_montserrat_12, rgb(100, 170, 180), 105, 43);
+  }
+
+  lv_obj_t* highlightsCard = lv_obj_create(airspaceDashboard);
+  lv_obj_set_size(highlightsCard, 224, 176);
+  lv_obj_set_pos(highlightsCard, 518, 68);
+  styleDashboardCard(highlightsCard);
+  makeLabel(highlightsCard, "LIVE HIGHLIGHTS", &lv_font_montserrat_14,
+            rgb(110, 220, 255), 6, 4);
+  airspaceHighlightsLabel = makeLabel(
+      highlightsCard, "Waiting for aircraft", &lv_font_montserrat_12,
+      rgb(225, 235, 240), 6, 28);
+  lv_obj_set_width(airspaceHighlightsLabel, 198);
+  lv_label_set_long_mode(airspaceHighlightsLabel, LV_LABEL_LONG_WRAP);
+  setAirspaceVisible(false);
+
+  systemCreditPanel = lv_obj_create(pagePanel);
+  lv_obj_set_size(systemCreditPanel, 286, 116);
+  lv_obj_set_pos(systemCreditPanel, 454, 210);
+  styleDashboardCard(systemCreditPanel);
+  makeLabel(systemCreditPanel, "PROJECT", &lv_font_montserrat_12,
+            rgb(100, 170, 180), 7, 4);
+  makeLabel(systemCreditPanel, "DESIGNED & BUILT BY",
+            &lv_font_montserrat_12, rgb(110, 220, 255), 7, 24);
+  makeLabel(systemCreditPanel, "BILL CARRIVEAU", &lv_font_montserrat_20,
+            rgb(63, 255, 155), 7, 42);
+  makeLabel(systemCreditPanel, "ESP32-S3 ADS-B AIRCRAFT RADAR",
+            &lv_font_montserrat_12, rgb(225, 235, 240), 7, 70);
+  makeLabel(systemCreditPanel, "PLATFORMIO / C++ / LVGL",
+            &lv_font_montserrat_12, rgb(100, 170, 180), 7, 88);
+  setSystemCreditVisible(false);
 
   reconnectButton = lv_btn_create(pagePanel);
   lv_obj_set_size(reconnectButton, 220, 52);
@@ -1428,35 +1626,6 @@ void buildPageShell(lv_obj_t* root) {
 
   populateSettingsForm();
   setSettingsFormVisible(false);
-
-  setupRangeTitle = makeLabel(pagePanel, "RANGE // 80 MILES",
-                              &lv_font_montserrat_16, rgb(110, 220, 255),
-                              280, 278);
-  rangeLabel = setupRangeTitle;
-  int activeRange = 2;
-  const float rangeMiles = app_state::radarRangeMiles();
-  for (int i = 0; i < RANGE_OPTION_COUNT; ++i) {
-    if (fabsf(rangeMiles - RADAR_RANGES[i]) < 1.0f) {
-      activeRange = i;
-    }
-    setupRangeButtons[i] = lv_btn_create(pagePanel);
-    lv_obj_set_size(setupRangeButtons[i], 68, 38);
-    lv_obj_set_pos(setupRangeButtons[i], 470 + i * 70, 270);
-    lv_obj_set_style_bg_color(
-        setupRangeButtons[i],
-        i == activeRange ? rgb(24, 128, 84) : rgb(20, 68, 82), 0);
-    lv_obj_set_style_radius(setupRangeButtons[i], 6, 0);
-    lv_obj_add_event_cb(setupRangeButtons[i], rangeEvent, LV_EVENT_CLICKED,
-                        (void*)(intptr_t)i);
-    lv_obj_t* label = lv_label_create(setupRangeButtons[i]);
-    lv_label_set_text(label, RADAR_RANGE_NAMES[i]);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
-    lv_obj_center(label);
-    lv_obj_add_flag(setupRangeButtons[i], LV_OBJ_FLAG_HIDDEN);
-  }
-  lv_label_set_text_fmt(rangeLabel, "RANGE // %d MILES",
-                        (int)lroundf(rangeMiles));
-  lv_obj_add_flag(setupRangeTitle, LV_OBJ_FLAG_HIDDEN);
 }
 
 void buildDetailPanel() {

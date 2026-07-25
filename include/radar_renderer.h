@@ -25,6 +25,11 @@ struct View {
   lv_color_t* leftNearestIconBuffer = nullptr;
   lv_obj_t* leftNearestHeadingArrow = nullptr;
   lv_obj_t* leftNearestHeadingLabel = nullptr;
+  lv_obj_t* leftOtherModeLabel = nullptr;
+  lv_obj_t* leftOtherLabels[3]{};
+  lv_obj_t* leftOtherIcons[3]{};
+  lv_color_t* leftOtherIconBuffers[3]{};
+  char* leftOtherHexes[3]{};
   lv_obj_t* aircraftModeLabel = nullptr;
   lv_obj_t* nearestCallsignLabel = nullptr;
   lv_obj_t* nearestSummaryLabel = nullptr;
