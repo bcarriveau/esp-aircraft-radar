@@ -14,11 +14,73 @@ GitHub or preserved evidence does not confirm the changes.
 
 ## Current status
 
-- **Current source:** Product 36
-- **Current build marker:** `7IN-20260725-PRODUCT36-RADAR-BITMAP-CONTACTS`
+- **Current source:** Product 36 R2
+- **Current build marker:** `7IN-20260725-PRODUCT36-RADAR-BITMAP-CONTACTS-R2`
 - **Current branch:** `main`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
+
+## Product 36 R2 - 2026-07-25
+
+**Build:** `7IN-20260725-PRODUCT36-RADAR-BITMAP-CONTACTS-R2`  
+**Status:** Asset-corrected release candidate; full PlatformIO and physical verification pending
+
+### Changed
+
+- Replaced the first Product 36 downscaled 20 x 14 radar silhouettes with compact
+  asset-derived 24 x 18 radar contact sprites generated from
+  `assets/aircraft_sprites_96x64.png`.
+- Kept the 20-mile-only bitmap-contact behavior while preserving the existing
+  40-mile and 80-mile compact dots.
+- Preserved clearer visual separation between categories by deriving each contact
+  icon from the matching repository artwork rather than from generic substitute
+  silhouettes.
+- Preserved a clearly recognizable helicopter contact based on the existing
+  helicopter artwork.
+
+### Added
+
+- Added `include/radar_contact_bitmaps.h` with fixed flash-resident 1-bit masks
+  for the six 20-mile radar contact categories.
+- Added `assets/radar_contact_sprites_24x18.png` as a repository-side preview of
+  the compact contact art derived from the current source artwork.
+
+### Performance and bounds
+
+- Removed per-contact runtime scaling from the 20-mile radar contact path.
+- Contact rendering now draws the fixed 24 x 18 asset-derived masks directly
+  into the existing radar canvas with bounded loops and no render-loop heap or
+  PSRAM allocation.
+- Preserved stable ICAO hit regions, single-snapshot radar rendering, 200-target
+  bounds, and the existing range-control exclusion area.
+
+### Preserved
+
+- Product 35 type-code-first and description-fallback classification through
+  `bitmapForTarget()`.
+- Selected and tracked state hierarchy, rings, tags, stable ICAO identity, MPH
+  display, and STOP TRACK behavior.
+- Networking, native HTTPS, secure fallback, request cadence, stale-response
+  rejection, last-good retention, display timing, DMA, XIP/OPI PSRAM, and the
+  20-scanline bounce buffer.
+
+### Verification
+
+- Repository assets were inspected and the six radar contact categories were
+  derived from the authoritative sprite sheet already stored in `assets/`.
+- Host C++17 syntax checking passed for the updated renderer with the new radar
+  contact bitmap header.
+- Visual preview confirmed that airliner, business jet, turboprop, piston,
+  helicopter, and unknown contact shapes remain distinct at compact radar size.
+
+### Pending verification
+
+- Full PlatformIO compile and link.
+- Flash and internal-RAM usage report.
+- Physical validation of zero, one, dense 20-mile, and 200-retained-target radar
+  scenes.
+- Selection, tracking, hit testing, page switching, touch responsiveness, no
+  screen rolling, heap/PSRAM stability, and normal ADS-B/TLS/Wi-Fi recovery.
 
 ## Product 36 - 2026-07-25
 

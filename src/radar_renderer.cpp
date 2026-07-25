@@ -8,6 +8,7 @@
 #include "adsb_network.h"
 #include "app_state.h"
 #include "aircraft_bitmaps.h"
+#include "radar_contact_bitmaps.h"
 
 namespace radar {
 namespace {
@@ -16,8 +17,6 @@ constexpr int CENTER_X = WIDTH / 2;
 constexpr int CENTER_Y = HEIGHT / 2;
 constexpr int RADIUS = 168;
 constexpr uint8_t PRIORITY_OTHER_COUNT = 3;
-constexpr int RADAR_ICON_WIDTH = 20;
-constexpr int RADAR_ICON_HEIGHT = 14;
 constexpr int RANGE_CONTROL_X1 = WIDTH - 120;
 constexpr int RANGE_CONTROL_Y1 = HEIGHT - 52;
 
@@ -399,21 +398,15 @@ void drawRadarBackground() {
 void drawRadarBitmapContact(int centerX, int centerY,
                             AircraftBitmapId bitmapId,
                             lv_color_t color) {
-  const int startX = centerX - RADAR_ICON_WIDTH / 2;
-  const int startY = centerY - RADAR_ICON_HEIGHT / 2;
-  const uint16_t* sprite = aircraftBitmap(bitmapId);
+  const int startX = centerX - RADAR_CONTACT_BITMAP_W / 2;
+  const int startY = centerY - RADAR_CONTACT_BITMAP_H / 2;
+  const uint8_t* sprite = radarContactBitmap(bitmapId);
 
-  for (int destinationY = 0; destinationY < RADAR_ICON_HEIGHT;
+  for (uint8_t destinationY = 0; destinationY < RADAR_CONTACT_BITMAP_H;
        ++destinationY) {
-    const int sourceY =
-        destinationY * AIRCRAFT_BITMAP_H / RADAR_ICON_HEIGHT;
-    for (int destinationX = 0; destinationX < RADAR_ICON_WIDTH;
+    for (uint8_t destinationX = 0; destinationX < RADAR_CONTACT_BITMAP_W;
          ++destinationX) {
-      const int sourceX =
-          destinationX * AIRCRAFT_BITMAP_W / RADAR_ICON_WIDTH;
-      const uint16_t pixel = pgm_read_word(
-          sprite + sourceY * AIRCRAFT_BITMAP_W + sourceX);
-      if (!pixel) continue;
+      if (!radarContactPixel(sprite, destinationX, destinationY)) continue;
 
       const int x = startX + destinationX;
       const int y = startY + destinationY;
@@ -515,6 +508,7 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
 void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
                        const app_state::Snapshot& snapshot,
                        const ContactFrame& frame) {
+  (void)snapshot;
   LabelBox* labelBoxes = renderedLabelBoxes;
   uint8_t labelBoxCount = 0;
 
