@@ -824,7 +824,7 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
   } else if (snapshot.manualTracking) {
     lv_label_set_text(radarView.nearestCallsignLabel, "--");
     lv_label_set_text(radarView.nearestSummaryLabel,
-                      "Waiting for tracked aircraft");
+                      "TRACK SIGNAL LOST\nChecking next update");
     updateHeadingDisplay(radarView.headingArrow, radarView.headingLabel,
                          priorityHeadingPoints, nullptr);
   }

@@ -9,6 +9,7 @@ namespace {
 
 constexpr float MIN_RADAR_RANGE_MILES = 20.0f;
 constexpr float MAX_RADAR_RANGE_MILES = 80.0f;
+constexpr uint8_t TRACKING_MISS_LIMIT = 3;
 
 struct SharedState {
   aircraft::Target* targets = nullptr;
@@ -23,6 +24,7 @@ struct SharedState {
   bool manualTracking = false;
   char trackedHex[7]{};
   uint32_t trackingVersion = 0;
+  uint8_t trackingMissCount = 0;
   bool fetchInProgress = false;
   uint32_t lastUpdateMs = 0;
   Diagnostics diagnostics;
@@ -82,7 +84,37 @@ void publishTargets(const aircraft::Target* targets, uint8_t count,
   if (count > aircraft::MAX_TARGETS) {
     count = static_cast<uint8_t>(aircraft::MAX_TARGETS);
   }
+  char lostTrackedHex[7]{};
+  bool trackingCleared = false;
   bool locked = lockState();
+  if (state.manualTracking && state.trackedHex[0]) {
+    bool trackedPresent = false;
+    for (uint8_t i = 0; i < count; ++i) {
+      if (targets[i].valid && targets[i].hex[0] &&
+          strcmp(targets[i].hex, state.trackedHex) == 0) {
+        trackedPresent = true;
+        break;
+      }
+    }
+    if (trackedPresent) {
+      state.trackingMissCount = 0;
+    } else {
+      if (state.trackingMissCount < TRACKING_MISS_LIMIT) {
+        ++state.trackingMissCount;
+      }
+      if (state.trackingMissCount >= TRACKING_MISS_LIMIT) {
+        strncpy(lostTrackedHex, state.trackedHex,
+                sizeof(lostTrackedHex) - 1);
+        state.manualTracking = false;
+        state.trackedHex[0] = 0;
+        state.trackingMissCount = 0;
+        ++state.trackingVersion;
+        trackingCleared = true;
+      }
+    }
+  } else {
+    state.trackingMissCount = 0;
+  }
   if (count > 0) {
     memcpy(state.targets, targets, sizeof(aircraft::Target) * count);
   }
@@ -90,6 +122,12 @@ void publishTargets(const aircraft::Target* targets, uint8_t count,
   ++state.targetVersion;
   state.lastUpdateMs = updatedAtMs;
   unlockState(locked);
+  if (trackingCleared) {
+    Serial.printf(
+        "Tracked aircraft %s absent from %u consecutive updates; "
+        "tracking cleared\n",
+        lostTrackedHex, (unsigned)TRACKING_MISS_LIMIT);
+  }
 }
 
 void copySnapshot(aircraft::Target* out, Snapshot& snapshot) {
@@ -196,6 +234,7 @@ void invalidateRequests() {
 void selectManualTracking(const aircraft::Target& target) {
   bool locked = lockState();
   state.manualTracking = true;
+  state.trackingMissCount = 0;
   strncpy(state.trackedHex, target.hex, sizeof(state.trackedHex) - 1);
   state.trackedHex[sizeof(state.trackedHex) - 1] = 0;
   ++state.trackingVersion;
@@ -207,6 +246,7 @@ void clearManualTracking() {
   if (state.manualTracking || state.trackedHex[0]) ++state.trackingVersion;
   state.manualTracking = false;
   state.trackedHex[0] = 0;
+  state.trackingMissCount = 0;
   unlockState(locked);
 }
 

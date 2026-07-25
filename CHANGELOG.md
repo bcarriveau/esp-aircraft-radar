@@ -5,7 +5,7 @@ documented here.
 
 This project uses numbered **Product** builds rather than semantic versioning.
 Dates below follow the firmware build marker when one is preserved. Commit links
-refer to the authoritative GitHub history after the Product 26–33 commit-message
+refer to the authoritative GitHub history after the Product 26-33 commit-message
 cleanup.
 
 The changelog starts with **Product 15**, the first hardened
@@ -14,34 +14,93 @@ GitHub or preserved evidence does not confirm the changes.
 
 ## Current status
 
-- **Current source:** Product 33 R5
-- **Current build marker:** `7IN-20260724-PRODUCT33-UI-POLISH-R5`
+- **Current source:** Product 34
+- **Current build marker:** `7IN-20260725-PRODUCT34-TRACK-LOSS-RECOVERY`
 - **Current branch:** `main`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
 
-Product 33 R5 remains a candidate until its complete PlatformIO build, physical
-UI and touch checks, normal ADS-B operation, and extended soak testing are
-confirmed.
+## Product 34 - 2026-07-25
 
-## Unreleased
+**Build:** `7IN-20260725-PRODUCT34-TRACK-LOSS-RECOVERY`  
+**Status:** Current release candidate
 
-### Documentation
+### Fixed
 
-- Reorganized `README.md` around the current project, exact hardware, features,
-  setup, architecture, reliability protections, verification, screenshots, and
-  major milestones.
-- Added this confirmed-history `CHANGELOG.md`.
-- Kept detailed Product history out of the main README.
-- Made no firmware, networking, display, capacity, or credential changes.
+- Corrected manual tracking that could remain active indefinitely after the
+  tracked ICAO stopped appearing in successful ADS-B snapshots.
+- Added a bounded three-successful-update grace period:
+  - A returned tracked ICAO resets the miss counter immediately.
+  - The first and second consecutive successful misses retain tracking.
+  - The third consecutive successful miss clears manual tracking and the tracked
+    ICAO atomically.
+- Returned the radar to normal idle nearest-aircraft mode after automatic clear.
+- Prevented failed requests from advancing the tracked-aircraft miss counter.
+- Prevented stale discarded range responses from advancing the counter.
+- Reset the counter when STOP TRACK is used or a new aircraft is tracked.
 
----
+### Changed
+
+- Replaced the indefinite `Waiting for tracked aircraft` state during the grace
+  period with:
+  - `TRACK SIGNAL LOST`
+  - `Checking next update`
+- Added a serial message when confirmed loss clears tracking:
+  `Tracked aircraft <hex> absent from 3 consecutive updates; tracking cleared`.
+
+### Build tooling
+
+- Added a global PlatformIO `workspace_dir` outside the Google Drive project:
+  `~/.platformio/workspaces/bills_aircraft_radar`.
+- Kept generated objects and downloaded project libraries away from Drive File
+  Stream locking or removal during SCons builds.
+- Added `cppcheck: --skip-packages` so Project Inspection analyzes application
+  sources without reporting false syntax failures in downloaded toolchain and
+  library package headers.
+- The cppcheck option does not alter normal compilation, linking, upload, target
+  framework, or runtime behavior.
+
+### Preserved
+
+- Product 33 R5 UI, longitude spacing, and dynamic nearest-other count.
+- Stable ICAO selection and tracking identity.
+- Tracked-aircraft outward auto-zoom.
+- Native HTTPS and fallback behavior.
+- Core-0 request ownership and non-overlapping requests.
+- Recovery escalation, deadlines, generation rejection, and last-good retention.
+- Product 30 target capacity and PSRAM ownership.
+- Radar center, radius, projection, bearing, request radius, and range math.
+- Waveshare panel timing, DMA, XIP/OPI PSRAM, and the 20-scanline bounce buffer.
+
+### Verification
+
+- App-state compilation passed with warnings treated as errors.
+- State-transition tests covered:
+  - Tracked aircraft present
+  - One successful missing snapshot
+  - Two successful missing snapshots
+  - Third successful missing snapshot auto-clear
+  - Target return resetting the counter
+  - Empty successful snapshots
+  - Manual STOP TRACK
+  - Selecting a new tracked aircraft
+  - Repeated fetch failures
+  - Stale discarded responses
+- Logging occurs after releasing the app-state mutex.
+### Pending verification
+
+- Full PlatformIO compile and link.
+- Flash and internal-RAM usage report.
+- Physical tracked-aircraft-loss test.
+- Normal ADS-B and TLS operation.
+- Clean Project Inspection run with package headers skipped.
+- Extended soak test.
 
 ## Product 33 R5 - 2026-07-24
 
 **Build:** `7IN-20260724-PRODUCT33-UI-POLISH-R5`  
 **Commit:** [`14fe9f4`](https://github.com/bcarriveau/esp-aircraft-radar/commit/14fe9f46b8c131ed1a22f5adb93e898f3188e3b1)  
-**Status:** Current UI-cleanup candidate
+**Status:** Superseded by Product 34
 
 ### Changed
 
@@ -73,8 +132,8 @@ confirmed.
   from which the later R4 and R5 refinements were derived.
 - Product 33 R4 is not retained as a standalone Git commit; its longitude-spacing
   correction is included in R5.
-- Product 33 R5 still requires full compile/link, physical UI and touch testing,
-  normal ADS-B verification, and soak testing.
+- Product 33 R5 still required full compile/link, physical UI and touch testing,
+  normal ADS-B verification, and soak testing when it was superseded.
 
 ## Product 33 R2 - 2026-07-24
 

@@ -19,10 +19,10 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 
 ## Current status
 
-Current GitHub build marker:
+Current source build marker:
 
 ```text
-7IN-20260724-PRODUCT33-UI-POLISH-R5
+7IN-20260725-PRODUCT34-TRACK-LOSS-RECOVERY
 ```
 
 Current source branch:
@@ -38,11 +38,11 @@ tag:
 product-15-hardened
 ```
 
-Product 33 R5 is the current UI-cleanup source in GitHub. Repository evidence
-identifies Product 33 R3 as the physically tested source used for the later R4
-and R5 refinements. Product 33 R5 should remain a candidate until a complete
-PlatformIO build, physical UI check, normal ADS-B operation, and soak testing
-are confirmed.
+Product 34 is the current release candidate. It adds confirmed tracked-aircraft
+loss recovery on top of Product 33 R5 and includes the local PlatformIO workspace
+and cppcheck configuration. Product 34 remains a candidate until the complete
+PlatformIO build, physical tracking-loss test, normal ADS-B operation, and soak
+testing are confirmed.
 
 ## Features
 
@@ -74,6 +74,8 @@ Selected state:
 - TRACK begins stable ICAO-based tracking.
 - CLEAR removes the selection.
 - The left panel shows up to three nearest other aircraft.
+- The nearest-other heading reflects the number of populated rows:
+  `NO OTHER`, `NEAREST 1`, `NEAREST 2`, or `NEAREST 3`.
 
 Tracked state:
 
@@ -83,6 +85,14 @@ Tracked state:
 - The left panel shows the nearest other aircraft without replacing the tracked
   aircraft.
 - Stopping tracking preserves selection when practical.
+- One or two successful snapshots that temporarily omit the tracked ICAO retain
+  tracking.
+- During that grace period, the right card reports `TRACK SIGNAL LOST` and checks
+  the next update.
+- Three consecutive successful current-generation snapshots without the tracked
+  ICAO automatically clear tracking and return the radar to normal idle mode.
+- Failed requests and stale discarded responses do not advance the lost-track
+  counter.
 
 ### Additional pages
 
@@ -115,6 +125,12 @@ Tracked state:
 - LVGL labels and page content update only when their underlying versions change.
 - Aircraft selection and tracking use stable ICAO hex values, never array
   positions.
+- Tracked-aircraft loss is evaluated only when a successful current-generation
+  target snapshot is published.
+- A returned tracked ICAO resets the loss counter immediately.
+- Manual STOP TRACK and starting a new tracked aircraft reset the loss counter.
+- Tracking is cleared atomically under the existing app-state mutex after three
+  consecutive confirmed misses.
 
 ### Target capacity
 
@@ -146,8 +162,9 @@ without a dedicated display-stability investigation.
 assets/                 Aircraft artwork and display assets
 include/                Shared interfaces and hardware configuration
 src/                    Application, networking, state, radar, and UI sources
-platformio.ini          Pinned PlatformIO environment and libraries
+platformio.ini          Pinned PlatformIO environment, workspace, and checks
 README.md               Current project documentation
+CHANGELOG.md            Confirmed Product history
 ```
 
 Private credentials belong only in `include/config.h`. That file must remain
@@ -206,7 +223,30 @@ The project pins:
 - LVGL 8.3.11
 - ArduinoJson 7.3.1
 
-### 5. Upload and monitor
+Generated objects and downloaded project libraries are stored outside the
+Google Drive project directory:
+
+```text
+~/.platformio/workspaces/bills_aircraft_radar
+```
+
+This avoids Drive File Stream locking or removing `.pio` files while SCons is
+building.
+
+### 5. Static inspection
+
+Run:
+
+```bash
+pio check -e waveshare-s3-touch-lcd-7
+```
+
+The project passes `cppcheck: --skip-packages`, which keeps static analysis on
+the application sources while skipping downloaded framework, toolchain, and
+library packages. This avoids false syntax failures in package headers such as
+`bits/c++config.h` and does not alter normal compilation, linking, or upload.
+
+### 6. Upload and monitor
 
 ```bash
 pio run -e waveshare-s3-touch-lcd-7 -t upload
@@ -240,17 +280,23 @@ Before calling a Product release complete:
 3. Confirm the build marker, OPI PSRAM, and 20-scanline bounce buffer.
 4. Test normal 15-second updates and 20/40/80 mile range changes.
 5. Test selection, INFO, BACK, TRACK, STOP TRACK, CLEAR, and page navigation.
-6. Interrupt Wi-Fi or the router and confirm recovery.
-7. Change range during an active request and confirm stale-response rejection.
-8. Check display stability during HTTPS traffic.
-9. Check heap and PSRAM stability.
-10. Complete an extended soak test.
+6. Track an aircraft and confirm one or two successful omitted snapshots retain
+   tracking.
+7. Confirm the third consecutive successful omitted snapshot clears tracking and
+   restores the idle nearest-aircraft view.
+8. Confirm failed requests and stale discarded responses do not clear tracking.
+9. Interrupt Wi-Fi or the router and confirm recovery.
+10. Change range during an active request and confirm stale-response rejection.
+11. Check display stability during HTTPS traffic.
+12. Check heap and PSRAM stability.
+13. Complete an extended soak test.
 
 ## Screenshots
 
-Verified Product 33 R5 screenshots are not currently committed. Add current
-physical-display photos under a dedicated `docs/images/` directory after the
-Product 33 R5 UI and touch behavior are physically confirmed.
+Current Product 33 UI photographs have been used for physical layout review but
+are not yet committed under a documentation image directory. Add verified
+current-display photos under `docs/images/` after Product 34 behavior is
+physically confirmed.
 
 ## Major milestones
 
@@ -276,10 +322,13 @@ Product 33 R5 UI and touch behavior are physically confirmed.
   Setup page, and project credit card.
 - **Product 33:** UI fit, spacing, heading, highlight-card, and dynamic nearest
   count cleanup.
+- **Product 34:** Confirmed tracked-aircraft loss recovery with a three-successful-
+  update grace period, temporary lost-signal messaging, and automatic return to
+  idle mode. The accompanying PlatformIO update isolates generated files from
+  Google Drive and skips third-party package headers during cppcheck.
 
-Detailed Product-by-Product history belongs in `CHANGELOG.md` after it is built
-from confirmed GitHub commits, build markers, logs, and preserved evidence.
-Unconfirmed older history should not be guessed.
+Detailed Product-by-Product history is maintained in `CHANGELOG.md`. Unconfirmed
+older history is not guessed.
 
 ## License and data source
 
