@@ -14,16 +14,93 @@ GitHub or preserved evidence does not confirm the changes.
 
 ## Current status
 
-- **Current source:** Product 35
-- **Current build marker:** `7IN-20260725-PRODUCT35-DESCRIPTION-TYPE-FALLBACK`
+- **Current source:** Product 36
+- **Current build marker:** `7IN-20260725-PRODUCT36-RADAR-BITMAP-CONTACTS`
 - **Current branch:** `main`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
 
+## Product 36 - 2026-07-25
+
+**Build:** `7IN-20260725-PRODUCT36-RADAR-BITMAP-CONTACTS`  
+**Status:** Host-verified release candidate; full PlatformIO and physical verification pending
+
+### Added
+
+- Replaced normal radar contact dots with compact 20 x 14 aircraft bitmap
+  silhouettes when the radar is set to 20 miles.
+- Used the existing flash-resident airliner, business-jet, turboprop, piston,
+  helicopter, and unknown bitmap assets.
+- Added a fixed bounded nearest-neighbor contact renderer that draws directly
+  into the existing radar canvas and preserves transparent source pixels.
+
+### Changed
+
+- Selected aircraft retain an amber bitmap plus the existing amber selection
+  rings and selected tag.
+- Tracked aircraft retain a red bitmap plus the existing tracked ring,
+  `TRACKED` tag, stable ICAO identity, MPH display, and STOP TRACK behavior.
+- Normal 20-mile contacts use restrained cyan or green radar-theme coloring.
+- 40-mile and 80-mile views retain the existing compact dot rendering.
+- Contact bitmaps use `bitmapForTarget()` so the Product 35 classification path
+  remains type code first, description-keyword fallback second, and unknown only
+  when neither method classifies the target.
+- Contact pixels are clipped from the existing lower-right range-control
+  exclusion area; the 20/40/80 control and `MILES` caption are unchanged.
+
+### Performance and bounds
+
+- Contact rendering uses fixed 20 x 14 dimensions and bounded loops.
+- No temporary image, heap, PSRAM, Arduino `String`, or LVGL object is allocated
+  inside the radar render loop.
+- The existing single-snapshot render path, PSRAM working buffers, 200-target
+  capacity, and `uint8_t` count/index safety assertion remain unchanged.
+- Existing 18-pixel contact touch radius already covers the bitmap dimensions,
+  so hit testing remains bounded without enlarging overlap between targets.
+
+### Preserved
+
+- Stable ICAO selection and tracking identity and hit-test priority: tracked,
+  selected, then closest.
+- Collision-aware label limits and selected/tracked label priority.
+- Product 34 tracking-loss recovery and Product 35 description classifier.
+- Core-0 networking, native HTTPS and fallback, non-overlapping requests,
+  15-second cadence, deadlines, recovery, range-generation and stale-response
+  rejection, and last-good retention.
+- Radar center, radius, projection, bearing, distance, request-radius, and
+  outward auto-zoom math.
+- Product 30 PSRAM ownership and 200-target capacity.
+- Waveshare panel timing, DMA, XIP/OPI PSRAM, anti-rolling configuration, GT911
+  touch driver, and 20-scanline RGB bounce buffer.
+- `include/config.h` privacy and ignore behavior.
+
+### Completed verification
+
+- Reviewed zero-, one-, dense-, overlap-, selected-, tracked-, and 200-target
+  bounds in the contact render and hit-test paths.
+- Host C++17 bitmap-scaling tests passed with warnings treated as errors,
+  including transparent pixels, canvas bounds, range-control clipping, and 200
+  retained contacts.
+- Static checks confirmed the new render helper contains no heap allocation,
+  PSRAM allocation, Arduino `String`, or per-aircraft LVGL object creation.
+- Confirmed Product 36 changes are limited to radar rendering, the build marker,
+  and repository documentation.
+
+### Pending verification
+
+- Full PlatformIO compile and link in a PlatformIO-capable checkout.
+- Flash and internal-RAM usage report from that build.
+- Physical validation of every bitmap category and Product 35 description
+  fallback, including unknown fallback.
+- Dense 20-mile traffic, selection, tracking, tracking-loss recovery, overlapping
+  aircraft, tag and icon touch, 20/40/80 switching, page switching, touch
+  responsiveness, normal 15-second updates, TLS/Wi-Fi recovery, no screen
+  rolling, heap/PSRAM stability, and extended soak testing.
+
 ## Product 35 - 2026-07-25
 
 **Build:** `7IN-20260725-PRODUCT35-DESCRIPTION-TYPE-FALLBACK`  
-**Status:** Release candidate; full PlatformIO and physical verification pending
+**Status:** Superseded by Product 36
 
 ### Added
 

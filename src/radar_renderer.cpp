@@ -16,6 +16,10 @@ constexpr int CENTER_X = WIDTH / 2;
 constexpr int CENTER_Y = HEIGHT / 2;
 constexpr int RADIUS = 168;
 constexpr uint8_t PRIORITY_OTHER_COUNT = 3;
+constexpr int RADAR_ICON_WIDTH = 20;
+constexpr int RADAR_ICON_HEIGHT = 14;
+constexpr int RANGE_CONTROL_X1 = WIDTH - 120;
+constexpr int RANGE_CONTROL_Y1 = HEIGHT - 52;
 
 View radarView;
 float sweepDegrees = 0;
@@ -392,13 +396,42 @@ void drawRadarBackground() {
   fillCircle(CENTER_X, CENTER_Y, 3, green);
 }
 
+void drawRadarBitmapContact(int centerX, int centerY,
+                            AircraftBitmapId bitmapId,
+                            lv_color_t color) {
+  const int startX = centerX - RADAR_ICON_WIDTH / 2;
+  const int startY = centerY - RADAR_ICON_HEIGHT / 2;
+  const uint16_t* sprite = aircraftBitmap(bitmapId);
+
+  for (int destinationY = 0; destinationY < RADAR_ICON_HEIGHT;
+       ++destinationY) {
+    const int sourceY =
+        destinationY * AIRCRAFT_BITMAP_H / RADAR_ICON_HEIGHT;
+    for (int destinationX = 0; destinationX < RADAR_ICON_WIDTH;
+         ++destinationX) {
+      const int sourceX =
+          destinationX * AIRCRAFT_BITMAP_W / RADAR_ICON_WIDTH;
+      const uint16_t pixel = pgm_read_word(
+          sprite + sourceY * AIRCRAFT_BITMAP_W + sourceX);
+      if (!pixel) continue;
+
+      const int x = startX + destinationX;
+      const int y = startY + destinationY;
+      if (x >= RANGE_CONTROL_X1 && y >= RANGE_CONTROL_Y1) continue;
+      putPixel(x, y, color);
+    }
+  }
+}
+
 void drawContacts(aircraft::Target* workTargets, uint8_t count,
                   float projectionSeconds, float rangeMiles,
                   const app_state::Snapshot& snapshot, const char* selectedHex,
                   ContactFrame& frame) {
   const lv_color_t bright = rgb(255, 220, 80);
   const lv_color_t cyan = rgb(80, 210, 255);
+  const lv_color_t green = rgb(70, 255, 145);
   const lv_color_t amber = rgb(255, 190, 70);
+  const lv_color_t red = rgb(255, 80, 80);
   frame.count = 0;
   frame.trackedVisible = false;
   frame.trackedX = 0;
@@ -434,11 +467,20 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
     bool contactIsSelected = !snapshot.manualTracking && selectedHex &&
                              selectedHex[0] && workTargets[i].hex[0] &&
                              strcmp(workTargets[i].hex, selectedHex) == 0;
-    fillCircle(x, y, contactIsTracked ? 4 : 2,
-               contactIsTracked ? rgb(255, 80, 80)
-                                : (contactIsSelected ? cyan
-                                                     : (behind < 24.0f
-                                                            ? bright : cyan)));
+    if (rangeMiles <= 20.1f) {
+      const lv_color_t iconColor =
+          contactIsTracked ? red
+                           : (contactIsSelected ? amber
+                                                : (behind < 24.0f ? green : cyan));
+      drawRadarBitmapContact(x, y, aircraft::bitmapForTarget(workTargets[i]),
+                             iconColor);
+    } else {
+      fillCircle(x, y, contactIsTracked ? 4 : 2,
+                 contactIsTracked ? red
+                                  : (contactIsSelected ? cyan
+                                                       : (behind < 24.0f
+                                                              ? bright : cyan)));
+    }
     if (contactIsSelected) {
       drawCircle(x, y, 8, amber);
       drawCircle(x, y, 12, amber);
@@ -461,7 +503,7 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
       };
     }
     if (contactIsTracked) {
-      drawCircle(x, y, 10, rgb(255, 80, 80));
+      drawCircle(x, y, 10, red);
       frame.trackedVisible = true;
       frame.trackedX = x;
       frame.trackedY = y;
@@ -478,7 +520,7 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
 
   // Reserve the visible range control, including its MILES caption.
   labelBoxes[labelBoxCount++] = {
-    (int16_t)(WIDTH - 120), (int16_t)(HEIGHT - 52),
+    (int16_t)RANGE_CONTROL_X1, (int16_t)RANGE_CONTROL_Y1,
     (int16_t)(WIDTH - 1), (int16_t)(HEIGHT - 1)
   };
 
