@@ -118,6 +118,7 @@ lv_obj_t* airspaceMetricValueLabels[AIRSPACE_METRIC_COUNT]{};
 lv_obj_t* airspaceCategoryCountLabels[AIRSPACE_CATEGORY_COUNT]{};
 lv_obj_t* airspaceCategoryPercentLabels[AIRSPACE_CATEGORY_COUNT]{};
 lv_obj_t* airspaceCategoryIcons[AIRSPACE_CATEGORY_COUNT]{};
+lv_obj_t* airspaceHighlightsViewport = nullptr;
 lv_obj_t* airspaceHighlightsLabel = nullptr;
 lv_obj_t* systemCreditPanel = nullptr;
 lv_obj_t* detailPanel = nullptr;
@@ -169,6 +170,19 @@ void styleDashboardCard(lv_obj_t* object) {
   lv_obj_set_style_radius(object, 6, 0);
   lv_obj_set_style_pad_all(object, 6, 0);
   lv_obj_clear_flag(object, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+void styleSettingsField(lv_obj_t* field) {
+  if (!field) return;
+  lv_obj_set_style_bg_color(field, rgb(12, 28, 38), 0);
+  lv_obj_set_style_bg_opa(field, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_color(field, rgb(38, 102, 112), 0);
+  lv_obj_set_style_border_width(field, 1, 0);
+  lv_obj_set_style_radius(field, 6, 0);
+  lv_obj_set_style_pad_all(field, 8, 0);
+  lv_obj_set_style_text_color(field, rgb(225, 235, 240), 0);
+  lv_obj_set_style_border_color(field, rgb(63, 255, 155), LV_STATE_FOCUSED);
+  lv_obj_set_style_border_width(field, 2, LV_STATE_FOCUSED);
 }
 
 lv_obj_t* makeLabel(lv_obj_t* parent, const char* text,
@@ -1129,9 +1143,11 @@ bool buildRadarPanels(lv_obj_t* root) {
                         LV_EVENT_CLICKED, nullptr);
   }
 
-  leftOtherModeLabel = makeLabel(left, "NEAREST AIRCRAFT",
-                                 &lv_font_montserrat_12,
-                                 rgb(110, 220, 255), 4, 88);
+  leftOtherModeLabel = makeLabel(left, "NEAREST 3",
+                                 &lv_font_montserrat_14,
+                                 rgb(110, 220, 255), 4, 86);
+  lv_obj_set_width(leftOtherModeLabel, 112);
+  lv_label_set_long_mode(leftOtherModeLabel, LV_LABEL_LONG_CLIP);
   lv_obj_add_flag(leftOtherModeLabel, LV_OBJ_FLAG_HIDDEN);
   for (uint8_t i = 0; i < PRIORITY_OTHER_COUNT; ++i) {
     leftOtherIcons[i] = makeRadarSideIcon(
@@ -1478,32 +1494,35 @@ void buildPageShell(lv_obj_t* root) {
   }
 
   lv_obj_t* highlightsCard = lv_obj_create(airspaceDashboard);
-  lv_obj_set_size(highlightsCard, 224, 176);
+  lv_obj_set_size(highlightsCard, 224, 200);
   lv_obj_set_pos(highlightsCard, 518, 68);
   styleDashboardCard(highlightsCard);
   makeLabel(highlightsCard, "LIVE HIGHLIGHTS", &lv_font_montserrat_14,
             rgb(110, 220, 255), 6, 4);
+  airspaceHighlightsViewport = lv_obj_create(highlightsCard);
+  lv_obj_set_size(airspaceHighlightsViewport, 200, 160);
+  lv_obj_set_pos(airspaceHighlightsViewport, 6, 28);
+  lv_obj_set_style_bg_opa(airspaceHighlightsViewport, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(airspaceHighlightsViewport, 0, 0);
+  lv_obj_set_style_pad_all(airspaceHighlightsViewport, 0, 0);
+  lv_obj_clear_flag(airspaceHighlightsViewport, LV_OBJ_FLAG_SCROLLABLE);
   airspaceHighlightsLabel = makeLabel(
-      highlightsCard, "Waiting for aircraft", &lv_font_montserrat_12,
-      rgb(225, 235, 240), 6, 28);
+      airspaceHighlightsViewport, "Waiting for aircraft",
+      &lv_font_montserrat_12, rgb(225, 235, 240), 0, 0);
   lv_obj_set_width(airspaceHighlightsLabel, 198);
   lv_label_set_long_mode(airspaceHighlightsLabel, LV_LABEL_LONG_WRAP);
   setAirspaceVisible(false);
 
   systemCreditPanel = lv_obj_create(pagePanel);
-  lv_obj_set_size(systemCreditPanel, 286, 116);
-  lv_obj_set_pos(systemCreditPanel, 454, 210);
+  lv_obj_set_size(systemCreditPanel, 286, 88);
+  lv_obj_set_pos(systemCreditPanel, 454, 238);
   styleDashboardCard(systemCreditPanel);
-  makeLabel(systemCreditPanel, "PROJECT", &lv_font_montserrat_12,
-            rgb(100, 170, 180), 7, 4);
   makeLabel(systemCreditPanel, "DESIGNED & BUILT BY",
-            &lv_font_montserrat_12, rgb(110, 220, 255), 7, 24);
+            &lv_font_montserrat_12, rgb(110, 220, 255), 7, 6);
   makeLabel(systemCreditPanel, "BILL CARRIVEAU", &lv_font_montserrat_20,
-            rgb(63, 255, 155), 7, 42);
+            rgb(63, 255, 155), 7, 25);
   makeLabel(systemCreditPanel, "ESP32-S3 ADS-B AIRCRAFT RADAR",
-            &lv_font_montserrat_12, rgb(225, 235, 240), 7, 70);
-  makeLabel(systemCreditPanel, "PLATFORMIO / C++ / LVGL",
-            &lv_font_montserrat_12, rgb(100, 170, 180), 7, 88);
+            &lv_font_montserrat_12, rgb(225, 235, 240), 7, 57);
   setSystemCreditVisible(false);
 
   reconnectButton = lv_btn_create(pagePanel);
@@ -1543,34 +1562,37 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_add_flag(settingsKeyboard, LV_OBJ_FLAG_HIDDEN);
 
   settingsStatusLabel = makeLabel(pagePanel, "", &lv_font_montserrat_14,
-                                  rgb(120, 240, 155), 280, 320);
-  lv_obj_set_width(settingsStatusLabel, 465);
+                                  rgb(120, 240, 155), 292, 294);
+  lv_obj_set_width(settingsStatusLabel, 453);
 
   titleField = lv_textarea_create(pagePanel);
-  lv_obj_set_size(titleField, 355, 34);
-  lv_obj_set_pos(titleField, 390, 52);
+  lv_obj_set_size(titleField, 335, 38);
+  lv_obj_set_pos(titleField, 410, 50);
   lv_textarea_set_placeholder_text(titleField, "Display name");
   lv_obj_add_event_cb(titleField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
   lv_textarea_set_one_line(titleField, true);
+  styleSettingsField(titleField);
 
   ssidField = lv_textarea_create(pagePanel);
-  lv_obj_set_size(ssidField, 355, 34);
-  lv_obj_set_pos(ssidField, 390, 92);
+  lv_obj_set_size(ssidField, 335, 38);
+  lv_obj_set_pos(ssidField, 410, 96);
   lv_textarea_set_placeholder_text(ssidField, "Wi-Fi SSID");
   lv_obj_add_event_cb(ssidField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
   lv_textarea_set_one_line(ssidField, true);
+  styleSettingsField(ssidField);
 
   passwordField = lv_textarea_create(pagePanel);
-  lv_obj_set_size(passwordField, 265, 34);
-  lv_obj_set_pos(passwordField, 390, 132);
+  lv_obj_set_size(passwordField, 235, 38);
+  lv_obj_set_pos(passwordField, 410, 142);
   lv_textarea_set_placeholder_text(passwordField, "Wi-Fi password");
   lv_obj_add_event_cb(passwordField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
   lv_textarea_set_one_line(passwordField, true);
   lv_textarea_set_password_mode(passwordField, true);
+  styleSettingsField(passwordField);
 
   showPasswordButton = lv_btn_create(pagePanel);
-  lv_obj_set_size(showPasswordButton, 80, 34);
-  lv_obj_set_pos(showPasswordButton, 665, 132);
+  lv_obj_set_size(showPasswordButton, 90, 38);
+  lv_obj_set_pos(showPasswordButton, 655, 142);
   lv_obj_set_style_bg_color(showPasswordButton, rgb(20, 68, 82), 0);
   lv_obj_add_event_cb(showPasswordButton, showPasswordEvent,
                       LV_EVENT_CLICKED, nullptr);
@@ -1580,33 +1602,35 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_center(showPasswordLabel);
 
   latitudeField = lv_textarea_create(pagePanel);
-  lv_obj_set_size(latitudeField, 140, 34);
-  lv_obj_set_pos(latitudeField, 370, 174);
+  lv_obj_set_size(latitudeField, 150, 38);
+  lv_obj_set_pos(latitudeField, 372, 188);
   lv_textarea_set_placeholder_text(latitudeField, "Latitude");
   lv_obj_add_event_cb(latitudeField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
   lv_textarea_set_one_line(latitudeField, true);
+  styleSettingsField(latitudeField);
 
   longitudeField = lv_textarea_create(pagePanel);
-  lv_obj_set_size(longitudeField, 140, 34);
-  lv_obj_set_pos(longitudeField, 605, 174);
+  lv_obj_set_size(longitudeField, 125, 38);
+  lv_obj_set_pos(longitudeField, 620, 188);
   lv_textarea_set_placeholder_text(longitudeField, "Longitude");
   lv_obj_add_event_cb(longitudeField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
   lv_textarea_set_one_line(longitudeField, true);
+  styleSettingsField(longitudeField);
 
   settingsFormLabels[0] = makeLabel(pagePanel, "DISPLAY NAME",
-      &lv_font_montserrat_14, rgb(110, 220, 255), 280, 58);
+      &lv_font_montserrat_14, rgb(110, 220, 255), 292, 61);
   settingsFormLabels[1] = makeLabel(pagePanel, "WI-FI SSID",
-      &lv_font_montserrat_14, rgb(110, 220, 255), 280, 98);
+      &lv_font_montserrat_14, rgb(110, 220, 255), 292, 107);
   settingsFormLabels[2] = makeLabel(pagePanel, "PASSWORD",
-      &lv_font_montserrat_14, rgb(110, 220, 255), 280, 138);
+      &lv_font_montserrat_14, rgb(110, 220, 255), 292, 153);
   settingsFormLabels[3] = makeLabel(pagePanel, "LATITUDE",
-      &lv_font_montserrat_14, rgb(110, 220, 255), 280, 180);
+      &lv_font_montserrat_14, rgb(110, 220, 255), 292, 199);
   settingsFormLabels[4] = makeLabel(pagePanel, "LONGITUDE",
-      &lv_font_montserrat_14, rgb(110, 220, 255), 515, 180);
+      &lv_font_montserrat_14, rgb(110, 220, 255), 532, 199);
 
   saveSettingsButton = lv_btn_create(pagePanel);
-  lv_obj_set_size(saveSettingsButton, 150, 42);
-  lv_obj_set_pos(saveSettingsButton, 280, 220);
+  lv_obj_set_size(saveSettingsButton, 165, 42);
+  lv_obj_set_pos(saveSettingsButton, 292, 240);
   lv_obj_set_style_bg_color(saveSettingsButton, rgb(24, 128, 84), 0);
   lv_obj_add_event_cb(saveSettingsButton, saveSettingsEvent, LV_EVENT_CLICKED, nullptr);
   lv_obj_t* saveLabel = lv_label_create(saveSettingsButton);
@@ -1615,8 +1639,8 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_center(saveLabel);
 
   resetSettingsButton = lv_btn_create(pagePanel);
-  lv_obj_set_size(resetSettingsButton, 155, 42);
-  lv_obj_set_pos(resetSettingsButton, 440, 220);
+  lv_obj_set_size(resetSettingsButton, 170, 42);
+  lv_obj_set_pos(resetSettingsButton, 470, 240);
   lv_obj_set_style_bg_color(resetSettingsButton, rgb(20, 68, 82), 0);
   lv_obj_add_event_cb(resetSettingsButton, resetSettingsEvent, LV_EVENT_CLICKED, nullptr);
   resetSettingsLabel = lv_label_create(resetSettingsButton);
