@@ -1,323 +1,289 @@
-# BILLS Aircraft Radar â€” Waveshare ESP32-S3-Touch-LCD-7
+# Bill's Aircraft Radar
 
-PlatformIO firmware for the exact 7-inch 800Ã—480 Waveshare ST7262 + GT911
-board.
+A dedicated 7-inch ESP32-S3 ADS-B aircraft radar display built with PlatformIO,
+Arduino C++, and LVGL.
 
-## Product 26 radar interaction and theme candidate
+This repository targets one exact device:
 
-Current firmware marker:
+- **Board:** Waveshare ESP32-S3-Touch-LCD-7
+- **Display:** 7-inch 800x480 RGB LCD with ST7262 controller
+- **Touch:** GT911 capacitive touchscreen
+- **I/O expander:** CH422G
+- **Processor:** ESP32-S3
+- **Memory:** OPI PSRAM with XIP enabled
+- **Framework:** Arduino-ESP32 3.0.7 high-performance build
+- **UI:** LVGL 8.3.11
 
-`7IN-20260722-PRODUCT26-RADAR-INTERACTION`
+It is not compatible with the Waveshare 7B, 7C, P4, generic 7-inch panels,
+Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 
-Product 26 is a focused radar UI and rendering update on the Product 25
-reliability baseline.
+## Current status
 
-- Replaces plain 20-mile identifier text with compact dark navy tags, cyan
-  identifiers, thin teal borders, and rounded corners.
-- Adds canvas-owned contact and tag hit regions keyed by stable ICAO hex. Tag
-  rectangles are tested before expanded contact-dot areas; overlap priority is
-  tracked, selected, then the closest contact to the touch point.
-- Adds a temporary 30-second selected-aircraft state with an amber double ring,
-  an amber-bordered two-line tag, and SELECTED information in the left panel.
-- Makes the primary left aircraft panel select the nearest aircraft when not
-  tracking, with INFO and TRACK actions. While tracking, the panel retains its
-  existing tracked-aircraft profile behavior.
-- Adds a compact 20/40/80 selector inside the radar. It occupies the lower-right
-  corner normally and moves directly above STOP TRACK while tracking.
-- Keeps STOP TRACK at the radar's actual lower-right corner, preserves the
-  tracked three-line label priority, and keeps predictive outward auto-zoom.
-- Does not change ADS-B networking, TLS, request deadlines, stale-response
-  rejection, panel timing, PSRAM/XIP, DMA, or the 20-scanline RGB bounce buffer.
+Current GitHub build marker:
 
-Product 26 requires physical touch, layout, screen-rolling, and soak testing.
+```text
+7IN-20260724-PRODUCT33-UI-POLISH-R5
+```
 
-## Product 25 NVS defaults and Product 24 transport recovery
+Current source branch:
 
-Product 25 Fixes the missing NVS-key spam in first soak test.
-Product 24 addresses the separate HTTPS recovery failure found during the
-Product 23 physical test. Product 23 successfully published repeated aircraft
-snapshots, then one response stopped at 39,699 of 45,880 bytes. The incomplete
-body was followed by persistent TLS connection failures even though Wi-Fi,
-DNS, and RSSI remained healthy. The old recovery policy would not recycle the
-connection for TLS or response-body failures and eventually restarted the
-ESP32 from core 0 while core 1 was using the Wi-Fi object.
+```text
+main
+```
 
-- Retries a timed-out native body read up to three times with a three-second
-  per-read timeout, while retaining independent idle and total deadlines.
-- Treats an early zero-byte read as an incomplete response instead of spinning
-  until the full idle deadline.
-- Explicitly closes the native HTTP connection before destroying its client
-  handle and gives the network stack a scheduling point before fallback or
-  retry.
-- Preserves the most advanced failure reached across both request attempts. A
-  partial response-body failure is no longer mislabeled as TLS merely because
-  the final retry could not reconnect.
-- Reconnects Wi-Fi immediately after a response-body failure, or after two
-  consecutive TLS/header failures. If that first recovery does not restore
-  HTTPS, the next recovery fully restarts the station radio.
-- Retries ADS-B one second after a successful recovery instead of waiting for
-  the prolonged-outage backoff.
-- Requests the 30-minute last-resort restart from the network task, suspends
-  that task, and performs the restart from the main loop before another
-  `WiFi.status()` call. This removes the cross-core restart collision captured
-  in the Product 23 log.
-- Keeps the last good aircraft snapshot visible throughout recovery.
-- Does not change the Product 23 heading fix, Products 19-21 UI/tracking,
-  certificate verification, PSRAM/XIP, panel timing, or the 20-scanline RGB
-  bounce buffer.
+The hardened version-controlled baseline is **Product 15**, with the recommended
+tag:
 
-Product 24 requires physical recovery testing and a 24-hour soak test.
+```text
+product-15-hardened
+```
 
-## Product 23 heading crash fix
+Product 33 R5 is the current UI-cleanup source in GitHub. Repository evidence
+identifies Product 33 R3 as the physically tested source used for the later R4
+and R5 refinements. Product 33 R5 should remain a candidate until a complete
+PlatformIO build, physical UI check, normal ADS-B operation, and soak testing
+are confirmed.
 
-Product 23 fixes the intermittent core-1 `LoadProhibited` panic introduced by
-the Product 21 heading display. The crash occurred after aircraft publication
-when the nearest or tracked target had a valid heading. LVGL's configured
-formatter does not support floating-point conversion, so the heading label's
-mixed `%f` / `%s` format consumed the variable arguments incorrectly and
-treated part of the floating-point value as a string pointer.
+## Features
 
-- Rounds and normalizes the heading to an integer from 000 through 359.
-- Uses standard `snprintf()` followed by `lv_label_set_text()` instead of
-  passing a floating-point value through `lv_label_set_text_fmt()`.
-- Removes the two remaining floating-point LVGL format calls from the range
-  label; all LVGL-formatted numeric values now use integers.
-- Preserves the rotating heading arrow and compass direction.
-- Preserves all Product 22 large-response handling and Products 19-21 UI
-  features.
-- Does not change ADS-B transport, Wi-Fi recovery, PSRAM/XIP, panel timing, or
-  the 20-scanline RGB bounce buffer.
+### Live radar
 
-The Product 22 physical log confirmed a complete 105,690-byte HTTP response,
-189 parsed aircraft, and 100 published targets before the UI formatter panic.
+- Displays all retained aircraft as radar contacts.
+- Provides 20, 40, and 80 mile radar ranges.
+- Uses the compact radar selector as the only range control.
+- Shows themed contact tags at the 20-mile range.
+- Uses stable ICAO hex identity for contact taps, selection, and tracking.
+- Prioritizes tracked and selected tags during collision-aware label placement.
+- Keeps selected aircraft visible with amber styling.
+- Keeps tracked aircraft visible with red styling.
+- Automatically zooms outward when a tracked aircraft approaches the edge.
+- Presents aircraft speed in MPH.
 
-## Product 22 large-response reliability candidate
+### Radar interaction
 
-Product 22 fixes an ADS-B body-read failure exposed by 80-mile requests. Large
-responses can briefly return `EAGAIN` from ESP-IDF while the TLS connection is
-still valid. The previous loop treated the library's `-1` return as fatal even
-when `esp_http_client_get_errno()` reported the retryable `EAGAIN` condition.
+Idle state:
 
-- Uses a five-second body-read timeout after the TLS connection and HTTP
-  headers are established.
-- Retries `ESP_ERR_HTTP_EAGAIN`, `EAGAIN`, `EWOULDBLOCK`, and `ETIMEDOUT`
-  reads while Wi-Fi remains connected.
-- Retains the existing 30-second no-progress and 90-second total-response
-  deadlines so a permanently stalled response still fails safely.
-- Preserves Product 21 tracking, auto-zoom, heading, label, and keyboard UI.
-- Does not change TLS verification, Wi-Fi recovery, rendering, PSRAM/XIP, or
-  the 20-scanline RGB bounce buffer.
+- Left panel shows aircraft count, nearest-aircraft information, and data status.
+- Right panel shows the nearest five aircraft.
+- Tapping the nearest aircraft, a radar contact, or a radar tag selects it.
 
-Product 22 requires compile and physical testing. Product 18 at commit
-`69dce612` remains the last physically confirmed TLS baseline.
+Selected state:
 
-## Products 19-21 tracking and UI changes
+- Selected details take priority in the right panel.
+- INFO opens aircraft details and returns to Radar.
+- TRACK begins stable ICAO-based tracking.
+- CLEAR removes the selection.
+- The left panel shows up to three nearest other aircraft.
 
-Products 19-21 build on the physically working Product 18 TLS baseline:
+Tracked state:
 
-- Remove the 160-mile selection; available ranges are 20, 40, and 80 miles.
-- Predictively step outward from 20 to 40 or 40 to 80 miles before a tracked
-  aircraft leaves the current view. Tracking never automatically zooms in.
-- Open Setup text entry with a full-width screen-level popup keyboard.
-- Remove the redundant upper-left radar status overlay.
-- Measure aircraft identifiers with LVGL so they remain on one line.
-- Change the left aircraft panel from `NEAREST` to `TRACKED` while tracking
-  and show the tracked aircraft's live information.
-- Add a rotating travel-heading arrow and heading value above Data Status for
-  both nearest and tracked aircraft.
-- Keep the panel in tracked mode while waiting for a temporarily missing
-  tracked aircraft instead of silently substituting the nearest aircraft.
-- Open details for whichever aircraft the left panel currently represents.
+- Tracked details take priority in the right panel.
+- STOP TRACK is contained in the tracked-aircraft card.
+- The radar tag shows TRACKED, the aircraft identifier, and MPH.
+- The left panel shows the nearest other aircraft without replacing the tracked
+  aircraft.
+- Stopping tracking preserves selection when practical.
 
-## Product 18 certificate-bundle baseline
+### Additional pages
 
-Product 18 corrects the native HTTPS configuration rejected during the first
-Product 17 physical test. It attaches Espressif's full CA certificate bundle
-and keeps hostname verification enabled. Product 17 failed locally before any
-network TLS handshake because no server-verification method was configured.
+- **Tracks:** Aircraft table with details and explicit return-to-Tracks behavior.
+- **Airspace:** Live totals, range metrics, aircraft-category cards, and traffic
+  highlights.
+- **Setup:** Display name, Wi-Fi, location, and device controls.
+- **System:** Build, network, memory, diagnostics, and project identification.
 
-Product 17 introduced the native transport while keeping the Product 15
-display, UI, data-publication, and recovery
-architecture while replacing the TLS transport that continued to time out in
-Product 16:
+## Architecture and reliability
 
-- Uses ESP-IDF's native streaming HTTPS client instead of Arduino's
-  `NetworkClientSecure` handshake plus the hand-written HTTP parser.
-- Re-resolves DNS and creates a completely fresh native client for each retry;
-  both attempts are no longer pinned to one Cloudflare address.
-- Keeps all HTTPS work on the existing core-0 network task and does not
-  reintroduce `HTTPClient::GET()` on the UI task.
-- Preserves the request/body deadlines, response-size guard, PSRAM payload,
-  generation rejection, and single-snapshot publication architecture.
-- Logs RSSI, the native ESP-IDF error, socket errno, and TCP-vs-TLS diagnosis
-  when a connection fails.
-- Recycles Wi-Fi only for Wi-Fi, DNS, or TCP failures. TLS, HTTP, response-body,
-  and JSON failures now retry without deliberately disconnecting a healthy
-  station link.
+### ADS-B networking
 
-This candidate has passed a complete compile/link test and still requires
-physical-display testing and a 24-hour soak test. The known baseline remains
-tagged as `product-15-hardened`.
+- All ADS-B requests and Wi-Fi recovery run in one core-0 network task.
+- Requests cannot overlap.
+- Polling uses a 15-second start-to-start cadence.
+- The native ESP-IDF HTTPS path retains the configured secure fallback behavior.
+- The firmware does not use blocking `HTTPClient::GET()`.
+- Connect, header, body-idle, and total-response deadlines are bounded.
+- Wi-Fi, DNS, TCP, TLS, HTTP, body, and JSON failures are classified separately.
+- Recovery escalates from retry to reconnect, radio recycle, and last-resort
+  restart.
+- The last good aircraft snapshot remains visible during temporary failures.
 
-## Product 15 hardened baseline
+### Request and state safety
 
-Product 15 combines the reliability, workload, interface, Setup, aircraft
-classification, and diagnostics work into one release. It preserves the
-proven RGB anti-rolling configuration from Product 14.
+- Range and location changes increment a request generation.
+- Obsolete responses cannot overwrite a newer range or location selection.
+- Radar rendering uses one coherent target snapshot per frame.
+- LVGL labels and page content update only when their underlying versions change.
+- Aircraft selection and tracking use stable ICAO hex values, never array
+  positions.
 
-### Live ADS-B reliability
+### Target capacity
 
-- Polls adsb.fi on a true 15-second start-to-start schedule.
-- Runs all TLS requests and Wi-Fi recovery on one core-0 network task, so
-  requests cannot overlap.
-- Uses explicit TLS connect, header, body-idle, and total-response deadlines.
-- Classifies Wi-Fi, DNS, TCP, TLS, HTTP status, HTTP header, response body, and
-  JSON failures separately.
-- Retries normally first, recycles Wi-Fi after repeated failures, progressively
-  backs off during a prolonged outage, and restarts only as a last resort after
-  30 minutes and at least 20 consecutive failures.
-- Gives every range or location change a generation number. An old 80-mile
-  response cannot overwrite a newer 20-mile selection.
-- Keeps the last good aircraft visible while status changes between `LIVE`,
-  `UPDATING`, `STALE`, and `OFFLINE`.
-- Shows response duration, response size, received/accepted/visible counts,
-  failure stage, recovery count, and discarded-response count on System.
+- Storage is bounded at 200 retained targets.
+- Capacity-scaled target arrays and radar metadata use required PSRAM.
+- Retention remains nearest-first while preserving the tracked aircraft when it
+  is returned.
+- Diagnostics distinguish received, eligible, stored, capacity-dropped, and
+  visible aircraft counts.
+- Array allocation sizes, bounds checks, counters, and indexes must remain tied
+  to the same capacity constant.
 
-### Display and radar
+### Display stability
 
-- Keeps radar animation at 12.5 FPS while data labels and page content update
-  only when their underlying version changes.
-- Copies targets, selected range, and tracking state under one mutex per radar
-  frame instead of locking once per aircraft.
-- Product 15 originally showed a compact upper-left radar status line. Product
-  20 removed it because it duplicated other status information and interfered
-  with aircraft-label placement.
-- Shows one collision-aware identifier per 20-mile contact. Airline/charter
-  traffic uses flight/callsign; GA/private traffic without a separate flight
-  identifier falls back to registration.
-- Always gives the tracked aircraft first label priority and displays only:
+The display configuration intentionally preserves:
 
-  ```text
-  TRACKED N123AB
-  358 MPH
-  ```
+- Arduino-ESP32 3.0.7 high-performance XIP/PSRAM framework
+- OPI PSRAM and `BOARD_HAS_PSRAM`
+- Existing Waveshare RGB timing
+- DMA and anti-rolling protections
+- 20-scanline RGB bounce buffer
 
-- Provides a conditional `STOP TRACK` button in the radar's lower-right corner.
-- Retains the dedicated Tracks icon column and the three-line nearest-aircraft
-  cards.
-- Stops radar rendering when another page is active.
+Do not replace the framework, change panel timing, or reduce the bounce buffer
+without a dedicated display-stability investigation.
 
-### Setup and diagnostics
+## Repository layout
 
-- Shows the currently saved SSID rather than the compile-time fallback.
-- Masks the saved Wi-Fi password with a `SHOW` / `HIDE` control.
-- Strictly validates latitude and longitude; invalid text can no longer become
-  `0,0` silently.
-- Reconnects through the network task after Wi-Fi credentials change.
-- Separates `RETRY ADSB NOW` from `RECONNECT WIFI` so neither button tears down
-  an active TLS request.
-- Requires a second tap within five seconds before resetting defaults.
-- Restores the default title as `BILLS AIRCRAFT RADAR`.
-- Shows build ID, uptime, Wi-Fi/IP/RSSI, data age, last fetch duration and size,
-  failure stage/count, memory low-water marks, and aircraft counts on System.
+```text
+assets/                 Aircraft artwork and display assets
+include/                Shared interfaces and hardware configuration
+src/                    Application, networking, state, radar, and UI sources
+platformio.ini          Pinned PlatformIO environment and libraries
+README.md               Current project documentation
+```
 
-### Aircraft categories
+Private credentials belong only in `include/config.h`. That file must remain
+ignored and must never be committed, uploaded, or included in replacement ZIPs.
 
-Aircraft types now use an explicit category table instead of loose prefixes:
+## Setup
 
-- Airliner
-- Business jet
-- Military/heavy
-- Turboprop
-- Piston
-- Helicopter
-- Unknown
+### 1. Install the tools
 
-This specifically prevents `PC24`, `BE40`, and `C17` from receiving piston or
-propeller artwork. Unknown ICAO types use the unknown graphic instead of being
-guessed as an airliner.
+Install:
 
-## Hardware and build configuration
+- Visual Studio Code
+- PlatformIO extension
+- Git
 
-- ST7262 RGB LCD, GT911 capacitive touch, and CH422G I/O expander.
-- Espressif Arduino 3.0.7 high-performance XIP-on-PSRAM framework.
-- 64-byte ESP32-S3 cache lines and `-O2` from the high-performance framework.
-- 20-scanline RGB bounce buffer in `waveshare_panel_board.h`.
-- Exact display, I/O expander, LVGL, and ArduinoJson versions are pinned in
-  `platformio.ini`.
-- PlatformIO build objects and dependencies live under
-  `~/.platformio/workspaces/bills_aircraft_radar`, outside the repository, to
-  keep generated `.pio` files out of version control.
+### 2. Clone the repository
 
-Do not replace the high-performance framework, reduce the bounce buffer, or
-change the Waveshare panel timing unless specifically testing the RGB rolling
-fix.
+```bash
+git clone https://github.com/bcarriveau/esp-aircraft-radar.git
+cd esp-aircraft-radar
+```
 
-## Before building
+### 3. Create the private configuration
 
-1. Keep your private `include/config.h` in place. For a new checkout, copy
-   `include/config.example.h` to `include/config.h` and enter Wi-Fi credentials
-   plus the radar center coordinates.
-2. Open the project folder in VS Code with PlatformIO.
-3. Connect the board's programming USB-C port.
-4. Build, upload, and open Serial Monitor at 115200.
+Copy the example file:
 
-`include/config.h` and `*.env` are ignored by Git. Keep the private
-`include/config.h` only in the local working copy; never commit or share it.
+```bash
+cp include/config.example.h include/config.h
+```
 
-## Expected first-boot output
+Edit `include/config.h` with the local Wi-Fi credentials and radar-center
+coordinates.
 
-Serial should show:
+Never commit this file.
 
-- `Build: 7IN-20260721-PRODUCT24-TRANSPORT-RECOVERY`
-- `PSRAM: YES`
-- display initialization messages
-- Wi-Fi IP and RSSI
-- `ADSB fetch task started on core 0`
-- `Published N aircraft in N ms`
+### 4. Build
 
-The display still loads and remains usable if Wi-Fi or adsb.fi is temporarily
-unavailable.
-
-## Build-verification status
-
-Product 21 was compiled and linked locally with the pinned PlatformIO
-environment:
-
-- Flash: 2,047,585 / 6,553,600 bytes (31.2%)
-- Internal RAM: 197,092 / 327,680 bytes (60.1%)
-
-Product 18 was previously compiled and linked with a
-placeholder local `config.h`:
-
-- Flash: 2,011,253 / 6,553,600 bytes (30.7%)
-- Internal RAM: 197,060 / 327,680 bytes (60.1%)
-
-The test build did not use or overwrite the private Wi-Fi credentials.
-
-Product 23 has passed a complete compile and link test with the pinned
 PlatformIO environment:
 
-- Flash: 2,048,421 / 6,553,600 bytes (31.3%)
-- Internal RAM: 197,092 / 327,680 bytes (60.1%)
+```text
+waveshare-s3-touch-lcd-7
+```
 
-Product 23 passed repeated physical aircraft updates and confirmed that its
-heading formatter crash was fixed. Its soak log exposed the separate stalled
-response / transport-recovery failure addressed by Product 24.
+Command-line build:
 
-The two Product 24 networking translation units passed compile-only checks
-against the pinned ESP32-S3 12.2.0 toolchain and Arduino/ESP-IDF framework. A
-full project link was not completed in this workspace. Build it locally with
-the pinned PlatformIO environment, then verify repeated 80-mile loading,
-automatic recovery after a stalled response or router interruption, nearest
-and tracked heading display, automatic range changes, popup keyboard behavior,
-and display stability during HTTPS activity.
+```bash
+pio run -e waveshare-s3-touch-lcd-7
+```
 
-## Important
+The project pins:
 
-This project is for the exact **Waveshare ESP32-S3-Touch-LCD-7, 800Ã—480,
-ST7262 + GT911** board. It is not for the 7B, 7C-BOX, P4, or a generic 7-inch
-ESP32-S3 panel.
+- pioarduino platform-espressif32 51.03.07
+- Arduino-ESP32 3.0.7 high-performance libraries
+- ESP32_Display_Panel 0.1.4
+- ESP32_IO_Expander 0.0.3
+- LVGL 8.3.11
+- ArduinoJson 7.3.1
 
-Do not commit generated `.pio` content. Do not delete `src`, `include`,
-`assets`, `platformio.ini`, or `README.md`.
+### 5. Upload and monitor
+
+```bash
+pio run -e waveshare-s3-touch-lcd-7 -t upload
+pio device monitor -b 115200
+```
+
+The programming USB-C port is normally used for upload and Serial Monitor.
+
+## Expected startup checks
+
+Confirm the serial log reports:
+
+- The intended Product build marker
+- PSRAM detected
+- App-state, radar, UI, and ADS-B buffers allocated in PSRAM
+- The core-0 ADS-B task started
+- Native HTTPS or the configured fallback connected successfully
+- Aircraft received, eligible, stored, dropped, and published counts
+- No immediate TLS memory-allocation failure
+- No display rolling during HTTPS activity
+
+## Verification checklist
+
+Source review, compilation, physical testing, and soak testing are separate
+verification stages.
+
+Before calling a Product release complete:
+
+1. Compile and link the full PlatformIO project.
+2. Record flash and internal RAM usage.
+3. Confirm the build marker, OPI PSRAM, and 20-scanline bounce buffer.
+4. Test normal 15-second updates and 20/40/80 mile range changes.
+5. Test selection, INFO, BACK, TRACK, STOP TRACK, CLEAR, and page navigation.
+6. Interrupt Wi-Fi or the router and confirm recovery.
+7. Change range during an active request and confirm stale-response rejection.
+8. Check display stability during HTTPS traffic.
+9. Check heap and PSRAM stability.
+10. Complete an extended soak test.
+
+## Screenshots
+
+Verified Product 33 R5 screenshots are not currently committed. Add current
+physical-display photos under a dedicated `docs/images/` directory after the
+Product 33 R5 UI and touch behavior are physically confirmed.
+
+## Major milestones
+
+- **Product 15:** First hardened modular baseline with core-0 networking,
+  generation-safe publishing, last-good retention, diagnostics, and the proven
+  RGB anti-rolling configuration.
+- **Products 16-18:** HTTPS transport and certificate-bundle corrections that
+  established the native TLS baseline.
+- **Products 19-21:** Tracking panel, rotating heading display, outward
+  auto-zoom, keyboard, and radar UI refinements.
+- **Products 22-25:** Large-response handling, heading crash correction,
+  transport-recovery hardening, and quiet first-run NVS defaults.
+- **Product 26:** Themed 20-mile radar tags, canvas hit testing, temporary
+  selection, and compact radar range controls.
+- **Products 27-29:** Idle/selected/tracked panel cleanup, stable ICAO list
+  actions, detail origin, correct tab return behavior, and selection timeout
+  fixes.
+- **Product 30:** Bounded 200-target capacity with target and radar working
+  buffers moved to PSRAM.
+- **Product 31:** Aircraft-type side-panel bitmaps and corrected
+  nearest-aircraft heading arrow.
+- **Product 32:** Airspace dashboard, nearest-other aircraft rows, streamlined
+  Setup page, and project credit card.
+- **Product 33:** UI fit, spacing, heading, highlight-card, and dynamic nearest
+  count cleanup.
+
+Detailed Product-by-Product history belongs in `CHANGELOG.md` after it is built
+from confirmed GitHub commits, build markers, logs, and preserved evidence.
+Unconfirmed older history should not be guessed.
+
+## License and data source
+
+Add the repository's chosen license before distributing the firmware.
+
+ADS-B data availability and permitted use remain subject to the selected data
+provider's terms and service availability.
