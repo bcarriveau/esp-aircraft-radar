@@ -395,12 +395,23 @@ void drawRadarBackground() {
   fillCircle(CENTER_X, CENTER_Y, 3, green);
 }
 
+uint8_t radarContactHeadingIndex(float trackDegrees) {
+  if (!isfinite(trackDegrees)) return 0;
+  float normalized = fmodf(trackDegrees, 360.0f);
+  if (normalized < 0.0f) normalized += 360.0f;
+  const float bucketWidth =
+      360.0f / static_cast<float>(RADAR_CONTACT_HEADING_COUNT);
+  const uint8_t index = static_cast<uint8_t>(
+      floorf((normalized + bucketWidth * 0.5f) / bucketWidth));
+  return index & (RADAR_CONTACT_HEADING_COUNT - 1U);
+}
+
 void drawRadarBitmapContact(int centerX, int centerY,
                             AircraftBitmapId bitmapId,
-                            lv_color_t color) {
+                            uint8_t headingIndex, lv_color_t color) {
   const int startX = centerX - RADAR_CONTACT_BITMAP_W / 2;
   const int startY = centerY - RADAR_CONTACT_BITMAP_H / 2;
-  const uint8_t* sprite = radarContactBitmap(bitmapId);
+  const uint8_t* sprite = radarContactBitmap(bitmapId, headingIndex);
 
   for (uint8_t destinationY = 0; destinationY < RADAR_CONTACT_BITMAP_H;
        ++destinationY) {
@@ -465,8 +476,12 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
           contactIsTracked ? red
                            : (contactIsSelected ? amber
                                                 : (behind < 24.0f ? green : cyan));
+      const uint8_t headingIndex =
+          workTargets[i].hasTrack
+              ? radarContactHeadingIndex(workTargets[i].track)
+              : 0;
       drawRadarBitmapContact(x, y, aircraft::bitmapForTarget(workTargets[i]),
-                             iconColor);
+                             headingIndex, iconColor);
     } else {
       fillCircle(x, y, contactIsTracked ? 4 : 2,
                  contactIsTracked ? red
@@ -508,7 +523,6 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
 void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
                        const app_state::Snapshot& snapshot,
                        const ContactFrame& frame) {
-  (void)snapshot;
   LabelBox* labelBoxes = renderedLabelBoxes;
   uint8_t labelBoxCount = 0;
 
