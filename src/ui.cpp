@@ -1144,7 +1144,7 @@ bool buildRadarPanels(lv_obj_t* root) {
   }
 
   leftOtherModeLabel = makeLabel(left, "NEAREST 3",
-                                 &lv_font_montserrat_14,
+                                 &lv_font_montserrat_16,
                                  rgb(110, 220, 255), 4, 86);
   lv_obj_set_width(leftOtherModeLabel, 112);
   lv_label_set_long_mode(leftOtherModeLabel, LV_LABEL_LONG_CLIP);
@@ -1444,7 +1444,7 @@ void buildPageShell(lv_obj_t* root) {
   setTracksVisible(false);
 
   airspaceDashboard = lv_obj_create(pagePanel);
-  lv_obj_set_size(airspaceDashboard, 742, 270);
+  lv_obj_set_size(airspaceDashboard, 742, 280);
   lv_obj_set_pos(airspaceDashboard, 8, 58);
   lv_obj_set_style_bg_opa(airspaceDashboard, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(airspaceDashboard, 0, 0);
@@ -1494,13 +1494,13 @@ void buildPageShell(lv_obj_t* root) {
   }
 
   lv_obj_t* highlightsCard = lv_obj_create(airspaceDashboard);
-  lv_obj_set_size(highlightsCard, 224, 200);
+  lv_obj_set_size(highlightsCard, 224, 210);
   lv_obj_set_pos(highlightsCard, 518, 68);
   styleDashboardCard(highlightsCard);
   makeLabel(highlightsCard, "LIVE HIGHLIGHTS", &lv_font_montserrat_14,
             rgb(110, 220, 255), 6, 4);
   airspaceHighlightsViewport = lv_obj_create(highlightsCard);
-  lv_obj_set_size(airspaceHighlightsViewport, 200, 160);
+  lv_obj_set_size(airspaceHighlightsViewport, 200, 170);
   lv_obj_set_pos(airspaceHighlightsViewport, 6, 28);
   lv_obj_set_style_bg_opa(airspaceHighlightsViewport, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(airspaceHighlightsViewport, 0, 0);
@@ -1610,8 +1610,8 @@ void buildPageShell(lv_obj_t* root) {
   styleSettingsField(latitudeField);
 
   longitudeField = lv_textarea_create(pagePanel);
-  lv_obj_set_size(longitudeField, 125, 38);
-  lv_obj_set_pos(longitudeField, 620, 188);
+  lv_obj_set_size(longitudeField, 105, 38);
+  lv_obj_set_pos(longitudeField, 640, 188);
   lv_textarea_set_placeholder_text(longitudeField, "Longitude");
   lv_obj_add_event_cb(longitudeField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
   lv_textarea_set_one_line(longitudeField, true);
@@ -1626,7 +1626,7 @@ void buildPageShell(lv_obj_t* root) {
   settingsFormLabels[3] = makeLabel(pagePanel, "LATITUDE",
       &lv_font_montserrat_14, rgb(110, 220, 255), 292, 199);
   settingsFormLabels[4] = makeLabel(pagePanel, "LONGITUDE",
-      &lv_font_montserrat_14, rgb(110, 220, 255), 532, 199);
+      &lv_font_montserrat_14, rgb(110, 220, 255), 540, 199);
 
   saveSettingsButton = lv_btn_create(pagePanel);
   lv_obj_set_size(saveSettingsButton, 165, 42);

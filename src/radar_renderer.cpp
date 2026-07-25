@@ -708,11 +708,7 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
   }
 
   if (radarView.leftOtherModeLabel) {
-    if (priorityAircraft) {
-      lv_obj_clear_flag(radarView.leftOtherModeLabel, LV_OBJ_FLAG_HIDDEN);
-    } else {
-      lv_obj_add_flag(radarView.leftOtherModeLabel, LV_OBJ_FLAG_HIDDEN);
-    }
+    lv_obj_add_flag(radarView.leftOtherModeLabel, LV_OBJ_FLAG_HIDDEN);
   }
   for (uint8_t i = 0; i < PRIORITY_OTHER_COUNT; ++i) {
     if (radarView.leftOtherHexes[i]) radarView.leftOtherHexes[i][0] = 0;
@@ -748,6 +744,15 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
       updateSideIcon(radarView.leftOtherIcons[otherIndex],
                      radarView.leftOtherIconBuffers[otherIndex], &target, true);
       ++otherIndex;
+    }
+    if (radarView.leftOtherModeLabel) {
+      if (otherIndex > 0) {
+        lv_label_set_text_fmt(radarView.leftOtherModeLabel, "NEAREST %u",
+                              (unsigned)otherIndex);
+      } else {
+        lv_label_set_text(radarView.leftOtherModeLabel, "NO OTHER");
+      }
+      lv_obj_clear_flag(radarView.leftOtherModeLabel, LV_OBJ_FLAG_HIDDEN);
     }
   }
 
