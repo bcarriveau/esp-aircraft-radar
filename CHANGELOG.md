@@ -14,16 +14,85 @@ GitHub or preserved evidence does not confirm the changes.
 
 ## Current status
 
-- **Current source:** Product 34
-- **Current build marker:** `7IN-20260725-PRODUCT34-TRACK-LOSS-RECOVERY`
+- **Current source:** Product 35
+- **Current build marker:** `7IN-20260725-PRODUCT35-DESCRIPTION-TYPE-FALLBACK`
 - **Current branch:** `main`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
 
+## Product 35 - 2026-07-25
+
+**Build:** `7IN-20260725-PRODUCT35-DESCRIPTION-TYPE-FALLBACK`  
+**Status:** Release candidate; full PlatformIO and physical verification pending
+
+### Added
+
+- Added a conservative aircraft-description classification fallback for targets
+  whose ADS-B ICAO type code is empty, unknown, or not present in the existing
+  type-code tables.
+- Added compact flash-resident keyword references for:
+  - Airliners and regional jets
+  - Business and corporate jets
+  - Military and heavy aircraft
+  - Turboprops
+  - Piston aircraft
+  - Helicopters and rotorcraft
+- Added target-aware classification helpers so existing radar, Tracks, details,
+  bitmap, and Airspace category call sites can use the stored ADS-B description
+  without changing their source files.
+
+### Changed
+
+- Kept the existing ICAO type-code classifier authoritative.
+- Consulted `Target::description` only when type-code classification returns
+  `UNKNOWN`.
+- Normalized description text for case-insensitive keyword matching without
+  heap allocation, Arduino `String`, regular expressions, or additional network
+  requests.
+- Kept ambiguous or unsupported descriptions classified as `UNKNOWN` rather
+  than guessing from weak words such as `JET` alone.
+
+### Preserved
+
+- Product 34 tracked-aircraft-loss recovery and three-successful-update grace
+  period.
+- Stable ICAO selection and tracking identity.
+- Product 30 200-target bounded capacity and PSRAM ownership.
+- Native HTTPS and fallback transport behavior.
+- Core-0 request ownership, non-overlapping requests, 15-second cadence,
+  deadlines, recovery, stale-response rejection, and last-good retention.
+- Radar range, projection, hit testing, label priority, and outward auto-zoom.
+- Waveshare panel timing, DMA, XIP/OPI PSRAM, and the 20-scanline bounce buffer.
+- Existing `Target` size and all capacity-scaled array bounds.
+- `include/config.h` privacy and ignore behavior.
+
+### Verification
+
+- Host C++17 aircraft-classifier tests passed with warnings treated as errors.
+- Tests covered type-code priority and description collisions including:
+  - C-17 versus Cessna 172
+  - Cessna Citation versus piston Cessna models
+  - Pilatus PC-24 versus PC-12
+  - AH-64 Apache versus Piper Apache
+  - Airbus helicopters versus Airbus airliners
+  - Dornier 328 turboprop versus jet variants
+- Confirmed plain type-code inputs remain type-code-only.
+- Confirmed the `Target` structure and `MAX_TARGETS` remain unchanged.
+
+### Pending verification
+
+- Full PlatformIO compile and link.
+- Confirm Product 35 build marker, OPI PSRAM, and 20-scanline bounce buffer.
+- Record flash and internal-RAM usage.
+- Physical validation that previously unknown aircraft receive sensible
+  categories and bitmaps.
+- Normal 15-second updates, selection, tracking, STOP TRACK, range changes,
+  touch, TLS/Wi-Fi recovery, no screen rolling, heap/PSRAM stability, and soak.
+
 ## Product 34 - 2026-07-25
 
 **Build:** `7IN-20260725-PRODUCT34-TRACK-LOSS-RECOVERY`  
-**Status:** Current release candidate
+**Status:** Superseded by Product 35
 
 ### Fixed
 
@@ -75,18 +144,12 @@ GitHub or preserved evidence does not confirm the changes.
 ### Verification
 
 - App-state compilation passed with warnings treated as errors.
-- State-transition tests covered:
-  - Tracked aircraft present
-  - One successful missing snapshot
-  - Two successful missing snapshots
-  - Third successful missing snapshot auto-clear
-  - Target return resetting the counter
-  - Empty successful snapshots
-  - Manual STOP TRACK
-  - Selecting a new tracked aircraft
-  - Repeated fetch failures
-  - Stale discarded responses
+- State-transition tests covered tracked presence, one and two misses, third-miss
+  auto-clear, target return, empty successful snapshots, manual STOP TRACK, a
+  newly tracked aircraft, repeated fetch failures, and stale discarded
+  responses.
 - Logging occurs after releasing the app-state mutex.
+
 ### Pending verification
 
 - Full PlatformIO compile and link.
@@ -128,12 +191,12 @@ GitHub or preserved evidence does not confirm the changes.
 
 ### Verification
 
-- The current README identifies Product 33 R3 as the physically tested source
-  from which the later R4 and R5 refinements were derived.
-- Product 33 R4 is not retained as a standalone Git commit; its longitude-spacing
-  correction is included in R5.
+- The README identified Product 33 R3 as the physically tested source from which
+  the later R4 and R5 refinements were derived.
+- Product 33 R4 was not retained as a standalone Git commit; its
+  longitude-spacing correction is included in R5.
 - Product 33 R5 still required full compile/link, physical UI and touch testing,
-  normal ADS-B verification, and soak testing when it was superseded.
+  normal ADS-B verification, and soak testing when superseded.
 
 ## Product 33 R2 - 2026-07-24
 
@@ -165,31 +228,26 @@ GitHub or preserved evidence does not confirm the changes.
 
 ### Added
 
-- A visual Airspace dashboard with:
-  - Total aircraft
-  - Aircraft within 20 miles
-  - Aircraft within 40 miles
-  - Current selected range
-  - Category counts and percentages
-  - Nearest, fastest, lowest-airborne, and dominant-category highlights
-- Aircraft-category cards for airliners, business jets, turboprops, piston
-  aircraft, helicopters, and military/other traffic.
-- Three nearest-other aircraft rows while an aircraft is selected or tracked.
+- A visual Airspace dashboard with total aircraft, aircraft within 20 and 40
+  miles, current range, category counts and percentages, and nearest, fastest,
+  lowest-airborne, and dominant-category highlights.
+- Category cards for airliners, business jets, turboprops, piston aircraft,
+  helicopters, and military/other traffic.
+- Three nearest-other aircraft rows during selected or tracked operation.
 - Stable ICAO identity for the nearest-other rows.
 - A restrained project identification card on System.
 
 ### Changed
 
-- Removed the duplicate Setup-page 20/40/80 controls.
-- Kept the compact radar selector as the only range control.
-- Added a `MILES` caption to the radar selector.
-- Updated radar label exclusions to match the visible selector and caption.
+- Removed duplicate Setup-page range controls and kept the compact radar selector
+  as the only 20/40/80 control.
+- Added a `MILES` caption and updated label exclusions.
 - Expanded fixed side-icon storage in PSRAM from 7 to 16 buffers.
 
 ### Verification
 
 - UI and radar sources passed C++17 syntax checks.
-- Bounds and null termination were checked for the icon and ICAO arrays.
+- Bounds and null termination were checked for icon and ICAO arrays.
 - AddressSanitizer and UndefinedBehaviorSanitizer tests covered zero, one, and
   200 targets plus selected/tracked ordering cases.
 - No networking, capacity, transport, panel-driver, or target-storage sources
@@ -203,26 +261,22 @@ GitHub or preserved evidence does not confirm the changes.
 
 ### Added
 
-- Aircraft-type bitmap icons to:
-  - The idle nearest-aircraft card
-  - Selected/tracked priority details
-  - The nearest-five aircraft list
+- Aircraft-type bitmap icons to the idle nearest-aircraft card,
+  selected/tracked priority details, and nearest-five list.
 - A rotating heading arrow and heading value for the idle nearest aircraft.
-- Independent persistent point arrays for the idle and selected/tracked heading
-  arrows.
+- Independent persistent point arrays for the idle and selected/tracked arrows.
 
 ### Changed
 
-- Removed the redundant plain-text heading line from the idle summary.
-- Made the heading arrow and heading label select the same stable ICAO aircraft.
+- Removed the redundant plain-text idle heading line.
+- Made the arrow and heading label select the same stable ICAO aircraft.
 
 ### Verification
 
 - Radar syntax checks passed.
 - AddressSanitizer and UndefinedBehaviorSanitizer tests covered independent arrow
   storage and 200-target rendering.
-- Product 30 memory ownership and networking behavior were intentionally
-  unchanged.
+- Product 30 memory ownership and networking behavior remained unchanged.
 
 ## Product 30 - 2026-07-23
 
@@ -233,27 +287,16 @@ GitHub or preserved evidence does not confirm the changes.
 ### Added
 
 - Bounded storage for up to 200 retained targets.
-- Diagnostics for:
-  - Received aircraft
-  - Eligible aircraft
-  - Stored aircraft
-  - Capacity-dropped aircraft
-  - Visible aircraft
-- Required PSRAM allocation for:
-  - Authoritative shared target storage
-  - Core-0 incoming ADS-B storage
-  - UI target snapshots
-  - Radar hit regions
-  - Screen contacts
-  - Label collision boxes
-- Clean startup failure when required PSRAM allocation is unavailable.
-- Logging of the largest free internal-memory block before ADS-B networking
-  starts.
+- Diagnostics for received, eligible, stored, capacity-dropped, and visible
+  aircraft.
+- Required PSRAM allocation for shared targets, incoming ADS-B targets, UI
+  snapshots, radar hit regions, screen contacts, and label collision boxes.
+- Clean startup failure when required PSRAM is unavailable.
+- Largest-free internal-memory logging before ADS-B networking starts.
 
 ### Changed
 
-- Preserved the tracked aircraft when returned, then filled remaining capacity
-  nearest-first.
+- Preserved tracked aircraft first, then filled remaining capacity nearest-first.
 - Removed internal-RAM fallback paths for capacity-scaled buffers.
 - Prevented UI and network servicing after incomplete startup.
 
@@ -268,8 +311,8 @@ GitHub or preserved evidence does not confirm the changes.
 - Radar render and hit testing passed under AddressSanitizer and
   UndefinedBehaviorSanitizer.
 - Allocation-failure and cleanup paths were tested.
-- Physical startup logs recorded required PSRAM allocations and repeated
-  successful native TLS requests with large aircraft snapshots.
+- Physical startup logs recorded required PSRAM allocations and repeated native
+  TLS success with large snapshots.
 
 ## Product 29 - 2026-07-23
 
@@ -279,25 +322,17 @@ GitHub or preserved evidence does not confirm the changes.
 
 ### Fixed
 
-- Corrected the radar label-box allocation and bounds check to use the same
-  `MAX_TARGETS + 2` limit.
-- Used stable rendered ICAO hex values for:
-  - The left nearest-aircraft card
-  - The right nearest-aircraft list
-- Limited left-panel click handling to the nearest-aircraft content instead of
-  the entire panel.
-- Hid idle nearest-aircraft details when selected or tracked details had
-  priority.
-- Added explicit Radar and Tracks detail origins.
-- Kept the correct tab active while details were open.
-- Returned INFO from Radar to Radar and Details from Tracks to Tracks.
-- Paused the selected-aircraft timeout while details were open and refreshed it
-  on return.
-- Closed the detail overlay cleanly when another navigation tab was selected.
+- Corrected radar label-box bounds to use `MAX_TARGETS + 2` consistently.
+- Used stable ICAO hex values for the left nearest card and right nearest list.
+- Limited left-panel clicks to nearest-aircraft content.
+- Hid idle nearest details when selected or tracked details had priority.
+- Added explicit Radar and Tracks detail origins and correct return behavior.
+- Paused selected-aircraft timeout while details were open.
+- Closed detail overlays cleanly when another tab was selected.
 
 ### Preserved
 
-- 100-target capacity at this stage.
+- 100-target capacity at that stage.
 - Networking, TLS, Wi-Fi recovery, polling, filtering, radar projection, and
   display configuration.
 
@@ -305,8 +340,6 @@ GitHub or preserved evidence does not confirm the changes.
 
 - Bounds, ICAO buffers, list indexes, and state transitions were reviewed.
 - UI and radar sources passed syntax checking against local interface stubs.
-- A complete PlatformIO build and physical test were still required at the time
-  of this commit.
 
 ## Product 28 - 2026-07-23
 
@@ -319,8 +352,7 @@ GitHub or preserved evidence does not confirm the changes.
 - Restored nearest-aircraft information to the left panel while idle.
 - Gave selected and tracked details priority in the right panel.
 - Moved STOP TRACK into the right tracked-aircraft card.
-- Added explicit detail return behavior for Radar and Tracks.
-- Kept the active tab accurate while details were open.
+- Added explicit detail return behavior and accurate active-tab state.
 - Moved selected/tracked actions out of the radar canvas.
 - Preserved selection when stopping tracking when practical.
 
@@ -341,11 +373,9 @@ GitHub or preserved evidence does not confirm the changes.
 - Moved selected and tracked information into the right aircraft card.
 - Added INFO, TRACK, CLEAR, and right-panel STOP TRACK actions.
 - Kept the compact range selector at the radar lower-right.
-- Improved the nearest-aircraft list presentation.
-- Added selected/tracked color treatment to heading elements.
+- Improved nearest-aircraft presentation and selected/tracked heading colors.
 - Removed redundant left-side range text.
-- Changed nearest-list taps to select an aircraft instead of immediately changing
-  pages.
+- Changed nearest-list taps to select instead of immediately changing pages.
 
 ### Preserved
 
@@ -361,25 +391,17 @@ GitHub or preserved evidence does not confirm the changes.
 
 ### Added
 
-- Compact dark navy 20-mile aircraft tags with cyan identifiers and teal borders.
-- Stable ICAO-based hit regions for radar contacts and tags.
-- Tag-first hit testing with priority for:
-  1. Tracked aircraft
-  2. Selected aircraft
-  3. Closest contact
-- A temporary selected-aircraft state with amber rings and tag styling.
-- INFO and TRACK actions for the selected aircraft.
-- A compact 20/40/80 range selector inside the radar.
+- Compact dark navy 20-mile tags with cyan identifiers and teal borders.
+- Stable ICAO-based hit regions for contacts and tags.
+- Hit testing priority: tracked, selected, then closest contact.
+- Temporary amber selected-aircraft state with INFO and TRACK actions.
+- Compact 20/40/80 range selector inside the radar.
 
 ### Changed
 
 - Made the nearest-aircraft panel select its aircraft while idle.
 - Kept tracked labels and outward auto-zoom at higher priority.
-- Preserved Product 25 networking and display-reliability behavior.
-
-### Verification
-
-- Physical touch, layout, rolling, and soak verification were required.
+- Preserved Product 25 networking and display reliability.
 
 ## Product 25 - 2026-07-22
 
@@ -390,13 +412,8 @@ GitHub or preserved evidence does not confirm the changes.
 ### Fixed
 
 - Eliminated expected first-run Preferences errors for missing NVS keys.
-- Initialized missing title, Wi-Fi SSID, Wi-Fi password, latitude, and longitude
-  keys with configured defaults.
+- Initialized missing title, Wi-Fi, latitude, and longitude keys with defaults.
 - Kept existing saved values unchanged.
-
-### Verification
-
-- The issue was identified during the first soak test.
 
 ## Product 24 - 2026-07-21
 
@@ -410,17 +427,11 @@ GitHub or preserved evidence does not confirm the changes.
 - Treated early zero-byte reads as incomplete responses.
 - Closed native HTTP connections cleanly before fallback or retry.
 - Preserved the most advanced failure stage across attempts.
-- Reconnected Wi-Fi immediately after incomplete body downloads.
+- Reconnected Wi-Fi after incomplete body downloads.
 - Escalated repeated failures to a complete station-radio recycle.
-- Retried ADS-B promptly after successful recovery.
-- Moved last-resort restart execution from the network task to the main loop.
-- Preserved the last valid aircraft snapshot during transport failures.
-
-### Verification
-
-- Networking translation units were compile-verified.
-- Full build, physical recovery tests, router interruption tests, and soak testing
-  were still required at the time of the commit.
+- Retried ADS-B promptly after recovery.
+- Moved last-resort restart execution to the main loop.
+- Preserved the last valid snapshot during transport failures.
 
 ## Product 23 - 2026-07-21
 
@@ -432,24 +443,14 @@ GitHub or preserved evidence does not confirm the changes.
 
 - Replaced unsupported floating-point LVGL formatting with integer heading
   formatting.
-- Fixed the core-1 `LoadProhibited` crash that appeared after aircraft data
-  populated.
-- Normalized headings to integer values from 000 through 359.
+- Fixed the core-1 `LoadProhibited` crash after aircraft data populated.
+- Normalized headings from 000 through 359.
 - Removed remaining floating-point LVGL format calls from range text.
-
-### Preserved
-
-- Rotating heading arrow.
-- Tracked-aircraft panel.
-- Product 22 large-response handling.
-- Networking, panel timing, PSRAM/XIP, and bounce buffering.
 
 ### Verification
 
 - Complete compile and link passed.
-- Repeated physical aircraft updates confirmed the heading crash was fixed.
-- The physical log then exposed the separate stalled-response recovery problem
-  addressed by Product 24.
+- Repeated physical updates confirmed the heading crash was fixed.
 
 ## Product 22 - 2026-07-21
 
@@ -464,19 +465,10 @@ GitHub or preserved evidence does not confirm the changes.
 - Prevented valid large ADS-B responses from being discarded prematurely.
 - Retained independent no-progress and total-response deadlines.
 
-### Preserved
-
-- TLS verification.
-- Wi-Fi recovery.
-- Product 21 tracking and UI behavior.
-- PSRAM/XIP and display buffering.
-
 ### Verification
 
-- Runtime testing confirmed a complete 105,690-byte response.
-- The response contained 189 parsed aircraft and published the then-bounded 100
-  targets.
-- A separate heading-format crash discovered afterward was fixed in Product 23.
+- Runtime testing confirmed a complete 105,690-byte response containing 189
+  parsed aircraft and the then-bounded 100 published targets.
 
 ## Products 19-21 - 2026-07-21
 
@@ -484,37 +476,20 @@ GitHub or preserved evidence does not confirm the changes.
 **Commit:** [`5d5b0b6`](https://github.com/bcarriveau/esp-aircraft-radar/commit/5d5b0b62cd828349b1120b1be9e24c8bb98cd6e9)  
 **Status:** Combined GitHub record; retained and refined by later firmware
 
-Git history preserves Products 19-21 as one combined Product 21 commit. The
-exact boundary of every individual Product is therefore not reconstructed.
+Git history preserves Products 19-21 as one combined Product 21 commit. Exact
+individual Product boundaries are not reconstructed.
 
 ### Confirmed changes
 
-- Removed the 160-mile range and limited choices to 20, 40, and 80 miles.
+- Removed 160 miles and limited ranges to 20, 40, and 80 miles.
 - Added predictive outward auto-zoom for tracked aircraft.
 - Added a full-width popup keyboard for Setup fields.
 - Prevented aircraft identifiers from wrapping.
 - Removed the redundant upper-left radar status overlay.
 - Changed the left aircraft panel to tracked-aircraft information while tracking.
 - Added the rotating heading arrow and heading value.
-- Kept the tracked panel active while fresh data temporarily omitted the tracked
-  aircraft.
+- Kept the tracked panel active through temporary target omissions.
 - Opened details for whichever aircraft the left panel represented.
-
-### Product-specific evidence
-
-- Repository documentation explicitly identifies Product 20 as the revision that
-  removed the redundant radar status overlay.
-- The preserved build marker and commit identify Product 21 as the
-  tracked-heading candidate.
-- Other exact Product 19/20 boundaries are not claimed without a standalone
-  authoritative commit.
-
-### Verification
-
-- Product 18 remained the physically confirmed TLS baseline when this combined
-  UI commit was created.
-- These UI features were inherited by Products 22 and 23, which later completed
-  compile and physical update testing.
 
 ## Product 18 - 2026-07-21
 
@@ -524,52 +499,36 @@ exact boundary of every individual Product is therefore not reconstructed.
 
 ### Fixed
 
-- Attached Espressif's full CA certificate bundle to the native HTTPS client.
+- Attached Espressif's CA certificate bundle to native HTTPS.
 - Kept hostname verification enabled.
-- Corrected the Product 17 configuration that failed locally before a network
-  TLS handshake because no server-verification method was configured.
+- Corrected the Product 17 missing server-verification configuration.
 - Added a secure fallback HTTPS path.
 - Reduced unnecessary Wi-Fi reconnect churn.
-
-### Preserved
-
-- Core-0 HTTPS ownership.
-- Response-size guard and PSRAM payload.
-- Request deadlines and range-generation rejection.
-- Single-snapshot publication.
-- Failure-stage diagnostics.
 
 ### Verification
 
 - Compile and link passed.
 - Initial physical TLS testing passed.
-- Product 18 became the confirmed TLS baseline used for Products 19-21.
 
 ## Product 17 - 2026-07-21
 
 **Standalone commit:** Not preserved  
 **Status:** Documented precursor to Product 18
 
-The Product 18 commit explicitly records the Product 17 work:
-
 ### Changed
 
 - Replaced Arduino `NetworkClientSecure` plus the hand-written HTTP parser with
-  ESP-IDF's native streaming HTTPS client.
+  ESP-IDF native streaming HTTPS.
 - Re-resolved DNS and created a fresh native client for each retry.
-- Kept HTTPS work on the existing core-0 network task.
-- Preserved deadlines, response-size guards, PSRAM payload storage,
-  generation rejection, and single-snapshot publication.
-- Added detailed native error, socket errno, RSSI, and TCP-versus-TLS
-  diagnostics.
+- Kept HTTPS work on the core-0 network task.
+- Preserved deadlines, size guards, PSRAM payload storage, generation rejection,
+  and single-snapshot publication.
+- Added detailed native error, socket errno, RSSI, and TCP-versus-TLS diagnostics.
 
 ### Known issue
 
-- The first physical test failed before the network handshake because the native
-  client had no configured server-verification method.
-- Product 18 corrected that configuration with the CA certificate bundle.
-
-No standalone Product 17 commit or final Product 17 build marker is claimed.
+- The first physical test failed before the handshake because no
+  server-verification method was configured; Product 18 fixed it.
 
 ## Product 16 - 2026-07-21
 
@@ -579,19 +538,17 @@ No standalone Product 17 commit or final Product 17 build marker is claimed.
 
 ### Changed
 
-- Used the already resolved server IP for TCP while retaining the hostname for
-  TLS SNI.
-- Increased the TLS handshake allowance from 10 to 20 seconds.
+- Used the resolved server IP for TCP while retaining hostname TLS SNI.
+- Increased TLS handshake allowance from 10 to 20 seconds.
 - Logged exact mbedTLS error codes and descriptions.
 - Recycled Wi-Fi only for Wi-Fi, DNS, or TCP failures.
-- Retried TLS, HTTP, response-body, and JSON failures without deliberately
-  disconnecting a healthy Wi-Fi station.
+- Retried TLS, HTTP, body, and JSON failures without deliberately disconnecting
+  a healthy Wi-Fi station.
 
 ### Verification
 
 - Complete compile and link passed.
-- Physical testing still encountered TLS timeouts, leading to the native HTTPS
-  work documented as Product 17.
+- Physical testing still encountered TLS timeouts, leading to Product 17.
 
 ## Product 15 - 2026-07-21
 
@@ -605,46 +562,35 @@ No standalone Product 17 commit or final Product 17 build marker is claimed.
 - Modular PlatformIO/C++ and LVGL firmware for the exact Waveshare
   ESP32-S3-Touch-LCD-7.
 - Core-0 ADS-B networking and Wi-Fi recovery ownership.
-- True 15-second start-to-start polling.
-- Non-overlapping requests.
+- True 15-second start-to-start polling and non-overlapping requests.
 - Explicit connect, header, body-idle, and total-response deadlines.
 - Separate Wi-Fi, DNS, TCP, TLS, HTTP, response-body, JSON, and stale-response
   failure classification.
-- Request generations for range and location changes.
-- Rejection of obsolete responses.
-- Last-good aircraft retention through temporary failures.
+- Request generations, obsolete-response rejection, and last-good retention.
 - Thread-safe single-snapshot publication and radar rendering.
-- Collision-aware 20-mile aircraft labels.
-- Stable ICAO-based manual tracking.
-- Conditional STOP TRACK control.
-- Setup validation and protected reset behavior.
-- System diagnostics for build, network, fetch, memory, and aircraft counts.
-- Explicit aircraft categories and correct unknown-artwork fallback.
+- Collision-aware 20-mile labels and stable ICAO tracking.
+- Setup validation, protected reset behavior, and system diagnostics.
+- Explicit aircraft categories and unknown-artwork fallback.
 - Private configuration example with `include/config.h` excluded from Git.
 
 ### Display and memory baseline
 
 - Arduino-ESP32 3.0.7 high-performance XIP/PSRAM framework.
 - OPI PSRAM with `BOARD_HAS_PSRAM`.
-- Existing Waveshare RGB timing.
-- DMA and anti-rolling protections.
-- 20-scanline RGB bounce buffer.
+- Waveshare RGB timing, DMA, anti-rolling protections, and 20-scanline bounce
+  buffer.
 
 ### Verification
 
 - Compile and link passed.
-- The initial commit still listed physical display and long-term soak testing as
-  pending.
-- Product 15 was retained as the permanent hardened rollback baseline while
-  later transport and UI work proceeded.
+- Product 15 remains the permanent hardened rollback baseline.
 
 ---
 
 ## History boundary
 
-The GitHub Product history begins at Product 15.
-
-The Product 15 source states that it preserved the proven RGB anti-rolling
-configuration from Product 14, but the repository does not contain an
-authoritative Product 1-14 history. Those releases are intentionally omitted
-rather than reconstructed from memory, old chats, or uncertain files.
+The GitHub Product history begins at Product 15. Product 15 states that it
+preserved the proven RGB anti-rolling configuration from Product 14, but the
+repository does not contain authoritative Product 1-14 history. Those releases
+are intentionally omitted rather than reconstructed from memory or uncertain
+files.
