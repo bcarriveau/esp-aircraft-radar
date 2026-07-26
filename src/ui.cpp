@@ -354,10 +354,16 @@ void saveSettingsEvent(lv_event_t*) {
                            previousPassword != settings::wifiPassword();
   const bool locationChanged = fabsf(previousLatitude - latitude) > 0.00001f ||
                                fabsf(previousLongitude - longitude) > 0.00001f;
-  if (locationChanged) app_state::invalidateRequests();
-  setSettingsStatus(wifiChanged ? "Saved; reconnecting to new WiFi"
-                                : "Settings saved",
-                    rgb(120, 240, 155));
+  if (locationChanged) app_state::invalidateLocation();
+  const char* savedStatus = nullptr;
+  if (wifiChanged) {
+    savedStatus = locationChanged ? "Location changed; reconnecting to WiFi"
+                                  : "Saved; reconnecting to new WiFi";
+  } else {
+    savedStatus = locationChanged ? "Location changed; updating aircraft"
+                                  : "Settings saved";
+  }
+  setSettingsStatus(savedStatus, rgb(120, 240, 155));
   setLabelTextIfChanged(headerTitle, settings::deviceTitle().c_str());
   if (wifiChanged) adsb::requestWifiReconnect();
   else adsb::requestRefresh();
@@ -378,10 +384,17 @@ void resetSettingsEvent(lv_event_t*) {
   resetConfirmationPending = false;
   setLabelTextIfChanged(resetSettingsLabel, "RESET DEFAULTS");
   lv_obj_center(resetSettingsLabel);
+  const float previousLatitude = settings::homeLatitude();
+  const float previousLongitude = settings::homeLongitude();
   settings::resetToDefaults();
-  app_state::invalidateRequests();
+  const bool locationChanged =
+      fabsf(previousLatitude - settings::homeLatitude()) > 0.00001f ||
+      fabsf(previousLongitude - settings::homeLongitude()) > 0.00001f;
+  if (locationChanged) app_state::invalidateLocation();
   populateSettingsForm();
-  setSettingsStatus("Defaults restored", rgb(255, 220, 120));
+  setSettingsStatus(locationChanged ? "Defaults restored; updating aircraft"
+                                    : "Defaults restored",
+                    rgb(255, 220, 120));
   setLabelTextIfChanged(headerTitle, settings::deviceTitle().c_str());
   adsb::requestWifiReconnect();
 }
@@ -901,7 +914,7 @@ void renderAirspacePage() {
   char highlights[320];
   snprintf(highlights, sizeof(highlights),
       "NEAREST\n%s  %.1f MI %s\n\n"
-      "FASTEST\n%s  %.0f MPH\n\n"
+      "FASTEST\n%s  %.1f MPH\n\n"
       "LOWEST AIRBORNE\n%s  %s FT\n\n"
       "DOMINANT\n%s  %u",
       count ? aircraft::primaryIdentifier(uiTargets[0]) : "--",
@@ -1017,7 +1030,12 @@ void updateHeader() {
   const char* stateName = "LIVE";
   char stateDetail[64]{};
   lv_color_t stateColor = rgb(80, 235, 145);
-  if (!wifiConnected) {
+  if (snapshot.locationUpdatePending) {
+    stateName = "UPDATING";
+    snprintf(stateDetail, sizeof(stateDetail),
+             "LOCATION CHANGED\nUPDATING");
+    stateColor = rgb(255, 220, 100);
+  } else if (!wifiConnected) {
     stateName = "OFFLINE";
     snprintf(stateDetail, sizeof(stateDetail), "OFFLINE\nWiFi");
     stateColor = rgb(255, 120, 110);

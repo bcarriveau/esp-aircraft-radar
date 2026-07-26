@@ -30,6 +30,7 @@ struct Snapshot {
   uint32_t lastUpdateMs = 0;
   float rangeMiles = 0;
   bool manualTracking = false;
+  bool locationUpdatePending = false;
   char trackedHex[7]{};
 };
 
@@ -70,6 +71,7 @@ float radarRangeMiles();
 bool setRadarRangeMiles(float rangeMiles);
 uint32_t rangeGeneration();
 void invalidateRequests();
+void invalidateLocation();
 
 void selectManualTracking(const aircraft::Target& target);
 void clearManualTracking();

@@ -14,11 +14,74 @@ GitHub or preserved evidence does not confirm the changes.
 
 ## Current status
 
-- **Current source:** Product 37
-- **Current build marker:** `7IN-20260725-PRODUCT37-FALLBACK-HTTPS-HARDENED`
+- **Current source:** Product 38
+- **Current build marker:** `7IN-20260725-PRODUCT38-LOCATION-INVALIDATION`
 - **Current branch:** `main`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
+
+## Product 38 - 2026-07-25
+
+**Build:** `7IN-20260725-PRODUCT38-LOCATION-INVALIDATION`
+**Status:** Host-verified state/UI candidate; full PlatformIO and physical verification pending
+
+### Fixed
+
+- A saved radar-center change now invalidates the published aircraft snapshot
+  immediately instead of leaving aircraft from the previous location visible.
+- Location invalidation increments the existing request generation, clears the
+  visible target count and publication age, advances the target version, and marks
+  the shared snapshot as awaiting new-center data.
+- The radar data-status panel displays `LOCATION CHANGED / UPDATING` until a
+  successful current-generation ADS-B snapshot is published.
+- Restoring Setup defaults invalidates aircraft only when the restored latitude or
+  longitude actually differs from the active location.
+
+### Tracking and state behavior
+
+- The stable tracked ICAO and its confirmed-miss count remain stored internally
+  while location data is pending.
+- Location invalidation itself does not count as a missing tracked-aircraft update.
+- Pending snapshots suppress the old aircraft list and stale tracked-aircraft
+  presentation while retaining the internal tracking identity.
+- The first successful current-generation snapshot for the new center clears the
+  pending state and becomes the first publication that can advance or reset the
+  tracked-aircraft miss count.
+- Ordinary range changes and same-location network failures retain the existing
+  last-good snapshot behavior.
+
+### Preserved
+
+- Existing current-generation comparison and stale-response rejection before
+  publication.
+- Core-0 ADS-B ownership, non-overlapping requests, native and fallback HTTPS,
+  15-second cadence, deadlines, Wi-Fi/TLS recovery, and transport classification.
+- Product 30 target capacity and PSRAM ownership.
+- Radar rendering, touch behavior, stable ICAO selection/tracking, outward
+  auto-zoom, MPH display, Waveshare panel timing, DMA, anti-rolling protections,
+  and the 20-scanline bounce buffer.
+
+### Verification
+
+- Confirmed the edited app-state files are minimal changes from the exact GitHub
+  Product 37 blobs.
+- App-state C++17 compilation passed with `-Wall -Wextra -Werror`.
+- AddressSanitizer and UndefinedBehaviorSanitizer state tests passed for immediate
+  invalidation, pending-snapshot suppression, tracked-ICAO retention, successful
+  republish, three actual post-change misses, range changes, and generic request
+  invalidation.
+- Static UI checks confirmed saved-coordinate and changed-default paths use the
+  location-specific invalidation API and the pending state has status priority.
+- Confirmed no networking, TLS, display-driver, capacity, or configuration files
+  changed.
+
+### Pending verification
+
+- Full PlatformIO compile and link, flash usage, and internal-RAM usage.
+- Physical saved-location change, immediate old-aircraft removal, new-center
+  publication, stale old-center response rejection, tracked-aircraft continuity,
+  range changes, normal 15-second updates, native/fallback TLS, Wi-Fi/TLS recovery,
+  touch, page switching, no screen rolling, heap/PSRAM stability, and soak testing.
 
 ## Product 37 - 2026-07-25
 

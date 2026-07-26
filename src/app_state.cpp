@@ -22,6 +22,7 @@ struct SharedState {
                                     MAX_RADAR_RANGE_MILES);
   uint32_t rangeGeneration = 1;
   bool manualTracking = false;
+  bool locationUpdatePending = false;
   char trackedHex[7]{};
   uint32_t trackingVersion = 0;
   uint8_t trackingMissCount = 0;
@@ -121,6 +122,7 @@ void publishTargets(const aircraft::Target* targets, uint8_t count,
   state.targetCount = count;
   ++state.targetVersion;
   state.lastUpdateMs = updatedAtMs;
+  state.locationUpdatePending = false;
   unlockState(locked);
   if (trackingCleared) {
     Serial.printf(
@@ -139,14 +141,18 @@ void copySnapshot(aircraft::Target* out, Snapshot& snapshot) {
   snapshot.rangeGeneration = state.rangeGeneration;
   snapshot.trackingVersion = state.trackingVersion;
   snapshot.lastUpdateMs = state.lastUpdateMs;
-  snapshot.manualTracking = state.manualTracking;
+  snapshot.locationUpdatePending = state.locationUpdatePending;
+  snapshot.manualTracking =
+      state.manualTracking && !state.locationUpdatePending;
   strncpy(snapshot.trackedHex, state.trackedHex,
           sizeof(snapshot.trackedHex) - 1);
-  for (uint8_t i = 0;
-       i < state.targetCount && snapshot.count < aircraft::MAX_TARGETS; ++i) {
-    if (state.targets[i].valid &&
-        state.targets[i].distanceMiles <= snapshot.rangeMiles) {
-      out[snapshot.count++] = state.targets[i];
+  if (!state.locationUpdatePending) {
+    for (uint8_t i = 0;
+         i < state.targetCount && snapshot.count < aircraft::MAX_TARGETS; ++i) {
+      if (state.targets[i].valid &&
+          state.targets[i].distanceMiles <= snapshot.rangeMiles) {
+        out[snapshot.count++] = state.targets[i];
+      }
     }
   }
   unlockState(locked);
@@ -229,6 +235,21 @@ void invalidateRequests() {
   bool locked = lockState();
   ++state.rangeGeneration;
   unlockState(locked);
+}
+
+void invalidateLocation() {
+  bool locked = lockState();
+  const uint8_t invalidatedCount = state.targetCount;
+  const uint32_t invalidatedGeneration = ++state.rangeGeneration;
+  state.targetCount = 0;
+  ++state.targetVersion;
+  state.lastUpdateMs = 0;
+  state.locationUpdatePending = true;
+  unlockState(locked);
+  Serial.printf(
+      "Radar location changed; invalidated %u published aircraft and "
+      "queued generation %lu\n",
+      (unsigned)invalidatedCount, (unsigned long)invalidatedGeneration);
 }
 
 void selectManualTracking(const aircraft::Target& target) {
