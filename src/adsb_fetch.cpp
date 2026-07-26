@@ -797,7 +797,6 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
   uint32_t lastProgress = readStarted;
   bool readFailed = false;
   bool endedEarly = false;
-  uint16_t readStallCount = 0;
   esp_http_client_set_timeout_ms(client, BODY_READ_TIMEOUT_MS);
   while (received < capacity) {
     uint32_t now = millis();
@@ -812,7 +811,6 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
     if (bytesRead > 0) {
       received += static_cast<size_t>(bytesRead);
       lastProgress = millis();
-      readStallCount = 0;
     } else if (bytesRead == 0) {
       if (esp_http_client_is_complete_data_received(client)) break;
       Serial.printf(
@@ -826,18 +824,19 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
           bytesRead == -ESP_ERR_HTTP_EAGAIN || readErrno == EAGAIN ||
           readErrno == EWOULDBLOCK || readErrno == ETIMEDOUT;
       if (retryable && WiFi.status() == WL_CONNECTED) {
-        ++readStallCount;
         const uint32_t stalledForMs = millis() - lastProgress;
         Serial.printf(
-            "ADSB.fi body read stall %u: received %u of %u bytes, "
-            "stalled=%lu ms, read=%d, errno=%d\n",
-            (unsigned)readStallCount, (unsigned)received, (unsigned)capacity,
+            "ADSB.fi native body timeout: received %u of %u bytes, "
+            "no progress for %lu ms, read=%d, errno=%d\n",
+            (unsigned)received, (unsigned)capacity,
             (unsigned long)stalledForMs, bytesRead, readErrno);
-        // esp_http_client_read() may return EAGAIN repeatedly while a large
-        // response pauses. The header, idle, and absolute deadlines remain the
-        // authority; a small fixed retry count must not terminate the body early.
-        delay(20);
-        continue;
+        // A successful 180-200 KB body normally completes in about one second
+        // on the target. Physical Product 40 logs show that after this bounded
+        // three-second read timeout, no later read makes progress and the WiFi
+        // station must be restarted before TLS becomes healthy again. Return
+        // immediately instead of spending the full idle deadline on a dead stream.
+        readFailed = true;
+        break;
       }
       Serial.printf("ADSB.fi native body read failed: %d, errno=%d\n",
                     bytesRead, readErrno);

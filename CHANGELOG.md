@@ -14,15 +14,75 @@ GitHub or preserved evidence does not confirm the changes.
 
 ## Current status
 
-- **Current source:** Product 40
-- **Current build marker:** `7IN-20260726-PRODUCT40-AIRCRAFT-DB-HTTPS-RECOVERY`
+- **Current source:** Product 41
+- **Current build marker:** `7IN-20260726-PRODUCT41-FAST-BODY-RECOVERY`
 - **Current branch:** `main`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
 
-## Product 40 R3 - 2026-07-26
+## Product 41 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT40-AIRCRAFT-DB-HTTPS-RECOVERY-R3`  
+**Build:** `7IN-20260726-PRODUCT41-FAST-BODY-RECOVERY`  
+**Status:** Host-verified ADS-B body-recovery candidate; full PlatformIO and physical verification pending
+
+### Fixed
+
+- Treats the first bounded native `ESP_ERR_HTTP_EAGAIN`, `EAGAIN`,
+  `EWOULDBLOCK`, or `ETIMEDOUT` body read as a terminal response-body
+  transport failure instead of repeating three-second reads until the
+  12-second idle deadline expires.
+- Preserves the native three-second body-read deadline, 12-second fallback
+  no-progress deadline, and 45-second absolute response deadline while
+  eliminating approximately nine seconds of proven-dead native read retries.
+- Hard-recycles the ESP32-S3 station radio immediately after a partial native
+  response body. Product 40 physical logs showed that a soft association
+  reconnect did not clear the poisoned TLS/socket state, while the first hard
+  radio recycle restored a complete 180-190 KB transfer.
+- Retries one second after successful radio recovery through the existing
+  serialized core-0 scheduler; requests remain non-overlapping and successful
+  polls retain the 15-second start-to-start cadence.
+
+### Preserved
+
+- Native ESP-IDF HTTPS remains the preferred path.
+- The verified bounded `WiFiClientSecure` fallback remains available only for
+  eligible TCP, TLS, and HTTP-header transport failures.
+- No fallback is invoked for response-body failures, ordinary HTTP statuses,
+  oversized responses, local allocation failures, DNS/Wi-Fi failures, or JSON
+  failures.
+- Product 40 aircraft database, 200-target bounds, deterministic retention,
+  stale-response rejection, last-good retention, stable ICAO selection and
+  tracking, radar UI, display timing, DMA, bounce buffer, and OPI PSRAM behavior
+  are unchanged.
+
+### Verification
+
+- Confirmed the source was based on force-pushed GitHub `main` at Product 40 R3
+  commit `be43c35c10306844b8d84a5af173d189c092d6dd`.
+- Confirmed the Product 40 physical log repeatedly made no progress after the
+  first three-second native body timeout, while successful bodies completed in
+  about one second and hard radio recovery restored the next complete transfer.
+- Strict host source checks passed for the complete replacement files with no
+  unintended changes outside the native body-timeout and body-recovery paths.
+- Focused transport sequencing tests passed for immediate body-timeout exit
+  and no same-association retry or fallback; a source-policy check confirmed
+  immediate hard-radio recovery for the response-body failure class.
+- Static checks confirmed no `setInsecure()`, whole-response `readString()`,
+  blocking `HTTPClient::GET()`, target-capacity change, UI/display change, or
+  credential file was introduced.
+
+### Pending verification
+
+- Full PlatformIO compile and link, target flash usage, and internal-RAM usage.
+- Physical confirmation of the Product 41 marker and successful recovery from a
+  partial 80-mile ADS-B response without repeated three-second body stalls.
+- Normal 15-second successful polling, 20/40/80 range changes, stale-response
+  rejection, selection, tracking, STOP TRACK, touch, page switching, heap/PSRAM
+  stability, no screen rolling, and extended soak testing.
+
+## Product 40 - 2026-07-26
+
+**Build:** `7IN-20260726-PRODUCT40-AIRCRAFT-DB-HTTPS-RECOVERY`  
 **Status:** Host-verified aircraft-classification and HTTPS-recovery candidate; physical verification in progress
 
 ### Aircraft database

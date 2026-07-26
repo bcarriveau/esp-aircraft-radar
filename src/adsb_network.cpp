@@ -183,10 +183,9 @@ void fetchTask(void* parameter) {
                     diagnostics.consecutiveFailures);
 
       // A single TLS error does not justify dropping a healthy station link.
-      // A stalled response body is different: the physical log shows that it
-      // can leave both HTTPS implementations unable to open another session.
-      // Escalate from an association reconnect to one station-radio restart,
-      // then continue using the normal outage backoff.
+      // A partial response body is different: repeated physical logs show that
+      // a soft association reconnect does not clear the poisoned TLS/socket
+      // state, while a station-radio restart restores the next transfer.
       const bool linkFailure =
           result.failureStage == app_state::FetchFailureStage::WIFI ||
           result.failureStage == app_state::FetchFailureStage::DNS ||
@@ -208,7 +207,7 @@ void fetchTask(void* parameter) {
           bodyFailure || linkRecoveryDue || transportRecoveryDue;
       bool recoveryConnected = false;
       if (recoveryDue) {
-        const bool restartRadio = outageRecoveries > 0;
+        const bool restartRadio = bodyFailure || outageRecoveries > 0;
         Serial.printf(
             "ADSB recovery ladder: %s WiFi after %s failure\n",
             restartRadio ? "hard-recycling" : "reconnecting",
