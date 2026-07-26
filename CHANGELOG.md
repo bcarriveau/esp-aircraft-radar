@@ -14,101 +14,110 @@ GitHub or preserved evidence does not confirm the changes.
 
 ## Current status
 
-- **Current source:** Product 40
-- **Current build marker:** `7IN-20260726-PRODUCT40-AIRCRAFT-TYPE-DATABASE`
+- **Current source:** Product 40 R2
+- **Current build marker:** `7IN-20260726-PRODUCT40-AIRCRAFT-DB-HTTPS-RECOVERY-R2`
 - **Current branch:** `main`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
 
-## Product 40 - 2026-07-26
+## Product 40 R2 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT40-AIRCRAFT-TYPE-DATABASE`  
-**Status:** Host-verified aircraft-classification candidate; full PlatformIO and physical verification pending
+**Build:** `7IN-20260726-PRODUCT40-AIRCRAFT-DB-HTTPS-RECOVERY-R2`  
+**Status:** Host-verified aircraft-classification and HTTPS-recovery candidate; full PlatformIO and physical verification pending
 
-### Added
+### Aircraft database
 
 - Added a generated, sorted aircraft-type database containing 2,697 unique
   designators from a pinned ICAO Doc 8643-derived snapshot.
-- Added 11,716 collision-checked description aliases for use only when an exact
+- Added 11,716 collision-checked description aliases used only when an exact
   aircraft type designator is absent or unresolved.
-- Added a deterministic offline generator that validates the source schema,
-  row count, duplicate designators, source SHA-256, alias conflicts, and hash
+- Replaced fragile hand-written type-prefix matching with an exact,
+  case-insensitive binary-search lookup while keeping exact type-code results
+  authoritative over description fallback.
+- Added a deterministic offline generator that validates source schema, row
+  count, duplicate designators, source SHA-256, alias conflicts, and hash
   collisions before emitting the firmware table.
 - Recorded the pinned source revision, source date, source checksum, generated
   entry counts, and generated-header checksum in repository tooling metadata.
+- Corrected the confirmed Cessna 190 gap: `C190` and `CESSNA 190` resolve to
+  `PISTON` while collision-sensitive types such as C17, C170, E190, B190,
+  PC12, PC24, C208, and C25A remain distinct.
 
-### Classification behavior
+### HTTPS recovery repair
 
-- Replaced the fragile hand-written type-prefix classifier with an exact,
-  case-insensitive designator lookup.
-- Kept the authoritative type-code result ahead of description fallback.
-- Classified fixed-wing piston, turboprop, helicopter, and special aircraft from
-  source engine and aircraft-form fields.
-- Applied explicit, reviewed role rules for airliners, business jets, and
-  military/heavy aircraft where engine type alone cannot determine the display
-  category.
-- Kept gliders, gyroplanes, balloons, airships, powered parachutes, electric
-  aircraft, experimental jets, and other ambiguous types as `UNKNOWN` when the
-  existing display categories cannot represent them honestly.
-- Corrected the confirmed Cessna 190 gap: `C190` and `CESSNA 190` now resolve to
-  `PISTON`.
-- Preserved collision-sensitive distinctions including C-17 versus Cessna 170,
-  E190 versus C190/B190, PC-24 versus PC-12, and C25A versus C208.
+- Corrected the Product 37 transport sequence so both native ESP-IDF HTTPS
+  attempts complete before the independent verified fallback is considered.
+- Limited fallback to one attempt per ADS-B request after the final native
+  transport failure and after bounded native-client cleanup and settling time.
+- Kept fallback eligible only for native TCP, TLS, header, or incomplete-body
+  failures while excluding ordinary HTTP status responses, oversized bodies,
+  local payload-allocation failures, DNS/Wi-Fi failures, and JSON failures.
+- Removed the fixed three-consecutive-`EAGAIN` body abort. Repeated transient
+  native read stalls now remain governed by the existing 12-second no-progress
+  deadline and 45-second absolute response deadline.
+- Increased native/fallback transport-release settling to 250 ms and added a
+  750 ms delay before the one fallback attempt, avoiding immediate switching
+  between two TLS implementations after a partial native response.
+- Retained native HTTPS as the preferred path and retained the Product 37
+  verified, bounded fallback parser with strict Content-Length, chunked, and
+  close-delimited framing support.
 
-### Storage and performance
+### Storage and bounds
 
-- Stored the generated database as read-only parallel arrays in firmware flash.
-- Used bounded binary searches with no heap allocation, PSRAM allocation,
-  Arduino `String`, regular expression, or additional runtime network request.
-- Kept `Target`, `MAX_TARGETS`, all capacity-scaled buffers, and all 200-target
-  bounds unchanged.
-- Host object inspection measured approximately 131,128 bytes of read-only data
-  for the generated type and description tables; no `.data` or `.bss` growth was
-  introduced in the host object.
-- The complete PlatformIO flash and internal-RAM change remains to be measured
-  with the target toolchain.
+- Stores generated aircraft data as read-only firmware data and uses bounded
+  binary searches without runtime heap or PSRAM allocation.
+- Keeps `Target`, `MAX_TARGETS=200`, all capacity-scaled arrays, and target
+  retention behavior unchanged.
+- Host object inspection measured approximately 131,128 bytes of read-only
+  aircraft-database data with no `.data` or `.bss` growth in the host object.
+- Keeps fallback payload storage PSRAM-first, response size capped at 250,000
+  bytes, and header, framing, idle, and total deadlines bounded.
 
 ### Preserved
 
 - Product 39 startup initialization failure propagation and stable fatal-status
   screen.
 - Product 38 location invalidation and pending-new-center behavior.
-- Product 37 verified fallback HTTPS reader and native HTTPS preference.
 - Product 36 R4 20-mile heading sprites, overlap priority, hit testing, and
   40/80-mile dot behavior.
 - Stable ICAO selection/tracking, tracked-loss recovery, outward auto-zoom, MPH
   display, single-snapshot rendering, and dirty/version-driven LVGL updates.
-- Core-0 serialized ADS-B ownership, non-overlapping requests, 15-second cadence,
-  deadlines, recovery, stale-response rejection, and last-good retention.
+- Core-0 serialized ADS-B ownership, non-overlapping requests, 15-second
+  start-to-start cadence, stale-response rejection, last-good retention, and
+  Wi-Fi/TLS recovery scheduling.
 - Arduino-ESP32 3.0.7 XIP/OPI PSRAM, Waveshare panel timing, DMA, anti-rolling
   protections, and the 20-scanline RGB bounce buffer.
 - `include/config.h` privacy and ignore behavior.
 
 ### Verification
 
-- Validated the source CSV at 2,697 rows with 2,697 unique designators and no
-  duplicate codes.
-- Verified deterministic generation byte-for-byte; the generated header SHA-256
-  is `5cb411c1923209972da74477cbc52ec88f9468dd9b6301916b490a0f938c5737`.
-- Strict host C++17 compilation passed with `-Wall -Wextra -Werror -pedantic`.
+- Validated 2,697 source rows and 2,697 unique designators with no duplicate
+  codes.
+- Verified deterministic generation; the generated header SHA-256 is
+  `5cb411c1923209972da74477cbc52ec88f9468dd9b6301916b490a0f938c5737`.
+- Strict host C++17 compilation passed with warnings treated as errors for the
+  complete replacement `src/aircraft_data.cpp` and `src/adsb_fetch.cpp`.
 - AddressSanitizer and UndefinedBehaviorSanitizer tests passed.
-- Exhaustive runtime tests passed for all 2,697 exact type records and all 11,716
-  generated description aliases.
-- Regression tests passed for C190, C170, C17, E190, B190, PC12, PC24, C208,
-  C25A, H64, V22, P8, BT7, GLID, GYRO, UHEL, type-code priority, bitmap selection, and
-  description fallback.
-- Confirmed no networking, TLS, Wi-Fi, display-driver, radar-renderer, touch,
-  target-capacity, PSRAM-ownership, or credential file was changed.
+- Exhaustive classifier tests passed for all 2,697 exact records and all 11,716
+  description aliases, including C190 and collision regressions.
+- Focused transport tests passed for native success, two-native-then-fallback
+  ordering, one-fallback maximum, repeated body stalls, HTTP status, oversize,
+  DNS, Wi-Fi, and no-fallback policy cases.
+- Static inspection confirmed no `setInsecure()`, whole-response `readString()`,
+  blocking `HTTPClient::GET()`, target-capacity change, display-driver change,
+  or credential file was introduced.
 
 ### Pending verification
 
-- Full PlatformIO compile and link.
-- Product 40 build-marker confirmation, target flash usage, and target
-  internal-RAM usage.
-- Physical C190 and other formerly unknown-aircraft bitmap/category validation.
-- Normal 15-second ADS-B updates, native/fallback TLS, Wi-Fi/TLS recovery,
-  location changes, 20/40/80 range changes, selection, tracking, STOP TRACK,
-  touch, page switching, no screen rolling, heap/PSRAM stability, and soak test.
+- Full PlatformIO compile and link, target flash usage, and internal-RAM usage.
+- Physical confirmation of the Product 40 R2 marker and successful complete
+  ADS-B body reception at 20, 40, and 80 miles.
+- Native retry and one verified-fallback behavior under an actual interrupted
+  or stalled response.
+- C190 and other aircraft category/bitmap validation.
+- Normal 15-second updates, stale-response rejection, Wi-Fi/TLS recovery,
+  location changes, selection, tracking, STOP TRACK, touch, page switching,
+  no screen rolling, heap/PSRAM stability, and extended soak testing.
 
 ## Product 39 - 2026-07-26
 
