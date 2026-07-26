@@ -3,18 +3,110 @@
 All notable confirmed changes to Bill's 7-inch ESP32-S3 Aircraft Radar are
 documented in the repository changelog.
 
-This file records the Product 45 through Product 42 updates. Confirmed Product 41
+This file records the Product 46 through Product 42 updates. Confirmed Product 41
 through Product 15 history remains unchanged from the existing repository
 `CHANGELOG.md`.
 
 ## Current status
 
-- **Current source:** Product 45
-- **Current build marker:** `7IN-20260726-PRODUCT45-EXPLICIT-CLASSIFIER-API`
+- **Current source:** Product 46
+- **Current build marker:** `7IN-20260726-PRODUCT46-RADAR-OVERLAP-STABILITY`
 - **Intended branch:** `main`
-- **Product 45 source baseline commit:** `ec3ac4fcee8e2764c315be959e7a78d2ac9488d9`
+- **Product 46 source baseline commit:** `c704ca1d15e4da26c48b768cfa04726b9be865c2`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
+
+## Product 46 - 2026-07-26
+
+**Build:** `7IN-20260726-PRODUCT46-RADAR-OVERLAP-STABILITY`  
+**Status:** Host-verified radar rendering candidate; full PlatformIO and physical
+verification pending
+
+### Fixed
+
+- Removed the 20-mile overlap rule that marked lower-priority aircraft contacts
+  invisible and caused their bitmaps and associated tags to disappear.
+- Keeps every in-range aircraft bitmap represented at the 20-mile view, including
+  aircraft occupying the same or nearby screen coordinates.
+- Layers overlapping contacts deterministically by tracked state, selected state,
+  nearest distance, stable ICAO hex, and target index as the final tie-breaker.
+- Draws a subtle dark one-pixel silhouette around a higher-priority overlapping
+  bitmap so the upper aircraft remains distinct without deleting the aircraft
+  underneath it.
+- Keeps the normal aircraft bitmap cyan while adding a temporary yellow halo
+  underneath it as the radar sweep passes, restoring the radar-paint flair without
+  recoloring the aircraft or its tag.
+- Uses the existing 24-degree trailing sweep window for the halo at 20, 40, and
+  80 miles.
+- Keeps selected contacts amber and tracked contacts red without applying the
+  sweep halo to either priority state.
+- Removes contact-overlap visibility gating from tag rendering while retaining the
+  existing collision-aware tag placement and selected/tracked tag priority.
+
+### Preserved
+
+- Product 45 explicit target-aware classifier APIs remain in use for radar
+  previews, radar contacts, side icons, and radar summaries.
+- Product 45 classifier output, generated database, and regression coverage are
+  unchanged.
+- Core-0 serialized ADS-B ownership, non-overlapping requests, 15-second cadence,
+  stale-response rejection, Wi-Fi/TLS recovery, and last-good retention are
+  unchanged.
+- Native ESP-IDF HTTPS remains the preferred transport, and the bounded secure
+  fallback policy is unchanged.
+- `MAX_TARGETS=200`, PSRAM ownership, deterministic retention, stable ICAO
+  selection and tracking, outward auto-zoom, MPH display, and touch behavior are
+  unchanged.
+- Arduino-ESP32 3.0.7 XIP/OPI PSRAM, Waveshare panel timing, DMA, anti-rolling
+  protections, and the 20-scanline RGB bounce buffer are unchanged.
+- `include/config.h` and credentials were not read, modified, or packaged.
+
+### Verification
+
+- Confirmed GitHub `main` at Product 45 commit
+  `c704ca1d15e4da26c48b768cfa04726b9be865c2` before rebasing the radar change.
+- Confirmed the Product 45 build marker before editing:
+  `7IN-20260726-PRODUCT45-EXPLICIT-CLASSIFIER-API`.
+- Compared Product 44 and Product 45 and confirmed Product 45 changed
+  `src/radar_renderer.cpp` only at five explicit classifier call sites.
+- Preserved all Product 45 `bitmapForTarget()` and `kindName(const Target&)`
+  renderer calls in the complete Product 46 replacement file.
+- Complete `src/radar_renderer.cpp` host C++17 syntax checking passed with
+  `-Wall -Wextra -Werror` using focused interface stubs.
+- Focused actual-renderer overlap tests passed under AddressSanitizer and
+  UndefinedBehaviorSanitizer.
+- Tests confirmed two nearby normal 20-mile aircraft retain visible bitmap pixels.
+- Tests confirmed a normal contact under the sweep retains a cyan center while a
+  yellow bitmap-shaped halo is painted outside it, and the halo clears after the
+  sweep window passes.
+- Tests confirmed the 40/80-mile dot rendering uses the same yellow-under-cyan
+  sweep treatment.
+- Tests confirmed selected aircraft remain the top amber layer and tracked
+  aircraft remain the top red layer at exact overlap, with no sweep halo applied
+  to either state.
+- Static checks confirmed contact visibility suppression and sweep-driven base
+  recoloring remain absent, and legacy target-backed classifier calls are absent.
+- Static checks confirmed no networking, TLS, Wi-Fi, settings, target-capacity,
+  display-driver, panel-timing, DMA, bounce-buffer, or credential source was
+  changed.
+- Final package inspection confirmed only complete replacement files and delivery
+  metadata are included.
+
+### Pending verification
+
+- Full PlatformIO compile and link.
+- Flash usage and internal-RAM usage report.
+- Firmware upload and physical Product 46 build-marker confirmation.
+- Physical 20-mile overlap test confirming both aircraft remain represented.
+- Physical confirmation that normal aircraft stay cyan while a brief yellow halo
+  appears underneath them as the sweep passes, without tag color or visibility
+  flicker.
+- Selection, INFO, TRACK, CLEAR, STOP TRACK, stable ICAO hit testing, and
+  selected/tracked overlap priority.
+- Normal aircraft preview, side-icon, and radar-summary classification behavior.
+- Normal 15-second ADS-B updates, native and fallback TLS behavior, Wi-Fi/TLS
+  recovery, stale-response rejection, 20/40/80 range changes, page switching, no
+  screen rolling, heap/PSRAM stability, and extended soak testing.
 
 ## Product 45 - 2026-07-26
 

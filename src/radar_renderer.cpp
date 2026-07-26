@@ -111,8 +111,8 @@ struct ScreenContact {
   int16_t y;
   bool tracked;
   bool selected;
-  bool visible;
-  bool sweepBright;
+  bool needsOutline;
+  bool sweepHighlighted;
   uint8_t headingIndex;
 };
 
@@ -435,13 +435,34 @@ void drawRadarBitmapContact(int centerX, int centerY,
   }
 }
 
+void drawRadarBitmapContactHalo(int centerX, int centerY,
+                                   AircraftBitmapId bitmapId,
+                                   uint8_t headingIndex,
+                                   lv_color_t haloColor) {
+  drawRadarBitmapContact(centerX - 2, centerY, bitmapId, headingIndex, haloColor);
+  drawRadarBitmapContact(centerX + 2, centerY, bitmapId, headingIndex, haloColor);
+  drawRadarBitmapContact(centerX, centerY - 2, bitmapId, headingIndex, haloColor);
+  drawRadarBitmapContact(centerX, centerY + 2, bitmapId, headingIndex, haloColor);
+}
+
+void drawRadarBitmapContactWithOutline(int centerX, int centerY,
+                                       AircraftBitmapId bitmapId,
+                                       uint8_t headingIndex,
+                                       lv_color_t color) {
+  const lv_color_t outline = rgb(2, 8, 12);
+  drawRadarBitmapContact(centerX - 1, centerY, bitmapId, headingIndex, outline);
+  drawRadarBitmapContact(centerX + 1, centerY, bitmapId, headingIndex, outline);
+  drawRadarBitmapContact(centerX, centerY - 1, bitmapId, headingIndex, outline);
+  drawRadarBitmapContact(centerX, centerY + 1, bitmapId, headingIndex, outline);
+  drawRadarBitmapContact(centerX, centerY, bitmapId, headingIndex, color);
+}
+
 void drawContacts(aircraft::Target* workTargets, uint8_t count,
                   float projectionSeconds, float rangeMiles,
                   const app_state::Snapshot& snapshot, const char* selectedHex,
                   ContactFrame& frame) {
-  const lv_color_t bright = rgb(255, 220, 80);
   const lv_color_t cyan = rgb(80, 210, 255);
-  const lv_color_t green = rgb(70, 255, 145);
+  const lv_color_t sweepHalo = rgb(255, 220, 80);
   const lv_color_t amber = rgb(255, 190, 70);
   const lv_color_t red = rgb(255, 80, 80);
   frame.count = 0;
@@ -473,7 +494,8 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
     float bearingRadians = projectedBearing * M_PI / 180.0f;
     int x = CENTER_X + (int)(sin(bearingRadians) * RADIUS * ratio);
     int y = CENTER_Y - (int)(cos(bearingRadians) * RADIUS * ratio);
-    float behind = fmodf(sweepDegrees - projectedBearing + 360.0f, 360.0f);
+    const float behind =
+        fmodf(sweepDegrees - projectedBearing + 360.0f, 360.0f);
     bool contactIsTracked =
         app_state::isManuallyTracked(workTargets[i], snapshot);
     bool contactIsSelected = !snapshot.manualTracking && selectedHex &&
@@ -498,82 +520,94 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
               : 0;
       frame.contacts[frame.count++] = {
         i, hitIndex, (int16_t)x, (int16_t)y, contactIsTracked,
-        contactIsSelected, true, behind < 24.0f, headingIndex
+        contactIsSelected, false, behind < 24.0f, headingIndex
       };
     }
   }
 
+  uint8_t priorityOrder[aircraft::MAX_TARGETS]{};
+  for (uint8_t contact = 0; contact < frame.count; ++contact) {
+    priorityOrder[contact] = contact;
+  }
+
+  auto higherPriority = [&](uint8_t leftIndex, uint8_t rightIndex) {
+    const ScreenContact& left = frame.contacts[leftIndex];
+    const ScreenContact& right = frame.contacts[rightIndex];
+    const uint8_t leftPriority = left.tracked ? 2 : (left.selected ? 1 : 0);
+    const uint8_t rightPriority = right.tracked ? 2 : (right.selected ? 1 : 0);
+    if (leftPriority != rightPriority) return leftPriority > rightPriority;
+
+    const aircraft::Target& leftTarget = workTargets[left.targetIndex];
+    const aircraft::Target& rightTarget = workTargets[right.targetIndex];
+    if (leftTarget.distanceMiles != rightTarget.distanceMiles) {
+      return leftTarget.distanceMiles < rightTarget.distanceMiles;
+    }
+    const int hexOrder = strcmp(leftTarget.hex, rightTarget.hex);
+    if (hexOrder != 0) return hexOrder < 0;
+    return left.targetIndex < right.targetIndex;
+  };
+
+  for (uint8_t contact = 1; contact < frame.count; ++contact) {
+    const uint8_t candidate = priorityOrder[contact];
+    uint8_t position = contact;
+    while (position > 0 &&
+           higherPriority(candidate, priorityOrder[position - 1])) {
+      priorityOrder[position] = priorityOrder[position - 1];
+      --position;
+    }
+    priorityOrder[position] = candidate;
+  }
+
   if (rangeMiles <= 20.1f) {
-    uint8_t priorityOrder[aircraft::MAX_TARGETS]{};
-    for (uint8_t contact = 0; contact < frame.count; ++contact) {
-      priorityOrder[contact] = contact;
-      frame.contacts[contact].visible = false;
-    }
-
-    auto higherPriority = [&](uint8_t leftIndex, uint8_t rightIndex) {
-      const ScreenContact& left = frame.contacts[leftIndex];
-      const ScreenContact& right = frame.contacts[rightIndex];
-      const uint8_t leftPriority = left.tracked ? 2 : (left.selected ? 1 : 0);
-      const uint8_t rightPriority =
-          right.tracked ? 2 : (right.selected ? 1 : 0);
-      if (leftPriority != rightPriority) return leftPriority > rightPriority;
-      const float leftDistance = workTargets[left.targetIndex].distanceMiles;
-      const float rightDistance = workTargets[right.targetIndex].distanceMiles;
-      if (leftDistance != rightDistance) return leftDistance < rightDistance;
-      return left.targetIndex < right.targetIndex;
-    };
-
-    for (uint8_t contact = 1; contact < frame.count; ++contact) {
-      const uint8_t candidate = priorityOrder[contact];
-      uint8_t position = contact;
-      while (position > 0 &&
-             higherPriority(candidate, priorityOrder[position - 1])) {
-        priorityOrder[position] = priorityOrder[position - 1];
-        --position;
-      }
-      priorityOrder[position] = candidate;
-    }
-
     constexpr int overlapDistanceSquared =
         RADAR_CONTACT_OVERLAP_RADIUS * RADAR_CONTACT_OVERLAP_RADIUS;
-    for (uint8_t rank = 0; rank < frame.count; ++rank) {
-      ScreenContact& candidate = frame.contacts[priorityOrder[rank]];
-      bool overlapsVisible = false;
-      for (uint8_t acceptedRank = 0; acceptedRank < rank; ++acceptedRank) {
-        const ScreenContact& accepted =
-            frame.contacts[priorityOrder[acceptedRank]];
-        if (!accepted.visible) continue;
-        const int deltaX = candidate.x - accepted.x;
-        const int deltaY = candidate.y - accepted.y;
+    for (uint8_t higherRank = 0; higherRank < frame.count; ++higherRank) {
+      ScreenContact& higher = frame.contacts[priorityOrder[higherRank]];
+      for (uint8_t lowerRank = higherRank + 1; lowerRank < frame.count;
+           ++lowerRank) {
+        const ScreenContact& lower = frame.contacts[priorityOrder[lowerRank]];
+        const int deltaX = higher.x - lower.x;
+        const int deltaY = higher.y - lower.y;
         if (deltaX * deltaX + deltaY * deltaY <= overlapDistanceSquared) {
-          overlapsVisible = true;
+          higher.needsOutline = true;
           break;
         }
       }
-      candidate.visible = !overlapsVisible;
     }
   }
 
-  for (uint8_t contact = 0; contact < frame.count; ++contact) {
-    const ScreenContact& screen = frame.contacts[contact];
+  // Draw low-priority contacts first so tracked, selected, and nearer aircraft
+  // remain on top without suppressing any contact. The sweep adds a temporary
+  // yellow halo underneath normal contacts while their cyan bitmap/tag styling
+  // remains stable; selected and tracked state colors never flash.
+  for (uint8_t drawRank = frame.count; drawRank > 0; --drawRank) {
+    const ScreenContact& screen =
+        frame.contacts[priorityOrder[drawRank - 1]];
+    const bool showSweepHalo =
+        screen.sweepHighlighted && !screen.selected && !screen.tracked;
     if (rangeMiles <= 20.1f) {
-      if (!screen.visible) continue;
       const lv_color_t iconColor =
-          screen.tracked ? red
-                         : (screen.selected
-                                ? amber
-                                : (screen.sweepBright ? green : cyan));
-      drawRadarBitmapContact(
-          screen.x, screen.y,
-          aircraft::bitmapForTarget(workTargets[screen.targetIndex]),
-          screen.headingIndex, iconColor);
+          screen.tracked ? red : (screen.selected ? amber : cyan);
+      const AircraftBitmapId bitmapId =
+          aircraft::bitmapForTarget(workTargets[screen.targetIndex]);
+      if (showSweepHalo) {
+        drawRadarBitmapContactHalo(
+            screen.x, screen.y, bitmapId, screen.headingIndex, sweepHalo);
+      }
+      if (screen.needsOutline) {
+        drawRadarBitmapContactWithOutline(
+            screen.x, screen.y, bitmapId, screen.headingIndex, iconColor);
+      } else {
+        drawRadarBitmapContact(
+            screen.x, screen.y, bitmapId, screen.headingIndex, iconColor);
+      }
     } else {
-      fillCircle(screen.x, screen.y, screen.tracked ? 4 : 2,
-                 screen.tracked
-                     ? red
-                     : (screen.selected
-                            ? cyan
-                            : (screen.sweepBright ? bright : cyan)));
+      const int contactRadius = screen.tracked ? 4 : 2;
+      if (showSweepHalo) {
+        fillCircle(screen.x, screen.y, contactRadius + 2, sweepHalo);
+      }
+      fillCircle(screen.x, screen.y, contactRadius,
+                 screen.tracked ? red : (screen.selected ? amber : cyan));
     }
 
     if (screen.selected) {
@@ -593,6 +627,7 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
 void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
                        const app_state::Snapshot& snapshot,
                        const ContactFrame& frame) {
+  (void)snapshot;
   LabelBox* labelBoxes = renderedLabelBoxes;
   uint8_t labelBoxCount = 0;
 
@@ -628,7 +663,7 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
 
   for (uint8_t contact = 0; contact < frame.count; ++contact) {
     const ScreenContact& screen = frame.contacts[contact];
-    if (!screen.visible || !screen.selected || screen.tracked) continue;
+    if (!screen.selected || screen.tracked) continue;
     const aircraft::Target& target = workTargets[screen.targetIndex];
     const char* identifier = aircraft::primaryIdentifier(target);
     char distanceText[20];
@@ -646,7 +681,7 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
   if (rangeMiles <= 20.1f) {
     for (uint8_t contact = 0; contact < frame.count; ++contact) {
       const ScreenContact& screen = frame.contacts[contact];
-      if (!screen.visible || screen.tracked || screen.selected) continue;
+      if (screen.tracked || screen.selected) continue;
       const aircraft::Target& target = workTargets[screen.targetIndex];
       const char* identifier = aircraft::primaryIdentifier(target);
       const char* lines[] = {identifier};
@@ -997,7 +1032,6 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
 }
 
 }  // namespace
-
 bool render(aircraft::Target* workTargets, const char* selectedHex) {
   sweepDegrees = fmodf(sweepDegrees + 2.2f, 360.0f);
   if (!radarView.buffer || !radarView.canvas || !workTargets ||
