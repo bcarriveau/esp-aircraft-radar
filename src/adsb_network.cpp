@@ -156,6 +156,8 @@ void fetchTask(void* parameter) {
             result.durationMs, result.responseBytes, result.receivedCount,
             result.eligibleCount, result.acceptedCount,
             result.capacityDroppedCount);
+        outageStartedAt = 0;
+        outageRecoveries = 0;
         immediateFollowup = true;
       } else {
         app_state::publishTargets(incoming, result.acceptedCount, millis());

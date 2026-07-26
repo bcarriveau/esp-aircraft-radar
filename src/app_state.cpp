@@ -378,7 +378,8 @@ void recordDiscardedResponse(uint32_t durationMs, uint32_t responseBytes,
   state.diagnostics.lastEligibleCount = eligibleCount;
   state.diagnostics.lastAcceptedCount = acceptedCount;
   state.diagnostics.lastCapacityDroppedCount = capacityDroppedCount;
-  state.diagnostics.lastFailureStage = FetchFailureStage::STALE_RESULT;
+  state.diagnostics.consecutiveFailures = 0;
+  state.diagnostics.lastFailureStage = FetchFailureStage::NONE;
   observeMemoryLocked();
   unlockState(locked);
 }
