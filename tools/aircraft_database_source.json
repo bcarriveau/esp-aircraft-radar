@@ -1,0 +1,10 @@
+{
+  "description": "Pinned ICAO Doc 8643-derived aircraft type snapshot used to generate Product 40",
+  "source_date": "2026-06-01",
+  "source_revision": "6666bc57a95f64102cf9511d887e73a8e5379d5f",
+  "source_sha256": "eeb813e48c670f4366bfc5de7da59d9e390295d10630d0c2c85713e0842bab94",
+  "source_url": "https://raw.githubusercontent.com/siembroeder/OverFlight/6666bc57a95f64102cf9511d887e73a8e5379d5f/data/icao_8643.csv",
+  "type_records": 2697,
+  "description_aliases": 11716,
+  "generated_header_sha256": "5cb411c1923209972da74477cbc52ec88f9468dd9b6301916b490a0f938c5737"
+}
