@@ -3,17 +3,86 @@
 All notable confirmed changes to Bill's 7-inch ESP32-S3 Aircraft Radar are
 documented in the repository changelog.
 
-This file records the Product 42 update. Confirmed Product 41 through Product 15
-history remains unchanged from the existing repository `CHANGELOG.md`.
+This file records the Product 43 and Product 42 updates. Confirmed Product 41
+through Product 15 history remains unchanged from the existing repository
+`CHANGELOG.md`.
 
 ## Current status
 
-- **Current source:** Product 42
-- **Current build marker:** `7IN-20260726-PRODUCT42-STALE-TRANSPORT-SUCCESS`
+- **Current source:** Product 43
+- **Current build marker:** `7IN-20260726-PRODUCT43-WIFI-TIMESTAMP-SYNC`
 - **Intended branch:** `main`
-- **Product 42 baseline commit:** `843863321b5fb2458d8fe60350a585e597129245`
+- **Product 43 baseline commit:** `251fbc42fb2350a616dbdbb40c7a72a6f97e5f97`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
+
+## Product 43 - 2026-07-26
+
+**Build:** `7IN-20260726-PRODUCT43-WIFI-TIMESTAMP-SYNC`  
+**Status:** Host-verified cross-core synchronization candidate; full PlatformIO
+and physical verification pending
+
+### Fixed
+
+- Removed `volatile` from the cross-core `lastWifiAttempt` timestamp.
+- Protects every read and write of `lastWifiAttempt` with the existing
+  `commandMux` FreeRTOS critical section.
+- Performs the reconnect-due check and timestamp reservation in one critical
+  section so the main loop cannot overwrite a newer network-task attempt time.
+- Records the actual network-task Wi-Fi attempt time under the same lock.
+
+### Preserved
+
+- Wi-Fi reconnect intervals and reconnect eligibility are unchanged.
+- Core-0 serialized ADS-B ownership, non-overlapping requests, 15-second cadence,
+  stale-response rejection, outage recovery, and last-good retention are
+  unchanged.
+- Native ESP-IDF HTTPS remains the preferred transport, and the verified bounded
+  fallback policy is unchanged.
+- Product 42 stale-success bookkeeping remains unchanged.
+- `MAX_TARGETS=200`, PSRAM ownership, deterministic retention, stable ICAO
+  selection and tracking, outward auto-zoom, MPH display, radar rendering, touch
+  handling, and page behavior remain unchanged.
+- Arduino-ESP32 3.0.7 XIP/OPI PSRAM, Waveshare panel timing, DMA, anti-rolling
+  protections, and the 20-scanline RGB bounce buffer remain unchanged.
+- `include/config.h` and credentials were not touched or packaged.
+
+### Verification
+
+- Confirmed GitHub `main` at Product 42 commit
+  `251fbc42fb2350a616dbdbb40c7a72a6f97e5f97`.
+- Confirmed the Product 42 build marker before editing:
+  `7IN-20260726-PRODUCT42-STALE-TRANSPORT-SUCCESS`.
+- Confirmed the original Git blob identities before modification:
+  - `src/adsb_network.cpp`:
+    `937aa8b21ce9f3726551ef74e2231ec0a479ffc6`
+  - `include/build_info.h`:
+    `07f52193d8b3b844e204ad5652548df049928f06`
+  - `CHANGELOG.md`:
+    `43c2bb2550a69b7f77b8accd8147493a6cafd18a`
+- Complete `src/adsb_network.cpp` host C++17 syntax checking passed with
+  `-Wall -Wextra -Werror` using focused interface stubs.
+- Focused synchronization tests passed for locked Wi-Fi-attempt recording,
+  atomic reconnect check-and-reservation, reconnect throttling, and timer
+  rollover behavior.
+- Static checks confirmed `lastWifiAttempt` is no longer volatile and has no
+  unprotected read or write.
+- Static checks confirmed no `setInsecure()`, blocking `HTTPClient::GET()`,
+  whole-response `readString()`, target-capacity change, UI/display change, or
+  credential file was introduced.
+- Final complete-file comparison showed only the intended timestamp
+  synchronization, Product 43 build marker, and changelog changes.
+
+### Pending verification
+
+- Full PlatformIO compile and link.
+- Flash usage and internal-RAM usage report.
+- Firmware upload and physical Product 43 build-marker confirmation.
+- Normal automatic Wi-Fi reconnect timing during a disconnect and recovery.
+- Normal 15-second ADS-B updates, native and fallback TLS behavior, stale-response
+  rejection, 20/40/80 range changes, selection, tracking, STOP TRACK, touch,
+  page switching, no screen rolling, heap/PSRAM stability, and extended soak
+  testing.
 
 ## Product 42 - 2026-07-26
 

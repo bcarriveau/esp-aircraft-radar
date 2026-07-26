@@ -22,7 +22,7 @@ TaskHandle_t fetchTaskHandle = nullptr;
 portMUX_TYPE commandMux = portMUX_INITIALIZER_UNLOCKED;
 uint32_t pendingCommands = 0;
 bool controlledRestartPending = false;
-volatile uint32_t lastWifiAttempt = 0;
+uint32_t lastWifiAttempt = 0;
 uint32_t wifiAttempts = 0;
 wl_status_t lastLoggedWifiStatus = WL_IDLE_STATUS;
 
@@ -59,9 +59,26 @@ bool isControlledRestartPending() {
   return pending;
 }
 
+void recordWifiAttempt() {
+  portENTER_CRITICAL(&commandMux);
+  lastWifiAttempt = millis();
+  portEXIT_CRITICAL(&commandMux);
+}
+
+bool reserveWifiReconnect(wl_status_t status, uint32_t retryDelayMs) {
+  portENTER_CRITICAL(&commandMux);
+  const uint32_t now = millis();
+  const bool reconnectDue =
+      adsb::shouldScheduleWifiReconnect(status, now, lastWifiAttempt,
+                                        retryDelayMs);
+  if (reconnectDue) lastWifiAttempt = now;
+  portEXIT_CRITICAL(&commandMux);
+  return reconnectDue;
+}
+
 void beginWifiConnection(const char* reason, bool restartRadio = false) {
   ++wifiAttempts;
-  lastWifiAttempt = millis();
+  recordWifiAttempt();
   const String ssid = settings::wifiSsid();
   const String password = settings::wifiPassword();
   Serial.printf("WiFi attempt %lu (%s): %s\n",
@@ -355,10 +372,8 @@ void service() {
       (status == WL_NO_SSID_AVAIL || status == WL_CONNECT_FAILED)
           ? 60000U
           : WIFI_RETRY_INTERVAL_MS;
-  if (adsb::shouldScheduleWifiReconnect(status, now, lastWifiAttempt,
-                                        retryDelayMs)) {
+  if (reserveWifiReconnect(status, retryDelayMs)) {
     queueCommand(COMMAND_WIFI_RECONNECT);
-    lastWifiAttempt = now;
   }
 }
 
