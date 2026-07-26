@@ -435,16 +435,6 @@ void drawRadarBitmapContact(int centerX, int centerY,
   }
 }
 
-void drawRadarBitmapContactHalo(int centerX, int centerY,
-                                   AircraftBitmapId bitmapId,
-                                   uint8_t headingIndex,
-                                   lv_color_t haloColor) {
-  drawRadarBitmapContact(centerX - 2, centerY, bitmapId, headingIndex, haloColor);
-  drawRadarBitmapContact(centerX + 2, centerY, bitmapId, headingIndex, haloColor);
-  drawRadarBitmapContact(centerX, centerY - 2, bitmapId, headingIndex, haloColor);
-  drawRadarBitmapContact(centerX, centerY + 2, bitmapId, headingIndex, haloColor);
-}
-
 void drawRadarBitmapContactWithOutline(int centerX, int centerY,
                                        AircraftBitmapId bitmapId,
                                        uint8_t headingIndex,
@@ -462,7 +452,8 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
                   const app_state::Snapshot& snapshot, const char* selectedHex,
                   ContactFrame& frame) {
   const lv_color_t cyan = rgb(80, 210, 255);
-  const lv_color_t sweepHalo = rgb(255, 220, 80);
+  const lv_color_t sweepBitmapTint = rgb(225, 205, 105);
+  const lv_color_t sweepDotHalo = rgb(255, 220, 80);
   const lv_color_t amber = rgb(255, 190, 70);
   const lv_color_t red = rgb(255, 80, 80);
   frame.count = 0;
@@ -577,23 +568,23 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
   }
 
   // Draw low-priority contacts first so tracked, selected, and nearer aircraft
-  // remain on top without suppressing any contact. The sweep adds a temporary
-  // yellow halo underneath normal contacts while their cyan bitmap/tag styling
-  // remains stable; selected and tracked state colors never flash.
+  // remain on top without suppressing any contact. At 20 miles the sweep briefly
+  // tints the normal bitmap at its existing size; at 40/80 miles the compact dot
+  // retains its small yellow halo. Tags and priority-state colors remain stable.
   for (uint8_t drawRank = frame.count; drawRank > 0; --drawRank) {
     const ScreenContact& screen =
         frame.contacts[priorityOrder[drawRank - 1]];
-    const bool showSweepHalo =
+    const bool sweepActive =
         screen.sweepHighlighted && !screen.selected && !screen.tracked;
     if (rangeMiles <= 20.1f) {
       const lv_color_t iconColor =
-          screen.tracked ? red : (screen.selected ? amber : cyan);
+          screen.tracked
+              ? red
+              : (screen.selected
+                     ? amber
+                     : (sweepActive ? sweepBitmapTint : cyan));
       const AircraftBitmapId bitmapId =
           aircraft::bitmapForTarget(workTargets[screen.targetIndex]);
-      if (showSweepHalo) {
-        drawRadarBitmapContactHalo(
-            screen.x, screen.y, bitmapId, screen.headingIndex, sweepHalo);
-      }
       if (screen.needsOutline) {
         drawRadarBitmapContactWithOutline(
             screen.x, screen.y, bitmapId, screen.headingIndex, iconColor);
@@ -603,8 +594,8 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
       }
     } else {
       const int contactRadius = screen.tracked ? 4 : 2;
-      if (showSweepHalo) {
-        fillCircle(screen.x, screen.y, contactRadius + 2, sweepHalo);
+      if (sweepActive) {
+        fillCircle(screen.x, screen.y, contactRadius + 2, sweepDotHalo);
       }
       fillCircle(screen.x, screen.y, contactRadius,
                  screen.tracked ? red : (screen.selected ? amber : cyan));

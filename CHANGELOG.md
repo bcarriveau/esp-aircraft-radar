@@ -3,18 +3,86 @@
 All notable confirmed changes to Bill's 7-inch ESP32-S3 Aircraft Radar are
 documented in the repository changelog.
 
-This file records the Product 46 through Product 42 updates. Confirmed Product 41
+This file records the Product 46 R2 through Product 42 updates. Confirmed Product 41
 through Product 15 history remains unchanged from the existing repository
 `CHANGELOG.md`.
 
 ## Current status
 
-- **Current source:** Product 46
-- **Current build marker:** `7IN-20260726-PRODUCT46-RADAR-OVERLAP-STABILITY`
+- **Current source:** Product 46 R2
+- **Current build marker:** `7IN-20260726-PRODUCT46-R2-SUBTLE-SWEEP-TINT`
 - **Intended branch:** `main`
-- **Product 46 source baseline commit:** `c704ca1d15e4da26c48b768cfa04726b9be865c2`
+- **Product 46 R2 source baseline commit:** `58aee5b0fda1e364aec68d277ea1d00ffa9a71c3`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
+
+## Product 46 R2 - 2026-07-26
+
+**Build:** `7IN-20260726-PRODUCT46-R2-SUBTLE-SWEEP-TINT`  
+**Status:** Host-verified radar styling revision; full PlatformIO and physical
+verification pending
+
+### Refined
+
+- Replaces the enlarged four-offset yellow halo around 20-mile aircraft bitmaps
+  with a same-size muted yellow bitmap tint while the sweep passes.
+- Keeps the 20-mile aircraft footprint unchanged so the sweep effect does not make
+  icons appear larger, thicker, or visually crowded.
+- Returns normal 20-mile aircraft to cyan as soon as the existing 24-degree sweep
+  window passes; aircraft tags remain cyan and do not change color.
+- Leaves the compact yellow-under-cyan dot treatment at 40 and 80 miles unchanged.
+- Keeps selected contacts amber and tracked contacts red without sweep tinting.
+- Removes the obsolete 20-mile bitmap-halo helper and its expanded drawing path.
+
+### Preserved
+
+- Product 46 overlap stability remains intact: every in-range 20-mile aircraft
+  bitmap is rendered, overlap ordering is deterministic, and collision-aware tags
+  are not suppressed by bitmap overlap.
+- Product 45 explicit target-aware classifier APIs remain in use throughout the
+  renderer.
+- Core-0 serialized ADS-B ownership, non-overlapping requests, 15-second cadence,
+  stale-response rejection, Wi-Fi/TLS recovery, and last-good retention are
+  unchanged.
+- Native ESP-IDF HTTPS and the bounded secure fallback policy are unchanged.
+- `MAX_TARGETS=200`, PSRAM ownership, stable ICAO selection/tracking, outward
+  auto-zoom, MPH display, touch behavior, panel timing, DMA, anti-rolling, and the
+  20-scanline RGB bounce buffer are unchanged.
+- `include/config.h` and credentials were not read, modified, or packaged.
+
+### Verification
+
+- Confirmed GitHub `main` at Product 46 commit
+  `58aee5b0fda1e364aec68d277ea1d00ffa9a71c3` before editing.
+- Confirmed Product 46 build marker
+  `7IN-20260726-PRODUCT46-RADAR-OVERLAP-STABILITY` before editing.
+- Complete `src/radar_renderer.cpp` host C++17 syntax checking passed with
+  `-Wall -Wextra -Werror` using focused interface stubs.
+- Focused actual-renderer tests passed under AddressSanitizer and
+  UndefinedBehaviorSanitizer.
+- Tests confirmed a normal 20-mile bitmap changes to the same-size muted yellow
+  tint only inside the sweep window and returns to cyan afterward.
+- Tests confirmed no yellow 20-mile pixels are drawn outside the bitmap footprint.
+- Tests confirmed the 40/80-mile yellow-under-cyan dot treatment remains unchanged.
+- Tests confirmed selected aircraft remain amber and tracked aircraft remain red,
+  with no sweep tint applied to either state.
+- Tests confirmed exact-overlap selected/tracked priority and Product 46 contact
+  retention remain intact.
+- Static checks confirmed the removed 20-mile halo helper and expanded-offset calls
+  are absent, and Product 45 target-aware classifier calls remain present.
+- Static checks confirmed no networking, TLS, Wi-Fi, settings, capacity, display
+  driver, panel timing, DMA, bounce-buffer, or credential source was changed.
+
+### Pending verification
+
+- Full PlatformIO compile and link.
+- Flash usage and internal-RAM usage report.
+- Firmware upload and physical Product 46 R2 build-marker confirmation.
+- Physical confirmation that 20-mile aircraft briefly tint a subtle yellow at the
+  same size, then return to cyan without tag flicker.
+- Physical confirmation that 40/80-mile dot sweep highlighting remains acceptable.
+- Selection, INFO, TRACK, CLEAR, STOP TRACK, stable ICAO hit testing, overlap
+  behavior, no screen rolling, heap/PSRAM stability, and extended soak testing.
 
 ## Product 46 - 2026-07-26
 
