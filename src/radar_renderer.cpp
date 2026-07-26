@@ -269,7 +269,7 @@ void drawAircraftPreview(lv_obj_t* canvas, lv_color_t* buffer,
   previewLine(buffer, PREVIEW_WIDTH / 2, 10,
               PREVIEW_WIDTH / 2, PREVIEW_HEIGHT - 10, grid);
 
-  const uint16_t* sprite = aircraftBitmap(aircraft::bitmapForType(target.typeCode));
+  const uint16_t* sprite = aircraftBitmap(aircraft::bitmapForTarget(target));
   constexpr int scale = 2;
   const int startX = (PREVIEW_WIDTH - AIRCRAFT_BITMAP_W * scale) / 2;
   const int startY = (PREVIEW_HEIGHT - AIRCRAFT_BITMAP_H * scale) / 2;
@@ -667,7 +667,7 @@ void updateSideIcon(lv_obj_t* canvas, lv_color_t* buffer,
     return;
   }
   drawSideBitmapIcon(canvas, buffer,
-                     aircraft::bitmapForType(target->typeCode));
+                     aircraft::bitmapForTarget(*target));
   lv_obj_clear_flag(canvas, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -736,7 +736,7 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
     if (radarView.leftNearestSummaryLabel) {
       snprintf(text, sizeof(text),
                "%s %s\n%.1f mi %s\n%.0f ft\n%.0f MPH",
-               aircraft::kindName(nearestTarget->typeCode),
+               aircraft::kindName(*nearestTarget),
                nearestTarget->typeCode, nearestTarget->distanceMiles,
                aircraft::compassDirection(nearestTarget->bearing),
                nearestTarget->altitudeFt,
@@ -928,7 +928,7 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
     if (distinctRegistration) {
       snprintf(text, sizeof(text),
                "%s  %s\n%s\n%.1f mi %s\n%.0f ft | %.0f MPH",
-               aircraft::kindName(primaryTarget->typeCode),
+               aircraft::kindName(*primaryTarget),
                primaryTarget->typeCode, primaryTarget->registration,
                primaryTarget->distanceMiles,
                aircraft::compassDirection(primaryTarget->bearing),
@@ -937,7 +937,7 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
     } else {
       snprintf(text, sizeof(text),
                "%s  %s\n%.1f mi %s\n%.0f ft | %.0f MPH",
-               aircraft::kindName(primaryTarget->typeCode),
+               aircraft::kindName(*primaryTarget),
                primaryTarget->typeCode, primaryTarget->distanceMiles,
                aircraft::compassDirection(primaryTarget->bearing),
                primaryTarget->altitudeFt,

@@ -663,7 +663,7 @@ void showTargetDetails(const aircraft::Target& target,
     "TYPE: %s  %s\nRegistration: %s\nICAO: %s\nOperator: %s\nDescription: %s\n\n"
     "Distance: %.1f miles\nBearing: %.0f deg %s\nAltitude: %.0f feet\n"
     "Speed: %.0f MPH\nHeading: %.0f deg\nVertical rate: %+.0f ft/min",
-    aircraft::kindName(target.typeCode), target.typeCode, target.registration,
+    aircraft::kindName(target), target.typeCode, target.registration,
     target.hex[0] ? target.hex : "Unknown", target.operatorName,
     target.description, target.distanceMiles, target.bearing,
     aircraft::compassDirection(target.bearing), target.altitudeFt,
@@ -702,7 +702,7 @@ void tracksTableDrawEvent(lv_event_t* event) {
   int centerX = (part->draw_area->x1 + part->draw_area->x2) / 2;
   int centerY = (part->draw_area->y1 + part->draw_area->y2) / 2;
   radar::drawTrackBitmapIcon(part->draw_ctx, centerX, centerY,
-                             aircraft::bitmapForType(target.typeCode));
+                             aircraft::bitmapForTarget(target));
 }
 
 void nearestTargetEvent(lv_event_t* event) {
@@ -875,7 +875,7 @@ void renderTracksPage() {
     lv_table_set_cell_value(tracksTable, row + 1, 0,
                             aircraft::primaryIdentifier(uiTargets[row]));
     snprintf(value, sizeof(value), "%s  %s",
-             aircraft::kindName(uiTargets[row].typeCode),
+             aircraft::kindName(uiTargets[row]),
              uiTargets[row].typeCode);
     lv_table_set_cell_value(tracksTable, row + 1, 1, value);
     lv_table_set_cell_value(tracksTable, row + 1, 2, "");
@@ -913,7 +913,7 @@ void renderAirspacePage() {
   const aircraft::Target* lowestTarget = nullptr;
   for (uint8_t i = 0; i < count; ++i) {
     uint8_t categoryIndex = AIRSPACE_CATEGORY_COUNT - 1;
-    switch (aircraft::categoryForType(uiTargets[i].typeCode)) {
+    switch (aircraft::categoryForTarget(uiTargets[i])) {
       case aircraft::Category::AIRLINER: categoryIndex = 0; break;
       case aircraft::Category::BUSINESS_JET: categoryIndex = 1; break;
       case aircraft::Category::TURBOPROP: categoryIndex = 2; break;

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Focused Product 40 database checks.
+"""Focused aircraft classifier database and explicit API checks.
 
 Runs without PlatformIO. Optional --csv verifies deterministic regeneration from
-an exact source snapshot. Optional --host-compile compiles the real classifier
-against small interface stubs when a C++17 compiler is available.
+an exact source snapshot. Optional --host-compile compiles the real classifier,
+exercises target-aware APIs, and rejects the removed implicit array dispatch.
 """
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 HEADER = ROOT / "include/generated/aircraft_type_database.h"
 GENERATOR = ROOT / "tools/generate_aircraft_database.py"
+PUBLIC_HEADER = ROOT / "include/aircraft_data.h"
 
 EXPECTED = {
     "C190": 4,
@@ -57,6 +58,23 @@ def parse_array(text: str, name: str, pattern: str) -> list[int]:
         raise AssertionError(f"missing generated array {name}")
     return [int(value, 16 if value.startswith("0x") else 10)
             for value in re.findall(pattern, match.group(1))]
+
+
+def public_header_checks() -> None:
+    text = PUBLIC_HEADER.read_text(encoding="utf-8")
+    forbidden = (
+        "targetFromTypeCodeMember",
+        "IsTypeCodeInput",
+        "offsetof(Target, typeCode)",
+        "reinterpret_cast<const Target*>",
+        "Category categoryForType(",
+        "AircraftBitmapId bitmapForType(",
+    )
+    for fragment in forbidden:
+        assert fragment not in text, fragment
+    assert "Category categoryForTarget(const Target& target);" in text
+    assert "AircraftBitmapId bitmapForTarget(const Target& target);" in text
+    assert "const char* kindName(const Target& target);" in text
 
 
 def generated_checks() -> None:
@@ -108,7 +126,7 @@ def host_compile_check() -> None:
     if not compiler:
         raise RuntimeError("no C++17 compiler found")
 
-    with tempfile.TemporaryDirectory(prefix="product40-") as temp_name:
+    with tempfile.TemporaryDirectory(prefix="aircraft-classifier-") as temp_name:
         temp = pathlib.Path(temp_name)
         include = temp / "include"
         generated = include / "generated"
@@ -130,13 +148,37 @@ def host_compile_check() -> None:
         test_cpp.write_text(
             '#include "aircraft_data.h"\n#include <cassert>\n#include <cstring>\n'
             "int main(){using aircraft::Category;"
+            "using AircraftBitmapId = ::AircraftBitmapId;"
             'assert(aircraft::categoryForTypeCode("C190")==Category::PISTON);'
             'assert(aircraft::categoryForTypeCode("C17")==Category::MILITARY_HEAVY);'
             'assert(aircraft::categoryForTypeCode("E190")==Category::AIRLINER);'
-            'assert(aircraft::categoryForDescription("CESSNA 190")==Category::PISTON);'
+            'char unrelated[9]="C190";'
+            'assert(aircraft::categoryForTypeCode(unrelated)==Category::PISTON);'
+            'assert(aircraft::bitmapForTypeCode(unrelated)==AircraftBitmapId::PISTON);'
+            'assert(std::strcmp(aircraft::kindNameForTypeCode(unrelated),"PISTON")==0);'
+            'struct DescriptionCase{const char* text;Category expected;};'
+            'const DescriptionCase cases[]={{"DAHER TBM 960",Category::TURBOPROP},'
+            '{"SINGLE ENGINE PISTON LAND",Category::PISTON},'
+            '{"MOONEY M20J",Category::PISTON},'
+            '{"PILATUS PC-24",Category::BUSINESS_JET},'
+            '{"PILATUS PC-12",Category::TURBOPROP},'
+            '{"CESSNA CITATION CJ4",Category::BUSINESS_JET},'
+            '{"CESSNA 172 SKYHAWK",Category::PISTON},'
+            '{"PIPER PA-23 APACHE",Category::PISTON},'
+            '{"AH-64 APACHE",Category::HELICOPTER},'
+            '{"AIRBUS HELICOPTER H125",Category::HELICOPTER},'
+            '{"AIRBUS A320",Category::AIRLINER},'
+            '{"BOMBARDIER GLOBAL 7500",Category::BUSINESS_JET},'
+            '{"BOMBARDIER CRJ 900",Category::AIRLINER},'
+            '{"UNKNOWN MODEL",Category::UNKNOWN},'
+            '{"JET AIRCRAFT",Category::UNKNOWN}};'
+            'for(const auto& item:cases)'
+            'assert(aircraft::categoryForDescription(item.text)==item.expected);'
             "aircraft::Target t{};std::strcpy(t.typeCode,\"UNKNOWN\");"
             "std::strcpy(t.description,\"CESSNA 190\");"
-            "assert(aircraft::categoryForTarget(t)==Category::PISTON);return 0;}\n",
+            "assert(aircraft::categoryForTarget(t)==Category::PISTON);"
+            "assert(aircraft::bitmapForTarget(t)==AircraftBitmapId::PISTON);"
+            "assert(std::strcmp(aircraft::kindName(t),\"PISTON\")==0);return 0;}\n",
             encoding="utf-8",
         )
         output = temp / "test"
@@ -148,6 +190,25 @@ def host_compile_check() -> None:
         )
         subprocess.run([str(output)], check=True)
 
+        legacy_cpp = temp / "legacy_implicit_api.cpp"
+        legacy_cpp.write_text(
+            '#include "aircraft_data.h"\n'
+            'int main(){char unrelated[9]="C190";'
+            'auto category=aircraft::categoryForType(unrelated);'
+            'auto bitmap=aircraft::bitmapForType(unrelated);'
+            'auto name=aircraft::kindName(unrelated);'
+            '(void)category;(void)bitmap;(void)name;}\n',
+            encoding="utf-8",
+        )
+        legacy = subprocess.run(
+            [compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
+             "-pedantic", f"-I{include}", "-c", str(legacy_cpp),
+             "-o", str(temp / "legacy_implicit_api.o")],
+            capture_output=True,
+            text=True,
+        )
+        assert legacy.returncode != 0, "legacy implicit classifier API still compiles"
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -156,12 +217,13 @@ def main() -> int:
     parser.add_argument("--host-compile", action="store_true")
     args = parser.parse_args()
 
+    public_header_checks()
     generated_checks()
     if args.csv:
         regeneration_check(args.csv)
     if args.host_compile:
         host_compile_check()
-    print("Product 40 aircraft database tests passed")
+    print("Aircraft classifier database and explicit API tests passed")
     return 0
 
 

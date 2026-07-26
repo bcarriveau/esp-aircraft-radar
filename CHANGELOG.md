@@ -3,18 +3,96 @@
 All notable confirmed changes to Bill's 7-inch ESP32-S3 Aircraft Radar are
 documented in the repository changelog.
 
-This file records the Product 44 through Product 42 updates. Confirmed Product 41
+This file records the Product 45 through Product 42 updates. Confirmed Product 41
 through Product 15 history remains unchanged from the existing repository
 `CHANGELOG.md`.
 
 ## Current status
 
-- **Current source:** Product 44
-- **Current build marker:** `7IN-20260726-PRODUCT44-NVS-WRITE-VERIFY`
+- **Current source:** Product 45
+- **Current build marker:** `7IN-20260726-PRODUCT45-EXPLICIT-CLASSIFIER-API`
 - **Intended branch:** `main`
-- **Product 44 source baseline commit:** `cbe6d0fae79ebd15d5d68d09b8aa78cf940e0a42`
+- **Product 45 source baseline commit:** `ec3ac4fcee8e2764c315be959e7a78d2ac9488d9`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
+
+## Product 45 - 2026-07-26
+
+**Build:** `7IN-20260726-PRODUCT45-EXPLICIT-CLASSIFIER-API`
+**Status:** Host-verified classifier safety cleanup; full PlatformIO and physical
+verification pending
+
+### Fixed
+
+- Removed the public-header template that recovered a complete `Target` by
+  subtracting `offsetof(Target, typeCode)` from a matching character array.
+- Removed the implicit `categoryForType()`, `bitmapForType()`, and templated
+  `kindName()` dispatch that could reinterpret an unrelated standalone
+  `char[9]` as though it were a `Target::typeCode` member.
+- Updated aircraft details, Tracks, Airspace, previews, side icons, and radar
+  summaries to call the explicit target-aware APIs:
+  `categoryForTarget()`, `bitmapForTarget()`, and `kindName(const Target&)`.
+- Kept the explicit type-code-only APIs for genuine C-string inputs.
+
+### Classifier regression coverage
+
+- Verifies the checked-in public header contains no member-recovery symbols,
+  `offsetof` dispatch, or legacy implicit classifier API declarations.
+- Compiles and runs the real `src/aircraft_data.cpp` against strict C++17 host
+  stubs using an unrelated standalone `char[9]` only through the explicit
+  type-code APIs.
+- Verifies the removed implicit APIs no longer compile for that standalone
+  array.
+- Directly exercises description fallback and ambiguous model-family cases for
+  TBM, generic piston descriptions, Mooney, PC-12 versus PC-24, Citation versus
+  Cessna piston aircraft, Piper Apache versus AH-64 Apache, Airbus helicopter
+  versus Airbus airliner, and Bombardier Global versus CRJ.
+- Retains generated table size, ordering, duplicate, hash-collision, sensitive
+  model, and exact-regeneration checks.
+
+### Preserved
+
+- Aircraft classification output and generated database contents are unchanged.
+- Product 44 NVS write verification and saving-disable behavior are unchanged.
+- Product 43 Wi-Fi timestamp synchronization, Product 42 stale-response handling,
+  Product 41 partial-body recovery, and all hardened HTTPS rules are unchanged.
+- Core-0 serialized ADS-B ownership, non-overlapping requests, 15-second cadence,
+  stale rejection, last-good retention, stable ICAO selection/tracking,
+  `MAX_TARGETS=200`, PSRAM ownership, radar behavior, and touch behavior are
+  unchanged.
+- Arduino-ESP32 3.0.7 XIP/OPI PSRAM, Waveshare panel timing, DMA, anti-rolling
+  protections, and the 20-scanline RGB bounce buffer are unchanged.
+- `include/config.h` and credentials were not read, modified, or packaged.
+
+### Verification
+
+- Confirmed the supplied Git checkout is on `main` at Product 44 commit
+  `ec3ac4fcee8e2764c315be959e7a78d2ac9488d9`, matching its stored
+  `origin/main` ref.
+- Confirmed the Product 44 source build marker before editing:
+  `7IN-20260726-PRODUCT44-NVS-WRITE-VERIFY`.
+- Confirmed reported working-tree differences were line-ending-only before
+  editing the affected files.
+- Focused aircraft database and explicit-API host tests passed with
+  `-std=c++17 -Wall -Wextra -Werror -pedantic`.
+- Static checks confirmed all target-backed production call sites use the
+  explicit target APIs and no unsafe member-recovery machinery remains.
+- Static checks confirmed no networking, TLS, Wi-Fi, settings, capacity, display
+  driver, panel timing, DMA, bounce-buffer, or credential source was changed.
+- Final complete-file comparison showed only the intended classifier API,
+  call-site, test, build-marker, and changelog changes.
+
+### Pending verification
+
+- Full PlatformIO compile and link.
+- Flash and internal-RAM usage report.
+- Firmware upload and physical Product 45 build-marker confirmation.
+- Normal aircraft details, Tracks, Airspace, preview, side-icon, and radar-summary
+  classification display.
+- Normal 15-second ADS-B updates, native and fallback TLS behavior, Wi-Fi/TLS
+  recovery, stale-response rejection, 20/40/80 range changes, selection,
+  tracking, STOP TRACK, touch, page switching, no screen rolling, heap/PSRAM
+  stability, and extended soak testing.
 
 ## Product 44 - 2026-07-26
 
