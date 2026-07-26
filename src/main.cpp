@@ -21,7 +21,11 @@ void setup() {
   Serial.printf("PSRAM: %s, size=%u\n", psramFound() ? "YES" : "NO",
                 ESP.getPsramSize());
 
-  settings::initialize();
+  if (!settings::initialize()) {
+    Serial.println(
+        "WARNING: NVS unavailable or unhealthy; saving disabled and compile-time "
+        "defaults used when stored values cannot be read");
+  }
   app_state::initialize();
   if (!ui::allocateTargetBuffer()) return;
 

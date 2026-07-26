@@ -288,6 +288,20 @@ void setSettingsStatus(const char* text, lv_color_t color) {
   lv_obj_set_style_text_color(settingsStatusLabel, color, 0);
 }
 
+void syncSettingsStorageState() {
+  const bool ready = settings::storageAvailable();
+  lv_obj_t* storageButtons[] = {saveSettingsButton, resetSettingsButton};
+  for (lv_obj_t* button : storageButtons) {
+    if (!button) continue;
+    if (ready) lv_obj_clear_state(button, LV_STATE_DISABLED);
+    else lv_obj_add_state(button, LV_STATE_DISABLED);
+    lv_obj_set_style_opa(button, ready ? LV_OPA_COVER : LV_OPA_50, 0);
+  }
+  if (!ready) {
+    setSettingsStatus("NVS ERROR: saving disabled", rgb(255, 120, 110));
+  }
+}
+
 void closeSettingsKeyboard() {
   if (!settingsKeyboard) return;
   lv_obj_t* field = lv_keyboard_get_textarea(settingsKeyboard);
@@ -327,11 +341,28 @@ bool parseCoordinate(const char* text, float& value) {
 }
 
 void saveSettingsEvent(lv_event_t*) {
+  if (!settings::storageAvailable()) {
+    syncSettingsStorageState();
+    setSettingsStatus("NVS ERROR: settings cannot be saved",
+                      rgb(255, 120, 110));
+    return;
+  }
+
   const char* titleValue = lv_textarea_get_text(titleField);
   const char* ssidValue = lv_textarea_get_text(ssidField);
   const char* passwordValue = lv_textarea_get_text(passwordField);
   const char* latitudeValue = lv_textarea_get_text(latitudeField);
   const char* longitudeValue = lv_textarea_get_text(longitudeField);
+  String cleanedTitle = titleValue;
+  String cleanedSsid = ssidValue;
+  cleanedTitle.trim();
+  cleanedSsid.trim();
+  if (!cleanedTitle.length() || !cleanedSsid.length()) {
+    setSettingsStatus("Display name and SSID are required",
+                      rgb(255, 120, 110));
+    return;
+  }
+
   float latitude = 0;
   float longitude = 0;
   if (!parseCoordinate(latitudeValue, latitude) ||
@@ -344,9 +375,11 @@ void saveSettingsEvent(lv_event_t*) {
   String previousPassword = settings::wifiPassword();
   const float previousLatitude = settings::homeLatitude();
   const float previousLongitude = settings::homeLongitude();
-  if (!settings::saveSettings(titleValue, ssidValue, passwordValue,
+  if (!settings::saveSettings(cleanedTitle, cleanedSsid, passwordValue,
                               latitude, longitude)) {
-    setSettingsStatus("Display name and SSID are required",
+    populateSettingsForm();
+    syncSettingsStorageState();
+    setSettingsStatus("NVS write failed; saving disabled",
                       rgb(255, 120, 110));
     return;
   }
@@ -370,6 +403,13 @@ void saveSettingsEvent(lv_event_t*) {
 }
 
 void resetSettingsEvent(lv_event_t*) {
+  if (!settings::storageAvailable()) {
+    syncSettingsStorageState();
+    setSettingsStatus("NVS ERROR: defaults cannot be saved",
+                      rgb(255, 120, 110));
+    return;
+  }
+
   const uint32_t now = millis();
   if (!resetConfirmationPending ||
       (int32_t)(now - resetConfirmationDeadline) >= 0) {
@@ -386,7 +426,13 @@ void resetSettingsEvent(lv_event_t*) {
   lv_obj_center(resetSettingsLabel);
   const float previousLatitude = settings::homeLatitude();
   const float previousLongitude = settings::homeLongitude();
-  settings::resetToDefaults();
+  if (!settings::resetToDefaults()) {
+    populateSettingsForm();
+    syncSettingsStorageState();
+    setSettingsStatus("NVS reset failed; saving disabled",
+                      rgb(255, 120, 110));
+    return;
+  }
   const bool locationChanged =
       fabsf(previousLatitude - settings::homeLatitude()) > 0.00001f ||
       fabsf(previousLongitude - settings::homeLongitude()) > 0.00001f;
@@ -945,14 +991,14 @@ void renderSystemPage() {
       ? (millis() - snapshot.lastUpdateMs) / 1000 : 0;
   char body[900]{};
   snprintf(body, sizeof(body),
-      "Build: %s\nUptime: %lu sec    WiFi: %s    RSSI: %d dBm    IP: %s\n"
+      "Build: %s    NVS: %s\nUptime: %lu sec    WiFi: %s    RSSI: %d dBm    IP: %s\n"
       "Aircraft: API %u / eligible %u / stored %u / visible %u\n"
       "Capacity: %u max / %u dropped    Data age: %lu sec\n"
       "Last fetch: %lu ms / %lu bytes    Failures: %u (%s)\n"
       "Recovery cycles: %lu    Discarded old-range replies: %lu\n"
       "Heap: %u current / %u minimum    PSRAM: %u current / %u minimum / %u total",
-      BUILD_ID, (unsigned long)(millis() / 1000),
-      adsb::wifiStatusName(wifiStatus),
+      BUILD_ID, settings::storageAvailable() ? "READY" : "ERROR",
+      (unsigned long)(millis() / 1000), adsb::wifiStatusName(wifiStatus),
       wifiConnected ? WiFi.RSSI() : 0,
       wifiConnected ? WiFi.localIP().toString().c_str() : "--",
       (unsigned)diagnostics.lastReceivedCount,
@@ -987,8 +1033,9 @@ void renderSetupPage() {
   const uint32_t ageSeconds = updatedAt ? (millis() - updatedAt) / 1000 : 0;
   char body[900]{};
   snprintf(body, sizeof(body),
-      "WiFi: %s\nSSID: %s\nIP: %s\nSignal: %d dBm\n"
+      "NVS: %s\nWiFi: %s\nSSID: %s\nIP: %s\nSignal: %d dBm\n"
       "Last WiFi error: %d\nData age: %lu sec\nFailures: %u (%s)",
+      settings::storageAvailable() ? "READY" : "ERROR / SAVING DISABLED",
       adsb::wifiStatusName(wifiStatus), settings::wifiSsid().c_str(),
       wifiConnected ? WiFi.localIP().toString().c_str() : "--",
       wifiConnected ? WiFi.RSSI() : 0,
@@ -996,6 +1043,7 @@ void renderSetupPage() {
       diagnostics.consecutiveFailures,
       app_state::failureStageName(diagnostics.lastFailureStage));
   setLabelTextIfChanged(pageBody, body);
+  syncSettingsStorageState();
 }
 
 void updatePageContent() {
@@ -1667,6 +1715,7 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_center(resetSettingsLabel);
 
   populateSettingsForm();
+  syncSettingsStorageState();
   setSettingsFormVisible(false);
 }
 

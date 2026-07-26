@@ -9,6 +9,8 @@ namespace settings {
 namespace {
 
 Preferences preferences;
+bool storageOpen = false;
+bool storageHealthy = false;
 constexpr const char* NAMESPACE = "radar_cfg";
 constexpr const char* KEY_TITLE = "title";
 constexpr const char* KEY_WIFI_SSID = "wifi_ssid";
@@ -36,86 +38,174 @@ float defaultLongitude() {
   return HOME_LON;
 }
 
-}  // namespace
-
-void initialize() {
-  preferences.begin(NAMESPACE, false);
-
-  if (!preferences.isKey(KEY_TITLE)) {
-    preferences.putString(KEY_TITLE, defaultTitle());
-  }
-
-  if (!preferences.isKey(KEY_WIFI_SSID)) {
-    preferences.putString(KEY_WIFI_SSID, defaultWifiSsid());
-  }
-
-  if (!preferences.isKey(KEY_WIFI_PASS)) {
-    preferences.putString(KEY_WIFI_PASS, defaultWifiPassword());
-  }
-
-  if (!preferences.isKey(KEY_LAT)) {
-    preferences.putFloat(KEY_LAT, defaultLatitude());
-  }
-
-  if (!preferences.isKey(KEY_LON)) {
-    preferences.putFloat(KEY_LON, defaultLongitude());
-  }
+bool storedStringMatches(const char* key, const String& value) {
+  return preferences.getType(key) == PT_STR &&
+         preferences.getString(key, String()) == value;
 }
 
-void resetToDefaults() {
-  preferences.putString(KEY_TITLE, defaultTitle());
-  preferences.putString(KEY_WIFI_SSID, defaultWifiSsid());
-  preferences.putString(KEY_WIFI_PASS, defaultWifiPassword());
-  preferences.putFloat(KEY_LAT, defaultLatitude());
-  preferences.putFloat(KEY_LON, defaultLongitude());
+bool storedFloatMatches(const char* key, float value) {
+  return preferences.getType(key) == PT_BLOB &&
+         preferences.getBytesLength(key) == sizeof(float) &&
+         preferences.getFloat(key, NAN) == value;
+}
+
+bool writeStringChecked(const char* key, const String& value) {
+  if (!storageOpen || !storageHealthy) return false;
+  if (storedStringMatches(key, value)) return true;
+
+  const size_t expectedLength = value.length();
+  const size_t writtenLength = preferences.putString(key, value.c_str());
+  const bool lengthValid = expectedLength == 0
+      ? writtenLength == 0
+      : writtenLength == expectedLength;
+  const bool storedValueValid = storedStringMatches(key, value);
+  if (!lengthValid || !storedValueValid) {
+    Serial.printf("NVS string write failed: %s (%u/%u bytes)\n", key,
+                  (unsigned)writtenLength, (unsigned)expectedLength);
+    return false;
+  }
+  return true;
+}
+
+bool writeFloatChecked(const char* key, float value) {
+  if (!storageOpen || !storageHealthy) return false;
+  if (storedFloatMatches(key, value)) return true;
+
+  const size_t writtenLength = preferences.putFloat(key, value);
+  const bool lengthValid = writtenLength == sizeof(float);
+  const bool storedValueValid = storedFloatMatches(key, value);
+  if (!lengthValid || !storedValueValid) {
+    Serial.printf("NVS float write failed: %s (%u/%u bytes)\n", key,
+                  (unsigned)writtenLength, (unsigned)sizeof(float));
+    return false;
+  }
+  return true;
+}
+
+void markStorageError(const char* operation) {
+  storageHealthy = false;
+  Serial.printf("NVS ERROR: %s did not complete; saving disabled\n", operation);
+}
+
+}  // namespace
+
+bool initialize() {
+  storageOpen = preferences.begin(NAMESPACE, false);
+  storageHealthy = storageOpen;
+  if (!storageOpen) {
+    Serial.println(
+        "NVS ERROR: preferences namespace unavailable; using compile-time defaults");
+    return false;
+  }
+
+  bool initialized = true;
+  if (preferences.getType(KEY_TITLE) != PT_STR &&
+      !writeStringChecked(KEY_TITLE, defaultTitle())) {
+    initialized = false;
+  }
+  if (preferences.getType(KEY_WIFI_SSID) != PT_STR &&
+      !writeStringChecked(KEY_WIFI_SSID, defaultWifiSsid())) {
+    initialized = false;
+  }
+  if (preferences.getType(KEY_WIFI_PASS) != PT_STR &&
+      !writeStringChecked(KEY_WIFI_PASS, defaultWifiPassword())) {
+    initialized = false;
+  }
+  if ((preferences.getType(KEY_LAT) != PT_BLOB ||
+       preferences.getBytesLength(KEY_LAT) != sizeof(float)) &&
+      !writeFloatChecked(KEY_LAT, defaultLatitude())) {
+    initialized = false;
+  }
+  if ((preferences.getType(KEY_LON) != PT_BLOB ||
+       preferences.getBytesLength(KEY_LON) != sizeof(float)) &&
+      !writeFloatChecked(KEY_LON, defaultLongitude())) {
+    initialized = false;
+  }
+
+  storageHealthy = initialized;
+  if (!initialized) {
+    markStorageError("default initialization");
+    return false;
+  }
+
+  Serial.println("NVS: READY");
+  return true;
+}
+
+bool storageAvailable() {
+  return storageOpen && storageHealthy;
+}
+
+bool resetToDefaults() {
+  if (!storageAvailable()) return false;
+
+  bool saved = true;
+  if (!writeStringChecked(KEY_TITLE, defaultTitle())) saved = false;
+  if (!writeStringChecked(KEY_WIFI_SSID, defaultWifiSsid())) saved = false;
+  if (!writeStringChecked(KEY_WIFI_PASS, defaultWifiPassword())) saved = false;
+  if (!writeFloatChecked(KEY_LAT, defaultLatitude())) saved = false;
+  if (!writeFloatChecked(KEY_LON, defaultLongitude())) saved = false;
+  if (!saved) markStorageError("reset to defaults");
+  return saved;
 }
 
 String deviceTitle() {
-  return preferences.getString(KEY_TITLE, defaultTitle().c_str());
+  if (!storageOpen) return defaultTitle();
+  return preferences.getString(KEY_TITLE, defaultTitle());
 }
 
 void setDeviceTitle(const String& title) {
   String cleaned = title;
   cleaned.trim();
-  if (cleaned.length() > 0) {
-    preferences.putString(KEY_TITLE, cleaned.c_str());
+  if (cleaned.length() > 0 && !writeStringChecked(KEY_TITLE, cleaned)) {
+    markStorageError("display-name update");
   }
 }
 
 String wifiSsid() {
-  return preferences.getString(KEY_WIFI_SSID, defaultWifiSsid().c_str());
+  if (!storageOpen) return defaultWifiSsid();
+  return preferences.getString(KEY_WIFI_SSID, defaultWifiSsid());
 }
 
 void setWifiSsid(const String& ssid) {
   String cleaned = ssid;
   cleaned.trim();
-  if (cleaned.length() > 0) {
-    preferences.putString(KEY_WIFI_SSID, cleaned.c_str());
+  if (cleaned.length() > 0 && !writeStringChecked(KEY_WIFI_SSID, cleaned)) {
+    markStorageError("Wi-Fi SSID update");
   }
 }
 
 String wifiPassword() {
-  return preferences.getString(KEY_WIFI_PASS, defaultWifiPassword().c_str());
+  if (!storageOpen) return defaultWifiPassword();
+  return preferences.getString(KEY_WIFI_PASS, defaultWifiPassword());
 }
 
 void setWifiPassword(const String& password) {
-  preferences.putString(KEY_WIFI_PASS, password.c_str());
+  if (!writeStringChecked(KEY_WIFI_PASS, password)) {
+    markStorageError("Wi-Fi password update");
+  }
 }
 
 float homeLatitude() {
+  if (!storageOpen) return defaultLatitude();
   return preferences.getFloat(KEY_LAT, defaultLatitude());
 }
 
 float homeLongitude() {
+  if (!storageOpen) return defaultLongitude();
   return preferences.getFloat(KEY_LON, defaultLongitude());
 }
 
 void setHomeLatitude(float latitude) {
-  preferences.putFloat(KEY_LAT, latitude);
+  if (!writeFloatChecked(KEY_LAT, latitude)) {
+    markStorageError("latitude update");
+  }
 }
 
 void setHomeLongitude(float longitude) {
-  preferences.putFloat(KEY_LON, longitude);
+  if (!writeFloatChecked(KEY_LON, longitude)) {
+    markStorageError("longitude update");
+  }
 }
 
 bool saveSettings(const String& title, const String& ssid,
@@ -125,15 +215,18 @@ bool saveSettings(const String& title, const String& ssid,
   cleanedTitle.trim();
   cleanedSsid.trim();
   if (!cleanedTitle.length() || !cleanedSsid.length() ||
-      !coordinatesValid(latitude, longitude)) {
+      !coordinatesValid(latitude, longitude) || !storageAvailable()) {
     return false;
   }
-  preferences.putString(KEY_TITLE, cleanedTitle.c_str());
-  preferences.putString(KEY_WIFI_SSID, cleanedSsid.c_str());
-  preferences.putString(KEY_WIFI_PASS, password.c_str());
-  preferences.putFloat(KEY_LAT, latitude);
-  preferences.putFloat(KEY_LON, longitude);
-  return true;
+
+  bool saved = true;
+  if (!writeStringChecked(KEY_TITLE, cleanedTitle)) saved = false;
+  if (!writeStringChecked(KEY_WIFI_SSID, cleanedSsid)) saved = false;
+  if (!writeStringChecked(KEY_WIFI_PASS, password)) saved = false;
+  if (!writeFloatChecked(KEY_LAT, latitude)) saved = false;
+  if (!writeFloatChecked(KEY_LON, longitude)) saved = false;
+  if (!saved) markStorageError("settings save");
+  return saved;
 }
 
 bool coordinatesValid(float latitude, float longitude) {

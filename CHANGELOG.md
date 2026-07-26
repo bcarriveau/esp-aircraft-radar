@@ -3,18 +3,102 @@
 All notable confirmed changes to Bill's 7-inch ESP32-S3 Aircraft Radar are
 documented in the repository changelog.
 
-This file records the Product 43 and Product 42 updates. Confirmed Product 41
+This file records the Product 44 through Product 42 updates. Confirmed Product 41
 through Product 15 history remains unchanged from the existing repository
 `CHANGELOG.md`.
 
 ## Current status
 
-- **Current source:** Product 43
-- **Current build marker:** `7IN-20260726-PRODUCT43-WIFI-TIMESTAMP-SYNC`
+- **Current source:** Product 44
+- **Current build marker:** `7IN-20260726-PRODUCT44-NVS-WRITE-VERIFY`
 - **Intended branch:** `main`
-- **Product 43 baseline commit:** `251fbc42fb2350a616dbdbb40c7a72a6f97e5f97`
+- **Product 44 source baseline commit:** `cbe6d0fae79ebd15d5d68d09b8aa78cf940e0a42`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
+
+## Product 44 - 2026-07-26
+
+**Build:** `7IN-20260726-PRODUCT44-NVS-WRITE-VERIFY`
+**Status:** Host-verified NVS reliability candidate; full PlatformIO and physical
+verification pending
+
+### Fixed
+
+- Checks `Preferences.begin()` and reports whether the settings namespace is
+  usable.
+- Verifies the expected byte count and stored value for every required string
+  and float write.
+- Handles a valid empty Wi-Fi password by verifying the persisted key and value,
+  because a successful empty-string write and a failed write can both report
+  zero bytes.
+- Makes default initialization, settings saves, and reset-to-defaults report
+  failure instead of assuming success.
+- Prevents the Setup page from reporting a successful save or reset unless every
+  required NVS operation succeeds.
+
+### Storage fallback and diagnostics
+
+- Continues startup when NVS cannot be opened.
+- Uses compile-time defaults whenever stored values are unavailable.
+- Marks NVS as unhealthy and disables further Save Settings and Reset Defaults
+  operations after an initialization or write failure.
+- Keeps readable stored values available after a write error while refusing to
+  claim that storage is healthy.
+- Shows `NVS: READY` or `NVS: ERROR` on the System page.
+- Shows NVS state on the Setup page and visibly disables saving when storage is
+  unavailable or unhealthy.
+- Emits serial warnings without printing Wi-Fi credentials, coordinates, or
+  private settings.
+
+### Preserved
+
+- Core-0 serialized ADS-B ownership, non-overlapping requests, 15-second cadence,
+  stale-response rejection, Wi-Fi/TLS recovery, and last-good retention are
+  unchanged.
+- Native ESP-IDF HTTPS remains the preferred transport, and the bounded secure
+  fallback policy is unchanged.
+- `MAX_TARGETS=200`, PSRAM ownership, deterministic retention, stable ICAO
+  selection and tracking, outward auto-zoom, MPH display, radar rendering, and
+  touch behavior are unchanged.
+- Arduino-ESP32 3.0.7 XIP/OPI PSRAM, Waveshare panel timing, DMA, anti-rolling
+  protections, and the 20-scanline RGB bounce buffer are unchanged.
+- `include/config.h` and credentials were not touched or packaged.
+
+### Verification
+
+- Confirmed GitHub `main` at Product 43 commit
+  `cbe6d0fae79ebd15d5d68d09b8aa78cf940e0a42` before editing.
+- Confirmed the Product 43 build marker before editing:
+  `7IN-20260726-PRODUCT43-WIFI-TIMESTAMP-SYNC`.
+- Verified the complete original `src/ui.cpp` reconstruction against Git blob
+  `8072076c6f557e11a171842108b51c8cd1fbb721` before modification.
+- Complete `src/settings.cpp`, `src/ui.cpp`, and `src/main.cpp` host C++17
+  syntax checking passed with `-Wall -Wextra -Werror` using focused interface
+  stubs.
+- Focused NVS initialization, fallback, save, reset, per-key failure, empty-string,
+  and write-length tests passed under AddressSanitizer and UndefinedBehaviorSanitizer.
+- Static checks confirmed every settings write is routed through checked helpers,
+  save/reset success is conditional, NVS status is exposed, and saving is disabled
+  after storage errors.
+- Static checks confirmed no networking, TLS, target-capacity, radar-rendering,
+  panel-timing, DMA, bounce-buffer, or credential-file change was introduced.
+- Final complete-file comparison showed only the intended settings reliability,
+  Setup/System diagnostics, startup warning, Product 44 build marker, and
+  changelog changes.
+
+### Pending verification
+
+- Full PlatformIO compile and link.
+- Flash usage and internal-RAM usage report.
+- Firmware upload and physical Product 44 build-marker confirmation.
+- Normal boot with healthy NVS showing `NVS: READY`.
+- Fault-injection or corrupted-NVS test showing `NVS: ERROR`, compile-time fallback,
+  disabled saving, and no false success message.
+- Successful Save Settings and Reset Defaults behavior on hardware.
+- Normal 15-second ADS-B updates, native and fallback TLS behavior, Wi-Fi/TLS
+  recovery, stale-response rejection, 20/40/80 range changes, selection,
+  tracking, STOP TRACK, touch, page switching, no screen rolling, heap/PSRAM
+  stability, and extended soak testing.
 
 ## Product 43 - 2026-07-26
 

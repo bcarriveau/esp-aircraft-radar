@@ -1,4 +1,4 @@
 #pragma once
 
 constexpr const char* BUILD_ID =
-    "7IN-20260726-PRODUCT43-WIFI-TIMESTAMP-SYNC";
+    "7IN-20260726-PRODUCT44-NVS-WRITE-VERIFY";

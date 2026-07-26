@@ -5,8 +5,9 @@
 
 namespace settings {
 
-void initialize();
-void resetToDefaults();
+bool initialize();
+bool storageAvailable();
+bool resetToDefaults();
 
 String deviceTitle();
 void setDeviceTitle(const String& title);
