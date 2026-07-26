@@ -14,16 +14,16 @@ GitHub or preserved evidence does not confirm the changes.
 
 ## Current status
 
-- **Current source:** Product 40 R2
-- **Current build marker:** `7IN-20260726-PRODUCT40-AIRCRAFT-DB-HTTPS-RECOVERY-R2`
+- **Current source:** Product 40
+- **Current build marker:** `7IN-20260726-PRODUCT40-AIRCRAFT-DB-HTTPS-RECOVERY`
 - **Current branch:** `main`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
 
-## Product 40 R2 - 2026-07-26
+## Product 40 R3 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT40-AIRCRAFT-DB-HTTPS-RECOVERY-R2`  
-**Status:** Host-verified aircraft-classification and HTTPS-recovery candidate; full PlatformIO and physical verification pending
+**Build:** `7IN-20260726-PRODUCT40-AIRCRAFT-DB-HTTPS-RECOVERY-R3`  
+**Status:** Host-verified aircraft-classification and HTTPS-recovery candidate; physical verification in progress
 
 ### Aircraft database
 
@@ -45,13 +45,21 @@ GitHub or preserved evidence does not confirm the changes.
 
 ### HTTPS recovery repair
 
-- Corrected the Product 37 transport sequence so both native ESP-IDF HTTPS
-  attempts complete before the independent verified fallback is considered.
+- Corrected the Product 37 transport sequence so native ESP-IDF HTTPS retries
+  complete before the independent verified fallback is considered for eligible
+  connection and header failures.
+- A native partial response-body transport failure now returns immediately to
+  the existing Wi-Fi recovery ladder instead of attempting another TLS session
+  on the poisoned association.
+- Skips both the second native attempt and verified fallback after a partial
+  response body, allowing the recovery ladder to reconnect or hard-recycle the
+  station before the next ADS-B request.
 - Limited fallback to one attempt per ADS-B request after the final native
   transport failure and after bounded native-client cleanup and settling time.
-- Kept fallback eligible only for native TCP, TLS, header, or incomplete-body
-  failures while excluding ordinary HTTP status responses, oversized bodies,
-  local payload-allocation failures, DNS/Wi-Fi failures, and JSON failures.
+- Keeps fallback eligible only for native TCP, TLS, or header failures while
+  excluding partial response bodies, ordinary HTTP status responses, oversized
+  bodies, local payload-allocation failures, DNS/Wi-Fi failures, and JSON
+  failures.
 - Removed the fixed three-consecutive-`EAGAIN` body abort. Repeated transient
   native read stalls now remain governed by the existing 12-second no-progress
   deadline and 45-second absolute response deadline.
@@ -110,8 +118,9 @@ GitHub or preserved evidence does not confirm the changes.
 ### Pending verification
 
 - Full PlatformIO compile and link, target flash usage, and internal-RAM usage.
-- Physical confirmation of the Product 40 R2 marker and successful complete
-  ADS-B body reception at 20, 40, and 80 miles.
+- Physical confirmation of the Product 40 marker and successful complete
+  ADS-B body reception after response-body-triggered Wi-Fi recovery at 20, 40,
+  and 80 miles.
 - Native retry and one verified-fallback behavior under an actual interrupted
   or stalled response.
 - C190 and other aircraft category/bitmap validation.

@@ -33,6 +33,7 @@ constexpr uint32_t RETRY_DELAY_MS = 500;
 struct AttemptResult {
   bool success = false;
   bool fallbackEligible = false;
+  bool requiresWifiRecovery = false;
   app_state::FetchFailureStage failureStage =
       app_state::FetchFailureStage::NONE;
   uint32_t responseBytes = 0;
@@ -44,11 +45,13 @@ void waitForNativeRetry(uint8_t attempt) {
 
 AttemptResult failed(app_state::FetchFailureStage stage,
                      uint32_t responseBytes = 0,
-                     bool fallbackEligible = false) {
+                     bool fallbackEligible = false,
+                     bool requiresWifiRecovery = false) {
   AttemptResult result;
   result.failureStage = stage;
   result.responseBytes = responseBytes;
   result.fallbackEligible = fallbackEligible;
+  result.requiresWifiRecovery = requiresWifiRecovery;
   return result;
 }
 
@@ -674,9 +677,11 @@ AttemptResult fetchAttemptWithSecureClient(const String& path,
   return result;
 }
 
-// Native attempts are completed first. The independent verified fallback is
-// invoked at most once by fetchAircraft(), after native cleanup and only for a
-// transport-specific final native failure.
+// Native attempts are completed first for connection and header failures. A
+// partial response-body transport failure returns immediately so the existing
+// network recovery ladder can recycle WiFi before another TLS connection. The
+// independent verified fallback is invoked at most once for an eligible final
+// native connection or header failure.
 
 AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
                            JsonDocument& doc, uint8_t attempt) {
@@ -856,8 +861,9 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
         WiFi.status() == WL_CONNECTED
             ? app_state::FetchFailureStage::RESPONSE_BODY
             : app_state::FetchFailureStage::WIFI;
-    return failed(stage, received,
-                  stage == app_state::FetchFailureStage::RESPONSE_BODY);
+    const bool bodyTransportFailure =
+        stage == app_state::FetchFailureStage::RESPONSE_BODY;
+    return failed(stage, received, false, bodyTransportFailure);
   }
   Serial.printf("ADSB.fi response complete: %u bytes in %lu ms\n",
                 (unsigned)received,
@@ -1055,10 +1061,18 @@ Result fetchAircraft(aircraft::Target* out) {
   AttemptResult attemptResult;
   AttemptResult preservedFailure;
   bool fallbackAttempted = false;
+  uint8_t nativeAttemptsUsed = 0;
   for (uint8_t attempt = 1; attempt <= MAX_NATIVE_ATTEMPTS; ++attempt) {
+    nativeAttemptsUsed = attempt;
     attemptResult = fetchAttempt(path, filter, doc, attempt);
     if (attemptResult.success) break;
     preserveMostAdvancedFailure(preservedFailure, attemptResult);
+    if (attemptResult.requiresWifiRecovery) {
+      Serial.println(
+          "ADSB.fi response-body transport failure requires WiFi recovery; "
+          "skipping in-association retry and fallback");
+      break;
+    }
     waitForNativeRetry(attempt);
   }
 
@@ -1097,7 +1111,7 @@ Result fetchAircraft(aircraft::Target* out) {
     }
     Serial.printf(
         "ADSB.fi request failed after %u native attempts%s at %s stage\n",
-        MAX_NATIVE_ATTEMPTS,
+        nativeAttemptsUsed,
         fallbackAttempted ? " and one fallback" : "",
         app_state::failureStageName(result.failureStage));
     return result;
