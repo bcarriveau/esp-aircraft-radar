@@ -14,11 +14,80 @@ GitHub or preserved evidence does not confirm the changes.
 
 ## Current status
 
-- **Current source:** Product 38
-- **Current build marker:** `7IN-20260725-PRODUCT38-LOCATION-INVALIDATION`
+- **Current source:** Product 39
+- **Current build marker:** `7IN-20260726-PRODUCT39-STARTUP-FAILURE-PROPAGATION`
 - **Current branch:** `main`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
+
+## Product 39 - 2026-07-26
+
+**Build:** `7IN-20260726-PRODUCT39-STARTUP-FAILURE-PROPAGATION`  
+**Status:** Host-verified startup-reliability candidate; full PlatformIO and physical verification pending
+
+### Fixed
+
+- Changed `ui::buildUi()` to return success only after all required radar,
+  navigation, page-shell, and detail-panel construction completes.
+- Prevented `main.cpp` from starting networking after required UI construction
+  fails.
+- Changed `adsb::begin()` to report initialization failure instead of allowing
+  the main loop to treat a missing ADS-B task as ready.
+- Moved allocation of the core-0 incoming target buffer ahead of task creation,
+  so required PSRAM failure is visible synchronously during startup.
+- Checked `xTaskCreatePinnedToCore()` against `pdPASS` and released the incoming
+  PSRAM buffer when task creation fails.
+- Set `startupComplete` only after target storage, required UI buffers, complete
+  UI construction, ADS-B incoming storage, and core-0 task creation all succeed.
+- Added a stable `STARTUP HALTED` LVGL status screen for fatal UI or ADS-B
+  initialization failures that occur after display initialization.
+
+### Startup behavior
+
+- An initial Wi-Fi connection timeout remains recoverable and does not fail
+  `adsb::begin()` after required memory and task creation have succeeded.
+- Required target-buffer failures that occur before `lcd_init()` remain
+  serial-fatal and do not start the operational loop.
+- The core-0 ADS-B task now receives the preallocated incoming buffer and no
+  longer allocates required target storage after asynchronous task startup.
+
+### Preserved
+
+- Core-0 serialized ADS-B ownership, non-overlapping requests, and 15-second
+  start-to-start cadence.
+- Native ESP-IDF HTTPS preference, hardened verified fallback, bounded framing,
+  deadlines, recovery, stale-response rejection, and last-good retention.
+- Product 30 200-target capacity, PSRAM ownership, and deterministic bounds.
+- Product 38 location invalidation and pending-new-center behavior.
+- Stable ICAO selection/tracking, outward auto-zoom, MPH display, radar
+  rendering, touch behavior, and existing page layout.
+- Arduino-ESP32 3.0.7 XIP/OPI PSRAM, Waveshare panel timing, DMA,
+  anti-rolling protections, and the 20-scanline RGB bounce buffer.
+
+### Verification
+
+- Confirmed all edited source and header files against exact Product 38 Git
+  blobs before modification.
+- Full `src/main.cpp` and `src/adsb_network.cpp` host C++17 syntax checks passed
+  with `-Wall -Wextra -Werror` using focused interface stubs.
+- Changed UI startup and fatal-screen functions passed focused host C++17
+  syntax checking with warnings treated as errors.
+- Static checks confirmed required startup ordering, boolean failure
+  propagation, PSRAM-first incoming allocation, `pdPASS` handling, cleanup after
+  task-creation failure, and the Product 39 build marker.
+- Confirmed no `setInsecure()`, blocking `HTTPClient::GET()`, whole-response
+  `readString()`, capacity change, display-driver change, or credential file was
+  introduced.
+
+### Pending verification
+
+- Full PlatformIO compile and link, flash usage, and internal-RAM usage.
+- Physical normal startup and Product 39 marker confirmation.
+- Recoverable initial Wi-Fi timeout and later reconnect.
+- Native and fallback TLS, normal 15-second ADS-B updates, stale-response
+  rejection, and Wi-Fi/TLS recovery.
+- 20/40/80 range changes, selection, tracking, STOP TRACK, touch, page
+  switching, no screen rolling, heap/PSRAM stability, and extended soak testing.
 
 ## Product 38 - 2026-07-25
 

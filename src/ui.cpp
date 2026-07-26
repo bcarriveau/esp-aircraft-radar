@@ -1748,18 +1748,65 @@ bool allocateTargetBuffer() {
   return true;
 }
 
-void buildUi() {
+bool buildUi() {
   lv_obj_t* root = lv_scr_act();
   lv_obj_set_style_bg_color(root, rgb(4, 10, 15), 0);
   lv_obj_clear_flag(root, LV_OBJ_FLAG_SCROLLABLE);
 
   buildHeader(root);
-  if (!buildRadarPanels(root)) return;
+  if (!buildRadarPanels(root)) return false;
   buildNavigation(root);
   buildPageShell(root);
   buildDetailPanel();
   populateSettingsForm();
   setSettingsFormVisible(false);
+  return true;
+}
+
+void showFatalStatus(const char* message) {
+  lv_obj_t* root = lv_scr_act();
+  lv_obj_clean(root);
+  lv_obj_set_style_bg_color(root, rgb(4, 10, 15), 0);
+  lv_obj_set_style_bg_opa(root, LV_OPA_COVER, 0);
+  lv_obj_clear_flag(root, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* panel = lv_obj_create(root);
+  lv_obj_set_size(panel, 700, 270);
+  lv_obj_center(panel);
+  lv_obj_set_style_bg_color(panel, rgb(10, 18, 25), 0);
+  lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_color(panel, rgb(180, 52, 52), 0);
+  lv_obj_set_style_border_width(panel, 2, 0);
+  lv_obj_set_style_radius(panel, 10, 0);
+  lv_obj_set_style_pad_all(panel, 18, 0);
+  lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* title = makeLabel(panel, "STARTUP HALTED",
+                              &lv_font_montserrat_32,
+                              rgb(255, 120, 110), 18, 18);
+  lv_obj_set_width(title, 640);
+  lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+
+  lv_obj_t* reason = makeLabel(
+      panel, message && message[0] ? message : "INITIALIZATION FAILED",
+      &lv_font_montserrat_20, rgb(255, 220, 120), 18, 82);
+  lv_obj_set_width(reason, 640);
+  lv_label_set_long_mode(reason, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(reason, LV_TEXT_ALIGN_CENTER, 0);
+
+  lv_obj_t* detail = makeLabel(
+      panel,
+      "The radar did not enter a partial operating state.\n"
+      "Check the serial log for the specific failure.",
+      &lv_font_montserrat_16, rgb(225, 235, 240), 18, 142);
+  lv_obj_set_width(detail, 640);
+  lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(detail, LV_TEXT_ALIGN_CENTER, 0);
+
+  lv_obj_t* build = makeLabel(panel, BUILD_ID, &lv_font_montserrat_12,
+                              rgb(100, 170, 180), 18, 224);
+  lv_obj_set_width(build, 640);
+  lv_obj_set_style_text_align(build, LV_TEXT_ALIGN_CENTER, 0);
 }
 
 void update(uint32_t now) {

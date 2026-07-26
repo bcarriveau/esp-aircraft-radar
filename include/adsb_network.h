@@ -9,7 +9,7 @@ namespace adsb {
 constexpr uint32_t FETCH_INTERVAL_MS = 15000;
 constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 30000;
 
-void begin();
+bool begin();
 void service();
 void reconnectOrRefresh();
 void requestRefresh();

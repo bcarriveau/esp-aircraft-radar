@@ -27,11 +27,24 @@ void setup() {
 
   lcd_init();
   lvgl_port_lock(-1);
-  ui::buildUi();
+  const bool uiReady = ui::buildUi();
+  if (!uiReady) ui::showFatalStatus("UI INITIALIZATION FAILED");
   lvgl_port_unlock();
+  if (!uiReady) {
+    Serial.println("FATAL: Required UI construction failed; startup halted");
+    return;
+  }
 
-  adsb::begin();
+  if (!adsb::begin()) {
+    Serial.println("FATAL: ADSB networking initialization failed; startup halted");
+    lvgl_port_lock(-1);
+    ui::showFatalStatus("NETWORK INITIALIZATION FAILED");
+    lvgl_port_unlock();
+    return;
+  }
+
   startupComplete = true;
+  Serial.println("Startup complete");
 }
 
 void loop() {

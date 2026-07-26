@@ -108,15 +108,8 @@ void waitUntilOrCommand(uint32_t deadlineMs) {
   }
 }
 
-void fetchTask(void*) {
-  aircraft::Target* incoming = static_cast<aircraft::Target*>(heap_caps_calloc(
-      aircraft::MAX_TARGETS, sizeof(aircraft::Target),
-      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  if (!incoming) {
-    Serial.println("FATAL: ADSB target-buffer PSRAM allocation failed");
-    vTaskDelete(nullptr);
-    return;
-  }
+void fetchTask(void* parameter) {
+  aircraft::Target* incoming = static_cast<aircraft::Target*>(parameter);
 
   Serial.printf("ADSB target buffer in PSRAM: %u bytes\n",
                 (unsigned)(aircraft::MAX_TARGETS *
@@ -284,7 +277,15 @@ const char* wifiStatusName(wl_status_t status) {
   }
 }
 
-void begin() {
+bool begin() {
+  aircraft::Target* incoming = static_cast<aircraft::Target*>(heap_caps_calloc(
+      aircraft::MAX_TARGETS, sizeof(aircraft::Target),
+      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (!incoming) {
+    Serial.println("FATAL: ADSB target-buffer PSRAM allocation failed");
+    return false;
+  }
+
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
   WiFi.setAutoReconnect(true);
@@ -315,8 +316,18 @@ void begin() {
     Serial.println("WiFi timeout; UI will still run");
   }
 
-  xTaskCreatePinnedToCore(fetchTask, "ADSB", 16384, nullptr, 1,
-                          &fetchTaskHandle, 0);
+  fetchTaskHandle = nullptr;
+  const BaseType_t taskResult = xTaskCreatePinnedToCore(
+      fetchTask, "ADSB", 16384, incoming, 1, &fetchTaskHandle, 0);
+  if (taskResult != pdPASS) {
+    fetchTaskHandle = nullptr;
+    free(incoming);
+    Serial.printf("FATAL: ADSB task creation failed, result=%ld\n",
+                  (long)taskResult);
+    return false;
+  }
+
+  return true;
 }
 
 void service() {
