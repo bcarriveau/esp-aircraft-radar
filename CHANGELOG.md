@@ -14,11 +14,89 @@ GitHub or preserved evidence does not confirm the changes.
 
 ## Current status
 
-- **Current source:** Product 36 R4
-- **Current build marker:** `7IN-20260725-PRODUCT36-RADAR-OVERLAP-PRIORITY-R4`
+- **Current source:** Product 37
+- **Current build marker:** `7IN-20260725-PRODUCT37-FALLBACK-HTTPS-HARDENED`
 - **Current branch:** `main`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
+
+## Product 37 - 2026-07-25
+
+**Build:** `7IN-20260725-PRODUCT37-FALLBACK-HTTPS-HARDENED`  
+**Status:** Host-verified networking candidate; full PlatformIO and physical verification pending
+
+### Fixed
+
+- Removed `setInsecure()` from the `WiFiClientSecure` fallback and attached the
+  same built-in Espressif CA bundle used by the native HTTPS path.
+- Removed whole-response Arduino `String` buffering and the duplicate header and
+  body `String` copies.
+- Added a bounded streaming fallback reader that places response payload storage
+  in PSRAM first and enforces the 250,000-byte limit before allocation or copy.
+- Added a 15-second header deadline, 12-second no-progress deadline, and
+  45-second absolute response deadline after response reading begins.
+- Added bounded request writes so partial TLS writes cannot silently truncate the
+  HTTP request.
+
+### Framing and bounds
+
+- Added strict bounded parsing for `Content-Length`, chunked transfer framing,
+  and required close-delimited response bodies.
+- Added 512-byte line, 8,192-byte total-header, and 16,384-byte chunk-framing
+  limits.
+- Added chunk-extension and bounded trailer support.
+- Rejects conflicting `Content-Length` values, duplicate or unsupported
+  `Transfer-Encoding`, mixed `Content-Length` plus chunked framing, malformed
+  header names, invalid CRLF framing, forbidden framing trailers, and oversized
+  decoded bodies.
+- Keeps one PSRAM-backed decoded body buffer and does not retain raw chunk
+  framing or duplicate response copies.
+
+### Fallback policy
+
+- Native ESP-IDF HTTPS remains the preferred transport.
+- Fallback is limited to transport-specific native TCP, TLS, header, or
+  incomplete-body failures.
+- Valid native non-200 HTTP responses such as 429 or 500 do not invoke fallback.
+- Oversized native responses, local payload-allocation failures, Wi-Fi loss, and
+  JSON-format failures do not invoke fallback.
+- Preserves retry serialization, generation checks, stale-response rejection,
+  Wi-Fi/TLS recovery, and last-good snapshot retention.
+
+### Preserved
+
+- Core-0 ADS-B task and non-overlapping requests.
+- 15-second start-to-start cadence and existing native HTTPS implementation.
+- Product 30 200-target PSRAM ownership and deterministic retention.
+- Stable ICAO selection/tracking, outward auto-zoom, MPH display, radar
+  rendering, and touch behavior.
+- Arduino-ESP32 3.0.7 high-performance XIP/OPI PSRAM, Waveshare panel timing,
+  DMA, anti-rolling protections, and the 20-scanline RGB bounce buffer.
+
+### Verification
+
+- Confirmed the source was based on GitHub `main` at Product 36 R4 commit
+  `9de21e3`.
+- Confirmed Arduino-ESP32 3.0.7 requires both the CA-bundle flag and
+  `attach_ssl_certificate_bundle()` callback for verified
+  `WiFiClientSecure` connections.
+- Host C++17 fallback compilation passed with `-Wall -Wextra -Werror`.
+- Parser tests passed for Content-Length, chunked bodies, chunk extensions,
+  trailers, close-delimited bodies, partial request writes, oversized bodies,
+  conflicting framing, malformed headers, and invalid CRLF.
+- AddressSanitizer and UndefinedBehaviorSanitizer parser tests passed.
+- Final source inspection confirmed no `setInsecure()`, whole-response
+  `readString()`, or fallback invocation after native HTTP status, oversize,
+  allocation, Wi-Fi, or JSON failures.
+
+### Pending verification
+
+- Full PlatformIO compile and link.
+- Product 37 build-marker confirmation, flash usage, and internal-RAM usage.
+- Physical native/fallback TLS behavior, 15-second updates, Wi-Fi/TLS recovery,
+  stale-response rejection, 20/40/80 range changes, selection/tracking,
+  STOP TRACK, touch, page switching, no screen rolling, heap/PSRAM stability,
+  and extended soak testing.
 
 ## Product 36 R4 - 2026-07-25
 

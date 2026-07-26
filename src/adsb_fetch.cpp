@@ -24,6 +24,9 @@ constexpr uint32_t TOTAL_TIMEOUT_MS = 45000;
 constexpr uint8_t MAX_CONSECUTIVE_READ_TIMEOUTS = 3;
 constexpr uint32_t TRANSPORT_RELEASE_DELAY_MS = 20;
 constexpr size_t MAX_RESPONSE_BYTES = 250000;
+constexpr size_t MAX_HTTP_HEADER_BYTES = 8192;
+constexpr size_t MAX_HTTP_LINE_BYTES = 512;
+constexpr size_t MAX_CHUNK_FRAMING_BYTES = 16384;
 constexpr uint8_t MAX_ATTEMPTS = 2;
 constexpr uint32_t RETRY_DELAY_MS = 500;
 
@@ -107,78 +110,571 @@ uint8_t* allocatePayload(size_t capacity) {
   return payload;
 }
 
+class BundleVerifiedSecureClient final : public WiFiClientSecure {
+ public:
+  void useDefaultCaBundle() {
+    // Arduino-ESP32 3.0.7 exposes these as protected members. Enabling the
+    // built-in bundle keeps hostname/certificate verification active while
+    // still using the independent WiFiClientSecure transport implementation.
+    _use_insecure = false;
+    attach_ssl_certificate_bundle(sslclient.get(), true);
+    _use_ca_bundle = true;
+  }
+};
+
+enum class SecureReadResult : uint8_t {
+  OK,
+  CLOSED,
+  TIMEOUT,
+  TOO_LARGE,
+  IO_ERROR,
+};
+
+struct FallbackResponseHeaders {
+  int statusCode = 0;
+  int64_t contentLength = -1;
+  bool chunked = false;
+  bool transferEncodingSeen = false;
+};
+
+const char* secureReadResultName(SecureReadResult result) {
+  switch (result) {
+    case SecureReadResult::OK: return "ok";
+    case SecureReadResult::CLOSED: return "closed";
+    case SecureReadResult::TIMEOUT: return "timeout";
+    case SecureReadResult::TOO_LARGE: return "too-large";
+    case SecureReadResult::IO_ERROR: return "io-error";
+  }
+  return "unknown";
+}
+
+bool elapsedAtLeast(uint32_t now, uint32_t started, uint32_t intervalMs) {
+  return static_cast<uint32_t>(now - started) >= intervalMs;
+}
+
+SecureReadResult waitForSecureData(WiFiClientSecure& client,
+                                   uint32_t responseStarted,
+                                   uint32_t& lastProgress,
+                                   uint32_t phaseStarted,
+                                   uint32_t phaseTimeoutMs) {
+  while (true) {
+    if (client.available() > 0) return SecureReadResult::OK;
+    if (!client.connected()) return SecureReadResult::CLOSED;
+
+    const uint32_t now = millis();
+    if (elapsedAtLeast(now, lastProgress, IDLE_TIMEOUT_MS) ||
+        elapsedAtLeast(now, responseStarted, TOTAL_TIMEOUT_MS) ||
+        (phaseTimeoutMs > 0 &&
+         elapsedAtLeast(now, phaseStarted, phaseTimeoutMs))) {
+      return SecureReadResult::TIMEOUT;
+    }
+    delay(2);
+  }
+}
+
+SecureReadResult readSecureByte(WiFiClientSecure& client, uint8_t& value,
+                                uint32_t responseStarted,
+                                uint32_t& lastProgress,
+                                uint32_t phaseStarted,
+                                uint32_t phaseTimeoutMs) {
+  const SecureReadResult waitResult =
+      waitForSecureData(client, responseStarted, lastProgress, phaseStarted,
+                        phaseTimeoutMs);
+  if (waitResult != SecureReadResult::OK) return waitResult;
+
+  const int readValue = client.read();
+  if (readValue < 0) return SecureReadResult::IO_ERROR;
+  value = static_cast<uint8_t>(readValue);
+  lastProgress = millis();
+  return SecureReadResult::OK;
+}
+
+SecureReadResult readSecureLine(WiFiClientSecure& client, char* line,
+                                size_t lineCapacity, size_t& wireBytes,
+                                size_t wireLimit, uint32_t responseStarted,
+                                uint32_t& lastProgress,
+                                uint32_t phaseStarted,
+                                uint32_t phaseTimeoutMs) {
+  if (!line || lineCapacity < 2) return SecureReadResult::TOO_LARGE;
+
+  size_t length = 0;
+  while (true) {
+    uint8_t value = 0;
+    const SecureReadResult readResult =
+        readSecureByte(client, value, responseStarted, lastProgress,
+                       phaseStarted, phaseTimeoutMs);
+    if (readResult != SecureReadResult::OK) return readResult;
+
+    ++wireBytes;
+    if (wireBytes > wireLimit) return SecureReadResult::TOO_LARGE;
+    if (value == '\n') {
+      if (length == 0 || line[length - 1] != '\r') {
+        return SecureReadResult::IO_ERROR;
+      }
+      line[--length] = 0;
+      return SecureReadResult::OK;
+    }
+    if (value == 0 || value == 0x7f ||
+        (value < 0x20 && value != '\r' && value != '\t')) {
+      return SecureReadResult::IO_ERROR;
+    }
+    if (length + 1 >= lineCapacity) return SecureReadResult::TOO_LARGE;
+    line[length++] = static_cast<char>(value);
+  }
+}
+
+char asciiLower(char value) {
+  return value >= 'A' && value <= 'Z' ? static_cast<char>(value + ('a' - 'A'))
+                                     : value;
+}
+
+bool equalsIgnoreCase(const char* left, const char* right) {
+  if (!left || !right) return false;
+  while (*left && *right) {
+    if (asciiLower(*left++) != asciiLower(*right++)) return false;
+  }
+  return *left == 0 && *right == 0;
+}
+
+bool validHeaderFieldName(const char* name) {
+  if (!name || !name[0]) return false;
+  for (const char* value = name; *value; ++value) {
+    const unsigned char ch = static_cast<unsigned char>(*value);
+    const bool alphaNumeric =
+        (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+        (ch >= '0' && ch <= '9');
+    const bool punctuation =
+        ch == '!' || ch == '#' || ch == '$' || ch == '%' || ch == '&' ||
+        ch == '\'' || ch == '*' || ch == '+' || ch == '-' || ch == '.' ||
+        ch == '^' || ch == '_' || ch == '`' || ch == '|' || ch == '~';
+    if (!alphaNumeric && !punctuation) return false;
+  }
+  return true;
+}
+
+const char* skipHeaderWhitespace(const char* value) {
+  while (value && (*value == ' ' || *value == '\t')) ++value;
+  return value;
+}
+
+bool transferEncodingIsChunkedOnly(const char* value) {
+  value = skipHeaderWhitespace(value);
+  if (!value) return false;
+  constexpr char chunkedToken[] = "chunked";
+  for (size_t i = 0; i < sizeof(chunkedToken) - 1; ++i) {
+    if (asciiLower(value[i]) != chunkedToken[i]) return false;
+  }
+  value += sizeof(chunkedToken) - 1;
+  value = skipHeaderWhitespace(value);
+  return value && *value == 0;
+}
+
+bool parseHttpStatus(const char* line, int& statusCode) {
+  if (!line || strncmp(line, "HTTP/", 5) != 0) return false;
+  const char* value = strchr(line, ' ');
+  if (!value) return false;
+  value = skipHeaderWhitespace(value);
+  if (!value || value[0] < '0' || value[0] > '9' || value[1] < '0' ||
+      value[1] > '9' || value[2] < '0' || value[2] > '9') {
+    return false;
+  }
+  if (value[3] != 0 && value[3] != ' ' && value[3] != '\t') {
+    return false;
+  }
+  statusCode = (value[0] - '0') * 100 + (value[1] - '0') * 10 +
+               (value[2] - '0');
+  return statusCode >= 100 && statusCode <= 999;
+}
+
+bool parseContentLength(const char* value, size_t& contentLength) {
+  value = skipHeaderWhitespace(value);
+  if (!value || *value < '0' || *value > '9') return false;
+
+  size_t parsed = 0;
+  while (*value >= '0' && *value <= '9') {
+    const size_t digit = static_cast<size_t>(*value - '0');
+    if (parsed > (MAX_RESPONSE_BYTES - digit) / 10) return false;
+    parsed = parsed * 10 + digit;
+    ++value;
+  }
+  value = skipHeaderWhitespace(value);
+  if (*value != 0) return false;
+  contentLength = parsed;
+  return true;
+}
+
+SecureReadResult readFallbackHeaders(WiFiClientSecure& client,
+                                     FallbackResponseHeaders& headers,
+                                     uint32_t responseStarted,
+                                     uint32_t& lastProgress) {
+  char line[MAX_HTTP_LINE_BYTES]{};
+  size_t headerBytes = 0;
+  const uint32_t headerStarted = millis();
+  SecureReadResult readResult = readSecureLine(
+      client, line, sizeof(line), headerBytes, MAX_HTTP_HEADER_BYTES,
+      responseStarted, lastProgress, headerStarted, HTTP_NETWORK_TIMEOUT_MS);
+  if (readResult != SecureReadResult::OK) return readResult;
+  if (!parseHttpStatus(line, headers.statusCode)) {
+    return SecureReadResult::IO_ERROR;
+  }
+
+  while (true) {
+    readResult = readSecureLine(
+        client, line, sizeof(line), headerBytes, MAX_HTTP_HEADER_BYTES,
+        responseStarted, lastProgress, headerStarted, HTTP_NETWORK_TIMEOUT_MS);
+    if (readResult != SecureReadResult::OK) return readResult;
+    if (line[0] == 0) break;
+
+    char* separator = strchr(line, ':');
+    if (!separator) return SecureReadResult::IO_ERROR;
+    *separator = 0;
+    if (!validHeaderFieldName(line)) return SecureReadResult::IO_ERROR;
+    const char* value = skipHeaderWhitespace(separator + 1);
+    if (equalsIgnoreCase(line, "Content-Length")) {
+      size_t parsedLength = 0;
+      if (!parseContentLength(value, parsedLength)) {
+        return SecureReadResult::TOO_LARGE;
+      }
+      if (headers.contentLength >= 0 &&
+          static_cast<size_t>(headers.contentLength) != parsedLength) {
+        return SecureReadResult::IO_ERROR;
+      }
+      headers.contentLength = static_cast<int64_t>(parsedLength);
+    } else if (equalsIgnoreCase(line, "Transfer-Encoding")) {
+      if (headers.transferEncodingSeen) return SecureReadResult::IO_ERROR;
+      headers.transferEncodingSeen = true;
+      if (!transferEncodingIsChunkedOnly(value)) {
+        return SecureReadResult::IO_ERROR;
+      }
+      headers.chunked = true;
+    }
+  }
+
+  if (headers.transferEncodingSeen && !headers.chunked) {
+    return SecureReadResult::IO_ERROR;
+  }
+  if (headers.chunked && headers.contentLength >= 0) {
+    return SecureReadResult::IO_ERROR;
+  }
+  return SecureReadResult::OK;
+}
+
+SecureReadResult readSecureRaw(WiFiClientSecure& client, uint8_t* destination,
+                               size_t length, size_t& bytesRead,
+                               uint32_t responseStarted,
+                               uint32_t& lastProgress) {
+  while (bytesRead < length) {
+    const SecureReadResult waitResult =
+        waitForSecureData(client, responseStarted, lastProgress, 0, 0);
+    if (waitResult != SecureReadResult::OK) return waitResult;
+
+    const size_t availableBytes = static_cast<size_t>(client.available());
+    const size_t remaining = length - bytesRead;
+    const size_t toRead = min(
+        min(remaining, availableBytes), static_cast<size_t>(4096));
+    if (toRead == 0) continue;
+    const int readCount = client.read(destination + bytesRead, toRead);
+    if (readCount <= 0) return SecureReadResult::IO_ERROR;
+    bytesRead += static_cast<size_t>(readCount);
+    lastProgress = millis();
+  }
+  return SecureReadResult::OK;
+}
+
+SecureReadResult parseChunkSize(const char* line, size_t& chunkSize) {
+  if (!line) return SecureReadResult::IO_ERROR;
+  const char* value = line;
+  bool sawDigit = false;
+  size_t parsed = 0;
+  while (*value) {
+    uint8_t digit = 0;
+    if (*value >= '0' && *value <= '9') {
+      digit = static_cast<uint8_t>(*value - '0');
+    } else if (*value >= 'a' && *value <= 'f') {
+      digit = static_cast<uint8_t>(*value - 'a' + 10);
+    } else if (*value >= 'A' && *value <= 'F') {
+      digit = static_cast<uint8_t>(*value - 'A' + 10);
+    } else {
+      break;
+    }
+    sawDigit = true;
+    if (parsed > (MAX_RESPONSE_BYTES - digit) / 16) {
+      return SecureReadResult::TOO_LARGE;
+    }
+    parsed = parsed * 16 + digit;
+    ++value;
+  }
+  if (!sawDigit) return SecureReadResult::IO_ERROR;
+  value = skipHeaderWhitespace(value);
+  if (*value != 0 && *value != ';') return SecureReadResult::IO_ERROR;
+  chunkSize = parsed;
+  return SecureReadResult::OK;
+}
+
+bool validChunkTrailer(const char* line) {
+  if (!line || !line[0]) return false;
+  const char* separator = strchr(line, ':');
+  if (!separator || separator == line) return false;
+
+  char name[MAX_HTTP_LINE_BYTES]{};
+  const size_t nameLength = static_cast<size_t>(separator - line);
+  if (nameLength >= sizeof(name)) return false;
+  memcpy(name, line, nameLength);
+  name[nameLength] = 0;
+  if (!validHeaderFieldName(name)) return false;
+  return !equalsIgnoreCase(name, "Content-Length") &&
+         !equalsIgnoreCase(name, "Transfer-Encoding");
+}
+
+SecureReadResult readChunkedBody(WiFiClientSecure& client, uint8_t* payload,
+                                 size_t& received,
+                                 uint32_t responseStarted,
+                                 uint32_t& lastProgress) {
+  size_t framingBytes = 0;
+  char line[MAX_HTTP_LINE_BYTES]{};
+  while (true) {
+    SecureReadResult readResult = readSecureLine(
+        client, line, sizeof(line), framingBytes, MAX_CHUNK_FRAMING_BYTES,
+        responseStarted, lastProgress, 0, 0);
+    if (readResult != SecureReadResult::OK) return readResult;
+
+    size_t chunkSize = 0;
+    readResult = parseChunkSize(line, chunkSize);
+    if (readResult != SecureReadResult::OK) return readResult;
+    if (chunkSize == 0) {
+      while (true) {
+        readResult = readSecureLine(
+            client, line, sizeof(line), framingBytes,
+            MAX_CHUNK_FRAMING_BYTES, responseStarted, lastProgress, 0, 0);
+        if (readResult != SecureReadResult::OK) return readResult;
+        if (line[0] == 0) return SecureReadResult::OK;
+        if (!validChunkTrailer(line)) return SecureReadResult::IO_ERROR;
+      }
+    }
+    if (chunkSize > MAX_RESPONSE_BYTES - received) {
+      return SecureReadResult::TOO_LARGE;
+    }
+
+    size_t chunkRead = 0;
+    readResult = readSecureRaw(client, payload + received, chunkSize, chunkRead,
+                               responseStarted, lastProgress);
+    received += chunkRead;
+    if (readResult != SecureReadResult::OK) return readResult;
+
+    uint8_t terminator[2]{};
+    size_t terminatorRead = 0;
+    readResult = readSecureRaw(client, terminator, sizeof(terminator),
+                               terminatorRead, responseStarted, lastProgress);
+    if (readResult != SecureReadResult::OK) return readResult;
+    framingBytes += sizeof(terminator);
+    if (framingBytes > MAX_CHUNK_FRAMING_BYTES) {
+      return SecureReadResult::TOO_LARGE;
+    }
+    if (terminator[0] != '\r' || terminator[1] != '\n') {
+      return SecureReadResult::IO_ERROR;
+    }
+  }
+}
+
+SecureReadResult readCloseDelimitedBody(WiFiClientSecure& client,
+                                        uint8_t* payload, size_t& received,
+                                        uint32_t responseStarted,
+                                        uint32_t& lastProgress) {
+  while (true) {
+    const SecureReadResult waitResult =
+        waitForSecureData(client, responseStarted, lastProgress, 0, 0);
+    if (waitResult == SecureReadResult::CLOSED) return SecureReadResult::OK;
+    if (waitResult != SecureReadResult::OK) return waitResult;
+    if (received >= MAX_RESPONSE_BYTES) return SecureReadResult::TOO_LARGE;
+
+    const size_t availableBytes = static_cast<size_t>(client.available());
+    const size_t remaining = MAX_RESPONSE_BYTES - received;
+    const size_t toRead = min(
+        min(remaining, availableBytes), static_cast<size_t>(4096));
+    if (toRead == 0) continue;
+    const int readCount = client.read(payload + received, toRead);
+    if (readCount <= 0) return SecureReadResult::IO_ERROR;
+    received += static_cast<size_t>(readCount);
+    lastProgress = millis();
+  }
+}
+
+bool writeSecureText(WiFiClientSecure& client, const char* text,
+                     size_t length, uint32_t writeStarted,
+                     uint32_t& lastProgress) {
+  if (!text) return false;
+  size_t written = 0;
+  while (written < length) {
+    if (!client.connected()) return false;
+    const uint32_t now = millis();
+    if (elapsedAtLeast(now, writeStarted, HTTP_NETWORK_TIMEOUT_MS) ||
+        elapsedAtLeast(now, lastProgress, BODY_READ_TIMEOUT_MS)) {
+      return false;
+    }
+    const size_t writeCount = client.write(
+        reinterpret_cast<const uint8_t*>(text + written), length - written);
+    if (writeCount > 0) {
+      written += writeCount;
+      lastProgress = millis();
+      continue;
+    }
+    delay(2);
+  }
+  return true;
+}
+
+template <size_t N>
+bool writeSecureLiteral(WiFiClientSecure& client, const char (&text)[N],
+                        uint32_t writeStarted, uint32_t& lastProgress) {
+  return writeSecureText(client, text, N - 1, writeStarted, lastProgress);
+}
+
+bool writeFallbackRequest(WiFiClientSecure& client, const String& path) {
+  const uint32_t writeStarted = millis();
+  uint32_t lastProgress = writeStarted;
+  return writeSecureLiteral(client, "GET ", writeStarted, lastProgress) &&
+         writeSecureText(client, path.c_str(), path.length(), writeStarted,
+                         lastProgress) &&
+         writeSecureLiteral(client, " HTTP/1.1\r\n", writeStarted,
+                            lastProgress) &&
+         writeSecureLiteral(client, "Host: opendata.adsb.fi\r\n", writeStarted,
+                            lastProgress) &&
+         writeSecureLiteral(
+             client, "User-Agent: BILLS-Aircraft-Radar-7in/18\r\n",
+             writeStarted, lastProgress) &&
+         writeSecureLiteral(client, "Accept: application/json\r\n",
+                            writeStarted, lastProgress) &&
+         writeSecureLiteral(client, "Accept-Encoding: identity\r\n",
+                            writeStarted, lastProgress) &&
+         writeSecureLiteral(client, "Connection: close\r\n\r\n", writeStarted,
+                            lastProgress);
+}
+
 AttemptResult fetchAttemptWithSecureClient(const String& path,
                                              JsonDocument& filter,
                                              JsonDocument& doc) {
-  Serial.println("ADSB.fi fallback HTTPS via WiFiClientSecure");
-  WiFiClientSecure client;
-  client.setInsecure();
-  client.setTimeout(HTTP_NETWORK_TIMEOUT_MS / 1000);
-  client.setHandshakeTimeout(HTTP_NETWORK_TIMEOUT_MS / 1000);
+  Serial.println(
+      "ADSB.fi fallback HTTPS via verified WiFiClientSecure stream");
+  BundleVerifiedSecureClient client;
+  client.useDefaultCaBundle();
+  client.setTimeout(BODY_READ_TIMEOUT_MS);
+  client.setHandshakeTimeout((HTTP_NETWORK_TIMEOUT_MS + 999) / 1000);
 
-  if (!client.connect("opendata.adsb.fi", 443)) {
+  const uint32_t connectStarted = millis();
+  if (!client.connect("opendata.adsb.fi", 443,
+                      static_cast<int32_t>(HTTP_NETWORK_TIMEOUT_MS))) {
+    char tlsError[160]{};
+    const int tlsErrorCode = client.lastError(tlsError, sizeof(tlsError));
     client.stop();
-    Serial.println("ADSB.fi fallback TLS connect failed");
+    Serial.printf(
+        "ADSB.fi fallback verified TLS connect failed after %lu ms: %d (%s)\n",
+        (unsigned long)(millis() - connectStarted), tlsErrorCode,
+        tlsError[0] ? tlsError : "no mbedTLS detail");
     return failed(app_state::FetchFailureStage::TLS);
   }
 
-  client.print(String("GET ") + path + " HTTP/1.1\r\n");
-  client.print("Host: opendata.adsb.fi\r\n");
-  client.print("User-Agent: BILLS-Aircraft-Radar-7in/18\r\n");
-  client.print("Accept: application/json\r\n");
-  client.print("Accept-Encoding: identity\r\n");
-  client.print("Connection: close\r\n\r\n");
+  client.setTimeout(BODY_READ_TIMEOUT_MS);
+  if (!writeFallbackRequest(client, path)) {
+    client.stop();
+    Serial.println("ADSB.fi fallback request write failed");
+    return failed(app_state::FetchFailureStage::TCP);
+  }
 
   const uint32_t responseStarted = millis();
-  while (!client.available() && millis() - responseStarted < HTTP_NETWORK_TIMEOUT_MS) {
-    delay(2);
-  }
-  if (!client.available()) {
+  uint32_t lastProgress = responseStarted;
+  FallbackResponseHeaders headers;
+  const SecureReadResult headerResult =
+      readFallbackHeaders(client, headers, responseStarted, lastProgress);
+  if (headerResult != SecureReadResult::OK) {
     client.stop();
-    Serial.println("ADSB.fi fallback response timed out");
+    Serial.printf("ADSB.fi fallback header failure: %s\n",
+                  secureReadResultName(headerResult));
     return failed(app_state::FetchFailureStage::HTTP_HEADERS);
   }
 
-  String response = client.readString();
-  client.stop();
-
-  const int headerEnd = response.indexOf("\r\n\r\n");
-  if (headerEnd < 0) {
-    Serial.println("ADSB.fi fallback response had no header/body separator");
-    return failed(app_state::FetchFailureStage::HTTP_HEADERS);
-  }
-
-  const String headers = response.substring(0, headerEnd);
-  const String body = response.substring(headerEnd + 4);
-  if (body.length() > MAX_RESPONSE_BYTES) {
-    Serial.printf("ADSB.fi fallback response too large: %u bytes\n",
-                  (unsigned)body.length());
-    return failed(app_state::FetchFailureStage::HTTP_HEADERS);
-  }
-
-  if (headers.indexOf("HTTP/1.1 200") < 0 && headers.indexOf("HTTP/1.0 200") < 0) {
-    Serial.printf("ADSB.fi fallback HTTP error headers: %s\n",
-                  headers.c_str());
+  if (headers.statusCode != 200) {
+    client.stop();
+    Serial.printf("ADSB.fi fallback HTTP error: %d\n", headers.statusCode);
     return failed(app_state::FetchFailureStage::HTTP_STATUS);
   }
 
+  const size_t capacity =
+      headers.contentLength >= 0
+          ? static_cast<size_t>(headers.contentLength)
+          : MAX_RESPONSE_BYTES;
+  uint8_t* payload = allocatePayload(capacity);
+  if (!payload) {
+    client.stop();
+    Serial.printf("ADSB.fi fallback payload allocation failed: need %u bytes\n",
+                  (unsigned)(capacity + 1));
+    return failed(app_state::FetchFailureStage::RESPONSE_BODY,
+                  static_cast<uint32_t>(capacity));
+  }
+
+  size_t received = 0;
+  SecureReadResult bodyResult = SecureReadResult::OK;
+  if (headers.chunked) {
+    bodyResult = readChunkedBody(client, payload, received, responseStarted,
+                                 lastProgress);
+  } else if (headers.contentLength >= 0) {
+    size_t bodyRead = 0;
+    bodyResult = readSecureRaw(client, payload, capacity, bodyRead,
+                               responseStarted, lastProgress);
+    received = bodyRead;
+  } else {
+    bodyResult = readCloseDelimitedBody(client, payload, received,
+                                        responseStarted, lastProgress);
+  }
+  client.stop();
+
+  if (bodyResult != SecureReadResult::OK) {
+    Serial.printf(
+        "ADSB.fi fallback body failure: %s after %u bytes in %lu ms\n",
+        secureReadResultName(bodyResult), (unsigned)received,
+        (unsigned long)(millis() - responseStarted));
+    free(payload);
+    const app_state::FetchFailureStage stage =
+        WiFi.status() == WL_CONNECTED
+            ? app_state::FetchFailureStage::RESPONSE_BODY
+            : app_state::FetchFailureStage::WIFI;
+    return failed(stage, received);
+  }
+
+  payload[received] = 0;
+  Serial.printf(
+      "ADSB.fi fallback response complete: %u bytes in %lu ms, chunked=%s\n",
+      (unsigned)received, (unsigned long)(millis() - responseStarted),
+      headers.chunked ? "yes" : "no");
+
   doc.clear();
   DeserializationError error = deserializeJson(
-      doc, body.c_str(), body.length(), DeserializationOption::Filter(filter));
+      doc, payload, received, DeserializationOption::Filter(filter));
+  free(payload);
   if (error) {
     Serial.printf("ADSB.fi fallback JSON error: %s\n", error.c_str());
-    return failed(app_state::FetchFailureStage::JSON, body.length());
+    return failed(app_state::FetchFailureStage::JSON, received);
   }
 
   JsonArray parsed = doc["ac"].as<JsonArray>();
   if (parsed.isNull()) {
     Serial.println("ADSB.fi fallback response did not contain an ac array");
-    return failed(app_state::FetchFailureStage::JSON, body.length());
+    return failed(app_state::FetchFailureStage::JSON, received);
   }
 
   AttemptResult result;
   result.success = true;
-  result.responseBytes = body.length();
+  result.responseBytes = received;
+  return result;
+}
+
+AttemptResult tryTransportFallback(const String& path, JsonDocument& filter,
+                                   JsonDocument& doc,
+                                   const AttemptResult& nativeFailure) {
+  AttemptResult result = nativeFailure;
+  const AttemptResult fallbackResult =
+      fetchAttemptWithSecureClient(path, filter, doc);
+  if (fallbackResult.success) return fallbackResult;
+  preserveMostAdvancedFailure(result, fallbackResult);
   return result;
 }
 
@@ -240,12 +736,12 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
         (unsigned long)(millis() - connectStarted),
         esp_err_to_name(openError), (unsigned)openError, socketError);
     releaseNativeClient(client, false);
-    const AttemptResult fallbackResult =
-        fetchAttemptWithSecureClient(path, filter, doc);
-    if (fallbackResult.success) {
-      return fallbackResult;
+    const AttemptResult nativeFailure = failed(stage);
+    if (stage != app_state::FetchFailureStage::TCP &&
+        stage != app_state::FetchFailureStage::TLS) {
+      return nativeFailure;
     }
-    return failed(stage);
+    return tryTransportFallback(path, filter, doc, nativeFailure);
   }
   Serial.printf("ADSB.fi native TLS connected in %lu ms\n",
                 (unsigned long)(millis() - connectStarted));
@@ -256,23 +752,19 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
     Serial.printf("ADSB.fi native header failure: %lld\n",
                   static_cast<long long>(headerLength));
     releaseNativeClient(client, clientOpened);
-    const AttemptResult fallbackResult =
-        fetchAttemptWithSecureClient(path, filter, doc);
-    if (fallbackResult.success) {
-      return fallbackResult;
-    }
-    return failed(app_state::FetchFailureStage::HTTP_HEADERS);
+    const app_state::FetchFailureStage stage =
+        WiFi.status() == WL_CONNECTED
+            ? app_state::FetchFailureStage::HTTP_HEADERS
+            : app_state::FetchFailureStage::WIFI;
+    const AttemptResult nativeFailure = failed(stage);
+    if (stage == app_state::FetchFailureStage::WIFI) return nativeFailure;
+    return tryTransportFallback(path, filter, doc, nativeFailure);
   }
 
   const int statusCode = esp_http_client_get_status_code(client);
   if (statusCode != 200) {
     Serial.printf("ADSB.fi HTTP error: %d\n", statusCode);
     releaseNativeClient(client, clientOpened);
-    const AttemptResult fallbackResult =
-        fetchAttemptWithSecureClient(path, filter, doc);
-    if (fallbackResult.success) {
-      return fallbackResult;
-    }
     return failed(app_state::FetchFailureStage::HTTP_STATUS);
   }
 
@@ -282,11 +774,6 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
     Serial.printf("ADSB.fi response too large: %lld bytes\n",
                   static_cast<long long>(headerLength));
     releaseNativeClient(client, clientOpened);
-    const AttemptResult fallbackResult =
-        fetchAttemptWithSecureClient(path, filter, doc);
-    if (fallbackResult.success) {
-      return fallbackResult;
-    }
     return failed(app_state::FetchFailureStage::HTTP_HEADERS);
   }
   const size_t capacity =
@@ -299,11 +786,6 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
     Serial.printf("ADSB.fi payload allocation failed: need %u bytes\n",
                   (unsigned)(capacity + 1));
     releaseNativeClient(client, clientOpened);
-    const AttemptResult fallbackResult =
-        fetchAttemptWithSecureClient(path, filter, doc);
-    if (fallbackResult.success) {
-      return fallbackResult;
-    }
     return failed(app_state::FetchFailureStage::RESPONSE_BODY,
                   static_cast<uint32_t>(capacity));
   }
@@ -373,16 +855,13 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
         (unsigned)received, (unsigned)capacity,
         responseComplete ? "yes" : "no");
     free(payload);
-    const AttemptResult fallbackResult =
-        fetchAttemptWithSecureClient(path, filter, doc);
-    if (fallbackResult.success) {
-      return fallbackResult;
-    }
     const app_state::FetchFailureStage stage =
         WiFi.status() == WL_CONNECTED
             ? app_state::FetchFailureStage::RESPONSE_BODY
             : app_state::FetchFailureStage::WIFI;
-    return failed(stage, received);
+    const AttemptResult nativeFailure = failed(stage, received);
+    if (stage == app_state::FetchFailureStage::WIFI) return nativeFailure;
+    return tryTransportFallback(path, filter, doc, nativeFailure);
   }
   Serial.printf("ADSB.fi response complete: %u bytes in %lu ms\n",
                 (unsigned)received,
