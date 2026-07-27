@@ -10,31 +10,92 @@ available.
 
 This consolidated file replaces the earlier split changelog that stopped after
 Product 42. It contains the continuous confirmed history from the current Product
-48 source back through Product 15, the first hardened version-controlled baseline.
+49 source back through Product 15, the first hardened version-controlled baseline.
 Earlier Product history is intentionally omitted where the repository does not
 provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 48
-- **Current build marker:** `7IN-20260726-PRODUCT48-TRACKS-SCROLL-CLAMP`
+- **Current source:** Product 49
+- **Current build marker:** `7IN-20260727-PRODUCT49-20MI-LABEL-SELECTION`
 - **Current branch:** `main`
-- **Current source commit:** [`f299720`](https://github.com/bcarriveau/esp-aircraft-radar/commit/f299720257042fe9d38cc20d4dfdcc3a7eb7b0b4)
+- **Product 49 source baseline:** [`2813ee1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/2813ee1e72793453f5da02d6eb4d776125c0d39e)
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 48 is host-verified but still requires a complete PlatformIO compile/link,
+Product 49 is host-verified but still requires a complete PlatformIO compile/link,
 flash and memory report, firmware upload, physical regression checks, and extended
 soak testing before being called a fully verified hardware release.
+
+## Product 49 - 2026-07-27
+
+**Build:** `7IN-20260727-PRODUCT49-20MI-LABEL-SELECTION`  
+**Status:** Host-verified 20-mile radar interaction candidate
+
+### Changed
+
+- Made every visible radar label at the 20-mile range a first-class selection
+  target using the label's stored stable ICAO hex.
+- Gives an exact press inside the visible label rectangle priority over every
+  aircraft-icon hit, preventing a nearby contact from stealing an intentional
+  label press.
+- Adds a four-pixel invisible edge pad only after all exact label rectangles miss.
+- Resolves overlapping padded areas deterministically by tracked state, selected
+  state, nearest visible label rectangle, nearest label center, and stable ICAO
+  hex.
+- Falls back to the existing 18-pixel aircraft-icon hit area only when no visible
+  label or padded label edge was touched.
+- Limits label-first selection to the 20-mile view; established 40/80-mile tag and
+  compact-dot hit behavior remains unchanged.
+
+### Preserved
+
+- Stable ICAO selection and tracking, including tracked then selected then normal
+  priority within each hit-test phase.
+- Product 48 Tracks scroll clamping and Product 47 vertical-state fuselage
+  indicators.
+- Product 46 R2 sweep tint, Product 46 overlap stability, collision-aware label
+  placement, and aircraft rendering.
+- Existing renderer PSRAM buffers, `MAX_TARGETS=200`, contact bounds, range control,
+  selection timeout, INFO/TRACK/CLEAR/STOP TRACK flow, and outward auto-zoom.
+- Core-0 ADS-B ownership, native and fallback HTTPS, 15-second cadence, deadlines,
+  stale-response rejection, Wi-Fi/TLS recovery, and last-good retention.
+- Waveshare panel timing, DMA, OPI PSRAM, anti-rolling protections, and the
+  20-scanline RGB bounce buffer.
+
+### Verification
+
+- Confirmed the implementation is based on current GitHub `main` commit
+  `2813ee1e72793453f5da02d6eb4d776125c0d39e` and the exact current renderer blob
+  `c8c6de8ac4b9a5ef3a1dc2519f90493782a0bf2a`.
+- The complete `src/radar_renderer.cpp` passed a C++17 host syntax check with
+  `-Wall -Wextra -Werror -pedantic` using focused Arduino/LVGL interface stubs.
+- The actual Product 49 `hitTest()` implementation passed AddressSanitizer and
+  UndefinedBehaviorSanitizer tests for exact labels, overlapping padded edges,
+  four-pixel boundaries, tracked/selected priority, icon fallback, and unchanged
+  40/80-mile behavior.
+- Static checks confirmed no new buffers, allocations, capacity changes, network
+  source changes, panel/touch-driver changes, forbidden HTTPS APIs, or credential
+  files were introduced.
+
+### Pending verification
+
+- Full PlatformIO compile and link, flash/RAM report, upload, and Product 49 marker.
+- Physical 20-mile testing with isolated labels, labels near aircraft icons, and
+  dense neighboring labels whose four-pixel edge pads overlap.
+- Confirmation that exact label presses always select the intended ICAO and that
+  icon selection still works when no label is touched.
+- Normal 40/80-mile selection, Tracks, vertical-state display, tracking,
+  STOP TRACK, page switching, display stability, memory stability, and soak testing.
 
 ## Product 48 - 2026-07-26
 
 **Build:** `7IN-20260726-PRODUCT48-TRACKS-SCROLL-CLAMP`  
 **Commit:** [`f299720`](https://github.com/bcarriveau/esp-aircraft-radar/commit/f299720257042fe9d38cc20d4dfdcc3a7eb7b0b4)  
-**Status:** Current host-verified Tracks-page reliability candidate
+**Status:** Tracks-page reliability fix retained by Product 49
 
 ### Fixed
 

@@ -147,6 +147,7 @@ ScreenContact* renderedContacts = nullptr;
 LabelBox* renderedLabelBoxes = nullptr;
 ContactFrame contactFrame;
 uint8_t renderedHitCount = 0;
+bool renderedTwentyMileRange = false;
 
 bool drawPlacedTag(int dotX, int dotY, const char* const* lines,
                    const lv_color_t* lineColors, uint8_t lineCount,
@@ -1145,6 +1146,7 @@ bool render(aircraft::Target* workTargets, const char* selectedHex) {
   const float projectionSeconds =
       min(contactAgeMs, adsb::FETCH_INTERVAL_MS * 2UL) / 1000.0f;
   const float rangeMiles = snapshot.rangeMiles;
+  renderedTwentyMileRange = rangeMiles <= 20.1f;
   bool selectedAvailable = !selectedHex || !selectedHex[0];
   if (!snapshot.manualTracking && selectedHex && selectedHex[0]) {
     selectedAvailable = false;
@@ -1185,12 +1187,136 @@ bool render(aircraft::Target* workTargets, const char* selectedHex) {
 bool hitTest(int canvasX, int canvasY, HitResult& result) {
   result = HitResult{};
   if (!renderedHits) return false;
+
+  auto copyResult = [&](int index) {
+    if (index < 0) return false;
+    const HitRegion& hit = renderedHits[index];
+    strncpy(result.hex, hit.hex, sizeof(result.hex) - 1);
+    result.tracked = hit.tracked;
+    result.selected = hit.selected;
+    return result.hex[0] != 0;
+  };
+
+  auto priorityFor = [](const HitRegion& hit) {
+    return hit.tracked ? 2 : (hit.selected ? 1 : 0);
+  };
+
+  auto squaredDistanceToTagCenter = [&](const HitRegion& hit) {
+    const int centerX = (hit.tag.x1 + hit.tag.x2) / 2;
+    const int centerY = (hit.tag.y1 + hit.tag.y2) / 2;
+    const int deltaX = canvasX - centerX;
+    const int deltaY = canvasY - centerY;
+    return deltaX * deltaX + deltaY * deltaY;
+  };
+
+  auto squaredDistanceToTag = [&](const HitRegion& hit) {
+    const int nearestX =
+        canvasX < hit.tag.x1 ? hit.tag.x1
+                             : (canvasX > hit.tag.x2 ? hit.tag.x2 : canvasX);
+    const int nearestY =
+        canvasY < hit.tag.y1 ? hit.tag.y1
+                             : (canvasY > hit.tag.y2 ? hit.tag.y2 : canvasY);
+    const int deltaX = canvasX - nearestX;
+    const int deltaY = canvasY - nearestY;
+    return deltaX * deltaX + deltaY * deltaY;
+  };
+
+  auto betterCandidate = [&](uint8_t index, int primaryDistance,
+                             int secondaryDistance, int bestIndex,
+                             int bestPrimaryDistance,
+                             int bestSecondaryDistance) {
+    if (bestIndex < 0) return true;
+    const HitRegion& candidate = renderedHits[index];
+    const HitRegion& best = renderedHits[bestIndex];
+    const int candidatePriority = priorityFor(candidate);
+    const int bestPriority = priorityFor(best);
+    if (candidatePriority != bestPriority) {
+      return candidatePriority > bestPriority;
+    }
+    if (primaryDistance != bestPrimaryDistance) {
+      return primaryDistance < bestPrimaryDistance;
+    }
+    if (secondaryDistance != bestSecondaryDistance) {
+      return secondaryDistance < bestSecondaryDistance;
+    }
+    return strcmp(candidate.hex, best.hex) < 0;
+  };
+
+  if (renderedTwentyMileRange) {
+    // A direct press on a visible tag is authoritative. Tag rectangles are
+    // collision-placed, but priority and center distance keep any edge case
+    // deterministic without allowing a nearby aircraft icon to steal the press.
+    int bestIndex = -1;
+    int bestCenterDistance = INT_MAX;
+    for (uint8_t i = 0; i < renderedHitCount; ++i) {
+      const HitRegion& hit = renderedHits[i];
+      if (!hit.hasTag || canvasX < hit.tag.x1 || canvasX > hit.tag.x2 ||
+          canvasY < hit.tag.y1 || canvasY > hit.tag.y2) {
+        continue;
+      }
+      const int centerDistance = squaredDistanceToTagCenter(hit);
+      if (betterCandidate(i, centerDistance, 0, bestIndex,
+                          bestCenterDistance, 0)) {
+        bestIndex = i;
+        bestCenterDistance = centerDistance;
+      }
+    }
+    if (copyResult(bestIndex)) return true;
+
+    // A small invisible pad catches edge touches. When neighboring pads overlap,
+    // choose the tag whose visible rectangle is actually nearest, then its center.
+    constexpr int TAG_TOUCH_PADDING = 4;
+    bestIndex = -1;
+    int bestRectangleDistance = INT_MAX;
+    bestCenterDistance = INT_MAX;
+    for (uint8_t i = 0; i < renderedHitCount; ++i) {
+      const HitRegion& hit = renderedHits[i];
+      if (!hit.hasTag ||
+          canvasX < hit.tag.x1 - TAG_TOUCH_PADDING ||
+          canvasX > hit.tag.x2 + TAG_TOUCH_PADDING ||
+          canvasY < hit.tag.y1 - TAG_TOUCH_PADDING ||
+          canvasY > hit.tag.y2 + TAG_TOUCH_PADDING) {
+        continue;
+      }
+      const int rectangleDistance = squaredDistanceToTag(hit);
+      const int centerDistance = squaredDistanceToTagCenter(hit);
+      if (betterCandidate(i, rectangleDistance, centerDistance, bestIndex,
+                          bestRectangleDistance, bestCenterDistance)) {
+        bestIndex = i;
+        bestRectangleDistance = rectangleDistance;
+        bestCenterDistance = centerDistance;
+      }
+    }
+    if (copyResult(bestIndex)) return true;
+
+    constexpr int CONTACT_TOUCH_RADIUS = 18;
+    constexpr int CONTACT_TOUCH_RADIUS_SQUARED =
+        CONTACT_TOUCH_RADIUS * CONTACT_TOUCH_RADIUS;
+    bestIndex = -1;
+    int bestContactDistance = INT_MAX;
+    for (uint8_t i = 0; i < renderedHitCount; ++i) {
+      const HitRegion& hit = renderedHits[i];
+      const int deltaX = canvasX - hit.contactX;
+      const int deltaY = canvasY - hit.contactY;
+      const int distanceSquared = deltaX * deltaX + deltaY * deltaY;
+      if (distanceSquared > CONTACT_TOUCH_RADIUS_SQUARED) continue;
+      if (betterCandidate(i, distanceSquared, 0, bestIndex,
+                          bestContactDistance, 0)) {
+        bestIndex = i;
+        bestContactDistance = distanceSquared;
+      }
+    }
+    return copyResult(bestIndex);
+  }
+
+  // Preserve the established 40/80-mile behavior: selected/tracked tags and
+  // compact contact dots participate in the same priority-and-distance contest.
   int bestIndex = -1;
   int bestPriority = -1;
   int bestDistanceSquared = INT_MAX;
   auto consider = [&](uint8_t index) {
     const HitRegion& hit = renderedHits[index];
-    const int priority = hit.tracked ? 2 : (hit.selected ? 1 : 0);
+    const int priority = priorityFor(hit);
     const int deltaX = canvasX - hit.contactX;
     const int deltaY = canvasY - hit.contactY;
     const int distanceSquared = deltaX * deltaX + deltaY * deltaY;
@@ -1227,12 +1353,7 @@ bool hitTest(int canvasX, int canvasY, HitResult& result) {
     }
   }
 
-  if (bestIndex < 0) return false;
-  const HitRegion& hit = renderedHits[bestIndex];
-  strncpy(result.hex, hit.hex, sizeof(result.hex) - 1);
-  result.tracked = hit.tracked;
-  result.selected = hit.selected;
-  return result.hex[0] != 0;
+  return copyResult(bestIndex);
 }
 
 }  // namespace radar
