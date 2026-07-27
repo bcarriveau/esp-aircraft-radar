@@ -3,18 +3,91 @@
 All notable confirmed changes to Bill's 7-inch ESP32-S3 Aircraft Radar are
 documented in the repository changelog.
 
-This file records the Product 46 R2 through Product 42 updates. Confirmed Product 41
+This file records the Product 47 through Product 42 updates. Confirmed Product 41
 through Product 15 history remains unchanged from the existing repository
 `CHANGELOG.md`.
 
 ## Current status
 
-- **Current source:** Product 46 R2
-- **Current build marker:** `7IN-20260726-PRODUCT46-R2-SUBTLE-SWEEP-TINT`
+- **Current source:** Product 47
+- **Current build marker:** `7IN-20260726-PRODUCT47-VERTICAL-STATE-BITMAPS`
 - **Intended branch:** `main`
-- **Product 46 R2 source baseline commit:** `58aee5b0fda1e364aec68d277ea1d00ffa9a71c3`
+- **Product 47 source baseline commit:** `c75141f93468b8118c4c63ddd39c780584b712d5`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
+
+## Product 47 - 2026-07-26
+
+**Build:** `7IN-20260726-PRODUCT47-VERTICAL-STATE-BITMAPS`
+**Status:** Host-verified selected/tracked-aircraft UI candidate; full PlatformIO
+and physical verification pending
+
+### Added
+
+- Adds three 80×36 transparent side-profile fuselage assets under `assets/` for
+  clearly distinct climbing, level, and descending attitudes.
+- Adds a generated flash-resident alpha-mask header for the three assets and a
+  dedicated 5,760-byte PSRAM LVGL canvas buffer.
+- Shows the aircraft attitude, plain-language state, and rounded vertical rate in
+  `FT/MIN` beside the existing heading indicator whenever an aircraft is selected
+  or tracked.
+- Uses cyan for climbing, neutral avionics white for level flight, and amber for
+  descending while preserving the existing amber selected-aircraft and red
+  tracked-aircraft identity treatment elsewhere in the panel.
+- Adds deterministic vertical-state hysteresis: climb/descent begins at
+  ±200 ft/min and returns to level only inside ±100 ft/min, preventing state
+  flicker around zero.
+- Keeps the current state keyed to the priority aircraft's stable ICAO hex so a
+  different selected or tracked aircraft cannot inherit the previous aircraft's
+  attitude.
+- Rounds the displayed rate to the nearest 50 ft/min for a stable,
+  instrument-style readout without using a `V/S` label or gauge.
+
+### Preserved
+
+- Product 46 R2 radar sweep tint, Product 46 overlap stability, and Product 45
+  explicit aircraft classifier APIs are unchanged.
+- Selection, tracking, INFO, TRACK, CLEAR, STOP TRACK, stable ICAO hit testing,
+  nearest-aircraft behavior, outward auto-zoom, MPH display, and single-snapshot
+  radar rendering are unchanged.
+- Core-0 ADS-B ownership, 15-second cadence, native/fallback HTTPS, Wi-Fi/TLS
+  recovery, stale-response rejection, last-good retention, capacity, display
+  timing, DMA, anti-rolling, and the 20-scanline RGB bounce buffer are unchanged.
+- No networking, TLS, settings, capacity, panel-driver, touch, or credential
+  source was modified.
+- Existing unrelated working-tree line-ending changes in the supplied checkout
+  were preserved and excluded from the Product 47 package.
+- `include/config.h` and credentials were not read, modified, or packaged.
+
+### Verification
+
+- Confirmed the supplied checkout is on `main` at Product 46 R2 commit
+  `c75141f93468b8118c4c63ddd39c780584b712d5`.
+- Confirmed the Product 46 R2 source build marker before editing:
+  `7IN-20260726-PRODUCT46-R2-SUBTLE-SWEEP-TINT`.
+- Focused Product 47 tests passed for asset dimensions, generated-header parity,
+  visibly distinct climb/level/descent attitudes, threshold transitions,
+  hysteresis, labels, and 50-ft/min rounding.
+- `src/radar_renderer.cpp` passed a full-file C++17 host syntax check with
+  `-Wall -Wextra -Werror -pedantic` using focused Arduino/LVGL interface stubs.
+- Static checks confirmed the new canvas is allocated in PSRAM, the display is
+  limited to selected/tracked aircraft, state continuity uses stable ICAO hex,
+  and the indicator is hidden for normal nearest-list mode and lost tracking.
+- Static forbidden-change checks confirmed no `HTTPClient::GET()`,
+  `setInsecure()`, networking source, capacity constant, display-driver source,
+  or credential file was introduced or changed.
+
+### Pending verification
+
+- Full PlatformIO compile and link.
+- Flash and memory usage report.
+- Firmware upload and physical Product 47 build-marker confirmation.
+- Physical confirmation that the three fuselage attitudes remain clearly
+  different at the final 800×480 panel size.
+- Physical confirmation that `CLIMBING`, `LEVEL`, `DESCENDING`, and the
+  `FT/MIN` value fit cleanly without touching the heading indicator or buttons.
+- Selection, tracking, STOP TRACK, touch, page switching, no screen rolling,
+  heap/PSRAM stability, and extended soak testing.
 
 ## Product 46 R2 - 2026-07-26
 

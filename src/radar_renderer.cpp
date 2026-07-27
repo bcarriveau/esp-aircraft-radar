@@ -9,6 +9,8 @@
 #include "app_state.h"
 #include "aircraft_bitmaps.h"
 #include "radar_contact_bitmaps.h"
+#include "vertical_state.h"
+#include "vertical_state_bitmaps.h"
 
 namespace radar {
 namespace {
@@ -27,6 +29,9 @@ View radarView;
 float sweepDegrees = 0;
 lv_point_t leftNearestHeadingPoints[5]{};
 lv_point_t priorityHeadingPoints[5]{};
+vertical_state::State priorityVerticalState = vertical_state::State::LEVEL;
+char priorityVerticalStateHex[7]{};
+bool priorityVerticalStateInitialized = false;
 
 inline lv_color_t rgb(uint8_t red, uint8_t green, uint8_t blue) {
   return lv_color_make(red, green, blue);
@@ -735,6 +740,95 @@ void updateHeadingDisplay(lv_obj_t* arrow, lv_obj_t* label,
   lv_label_set_text(label, headingText);
 }
 
+void resetVerticalStateDisplay() {
+  priorityVerticalState = vertical_state::State::LEVEL;
+  priorityVerticalStateHex[0] = 0;
+  priorityVerticalStateInitialized = false;
+}
+
+void updateVerticalStateDisplay(lv_obj_t* canvas, lv_color_t* buffer,
+                                lv_obj_t* label,
+                                const aircraft::Target* target) {
+  if (!canvas || !buffer || !label) return;
+  if (!target) {
+    lv_obj_add_flag(canvas, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
+    resetVerticalStateDisplay();
+    return;
+  }
+
+  const bool sameAircraft =
+      priorityVerticalStateInitialized && target->hex[0] &&
+      strcmp(priorityVerticalStateHex, target->hex) == 0;
+  if (sameAircraft) {
+    priorityVerticalState = vertical_state::updateState(
+        priorityVerticalState, target->verticalRateFpm);
+  } else {
+    priorityVerticalState =
+        vertical_state::initialState(target->verticalRateFpm);
+    if (target->hex[0]) {
+      strncpy(priorityVerticalStateHex, target->hex, 6);
+      priorityVerticalStateHex[6] = 0;
+    } else {
+      priorityVerticalStateHex[0] = 0;
+    }
+    priorityVerticalStateInitialized = true;
+  }
+
+  uint8_t red = 220;
+  uint8_t green = 235;
+  uint8_t blue = 240;
+  switch (priorityVerticalState) {
+    case vertical_state::State::CLIMBING:
+      red = 70;
+      green = 225;
+      blue = 255;
+      break;
+    case vertical_state::State::DESCENDING:
+      red = 255;
+      green = 185;
+      blue = 65;
+      break;
+    case vertical_state::State::LEVEL:
+    default:
+      break;
+  }
+
+  constexpr uint8_t backgroundRed = 10;
+  constexpr uint8_t backgroundGreen = 18;
+  constexpr uint8_t backgroundBlue = 25;
+  const uint8_t* bitmap = verticalStateBitmap(priorityVerticalState);
+  for (int pixel = 0;
+       pixel < VERTICAL_STATE_ICON_WIDTH * VERTICAL_STATE_ICON_HEIGHT;
+       ++pixel) {
+    const uint8_t alpha = pgm_read_byte(bitmap + pixel);
+    const uint16_t inverseAlpha = 255U - alpha;
+    const uint8_t blendedRed = static_cast<uint8_t>(
+        (backgroundRed * inverseAlpha + red * alpha + 127U) / 255U);
+    const uint8_t blendedGreen = static_cast<uint8_t>(
+        (backgroundGreen * inverseAlpha + green * alpha + 127U) / 255U);
+    const uint8_t blendedBlue = static_cast<uint8_t>(
+        (backgroundBlue * inverseAlpha + blue * alpha + 127U) / 255U);
+    buffer[pixel] = rgb(blendedRed, blendedGreen, blendedBlue);
+  }
+  lv_obj_invalidate(canvas);
+
+  const int roundedRate =
+      vertical_state::roundedRateFpm(target->verticalRateFpm);
+  char stateText[40];
+  if (roundedRate > 0) {
+    snprintf(stateText, sizeof(stateText), "%s\n+%d FT/MIN",
+             vertical_state::stateName(priorityVerticalState), roundedRate);
+  } else {
+    snprintf(stateText, sizeof(stateText), "%s\n%d FT/MIN",
+             vertical_state::stateName(priorityVerticalState), roundedRate);
+  }
+  lv_label_set_text(label, stateText);
+  lv_obj_set_style_text_color(label, rgb(red, green, blue), 0);
+  lv_obj_clear_flag(canvas, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(label, LV_OBJ_FLAG_HIDDEN);
+}
+
 void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
                         const app_state::Snapshot& snapshot,
                         const char* selectedHex) {
@@ -944,6 +1038,11 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
   if (!priorityAircraft && radarView.headingArrow) {
     lv_obj_add_flag(radarView.headingArrow, LV_OBJ_FLAG_HIDDEN);
   }
+  if (!priorityAircraft) {
+    updateVerticalStateDisplay(radarView.verticalStateIcon,
+                               radarView.verticalStateIconBuffer,
+                               radarView.verticalStateLabel, nullptr);
+  }
 
   if (priorityAircraft && primaryTarget) {
     lv_label_set_text(radarView.nearestCallsignLabel,
@@ -972,12 +1071,18 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
     lv_label_set_text(radarView.nearestSummaryLabel, text);
     updateHeadingDisplay(radarView.headingArrow, radarView.headingLabel,
                          priorityHeadingPoints, primaryTarget);
+    updateVerticalStateDisplay(radarView.verticalStateIcon,
+                               radarView.verticalStateIconBuffer,
+                               radarView.verticalStateLabel, primaryTarget);
   } else if (snapshot.manualTracking) {
     lv_label_set_text(radarView.nearestCallsignLabel, "--");
     lv_label_set_text(radarView.nearestSummaryLabel,
                       "TRACK SIGNAL LOST\nChecking next update");
     updateHeadingDisplay(radarView.headingArrow, radarView.headingLabel,
                          priorityHeadingPoints, nullptr);
+    updateVerticalStateDisplay(radarView.verticalStateIcon,
+                               radarView.verticalStateIconBuffer,
+                               radarView.verticalStateLabel, nullptr);
   }
   updateSideIcon(radarView.priorityIcon, radarView.priorityIconBuffer,
                  primaryTarget, priorityAircraft && primaryTarget);

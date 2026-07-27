@@ -13,6 +13,8 @@ constexpr int PREVIEW_WIDTH = 220;
 constexpr int PREVIEW_HEIGHT = 150;
 constexpr int SIDE_ICON_WIDTH = 28;
 constexpr int SIDE_ICON_HEIGHT = 19;
+constexpr int VERTICAL_STATE_ICON_WIDTH = 80;
+constexpr int VERTICAL_STATE_ICON_HEIGHT = 36;
 
 struct View {
   lv_obj_t* canvas = nullptr;
@@ -37,6 +39,9 @@ struct View {
   lv_color_t* priorityIconBuffer = nullptr;
   lv_obj_t* headingArrow = nullptr;
   lv_obj_t* headingLabel = nullptr;
+  lv_obj_t* verticalStateIcon = nullptr;
+  lv_color_t* verticalStateIconBuffer = nullptr;
+  lv_obj_t* verticalStateLabel = nullptr;
   char* leftNearestHex = nullptr;
   lv_obj_t* listLabels[5]{};
   lv_obj_t* listIcons[5]{};

@@ -57,6 +57,7 @@ constexpr const char* AIRSPACE_CATEGORY_NAMES[AIRSPACE_CATEGORY_COUNT] = {
 
 aircraft::Target* uiTargets = nullptr;
 lv_color_t* radarSideIconBuffers = nullptr;
+lv_color_t* verticalStateIconBuffer = nullptr;
 
 lv_obj_t* radarCanvas = nullptr;
 lv_color_t* radarBuffer = nullptr;
@@ -79,6 +80,8 @@ lv_obj_t* nearestSummaryLabel = nullptr;
 lv_obj_t* priorityAircraftIcon = nullptr;
 lv_obj_t* headingArrow = nullptr;
 lv_obj_t* headingLabel = nullptr;
+lv_obj_t* verticalStateIcon = nullptr;
+lv_obj_t* verticalStateLabel = nullptr;
 lv_obj_t* listLabels[NEAREST_LIST_COUNT]{};
 lv_obj_t* listIcons[NEAREST_LIST_COUNT]{};
 char leftNearestHex[7]{};
@@ -1145,6 +1148,20 @@ bool buildRadarPanels(lv_obj_t* root) {
                 (unsigned)(RADAR_SIDE_ICON_COUNT * radar::SIDE_ICON_WIDTH *
                            radar::SIDE_ICON_HEIGHT * sizeof(lv_color_t)));
 
+  if (!verticalStateIconBuffer) {
+    verticalStateIconBuffer = static_cast<lv_color_t*>(heap_caps_calloc(
+        radar::VERTICAL_STATE_ICON_WIDTH * radar::VERTICAL_STATE_ICON_HEIGHT,
+        sizeof(lv_color_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  }
+  if (!verticalStateIconBuffer) {
+    Serial.println("FATAL: vertical-state icon PSRAM allocation failed");
+    return false;
+  }
+  Serial.printf("Vertical-state icon buffer in PSRAM: %u bytes\n",
+                (unsigned)(radar::VERTICAL_STATE_ICON_WIDTH *
+                           radar::VERTICAL_STATE_ICON_HEIGHT *
+                           sizeof(lv_color_t)));
+
   lv_obj_t* left = lv_obj_create(root);
   radarPanels[0] = left;
   lv_obj_set_size(left, 128, 365);
@@ -1329,8 +1346,23 @@ bool buildRadarPanels(lv_obj_t* root) {
   lv_obj_set_style_line_rounded(headingArrow, true, 0);
   headingLabel = makeLabel(right, "HDG\n--", &lv_font_montserrat_12,
                            rgb(255, 214, 80), 50, 190);
-  lv_obj_set_width(headingLabel, 124);
+  lv_obj_set_width(headingLabel, 46);
   lv_label_set_long_mode(headingLabel, LV_LABEL_LONG_CLIP);
+
+  verticalStateIcon = lv_canvas_create(right);
+  lv_canvas_set_buffer(verticalStateIcon, verticalStateIconBuffer,
+                       radar::VERTICAL_STATE_ICON_WIDTH,
+                       radar::VERTICAL_STATE_ICON_HEIGHT,
+                       LV_IMG_CF_TRUE_COLOR);
+  lv_obj_set_pos(verticalStateIcon, 96, 174);
+  lv_obj_add_flag(verticalStateIcon, LV_OBJ_FLAG_HIDDEN);
+
+  verticalStateLabel = makeLabel(right, "", &lv_font_montserrat_12,
+                                 rgb(110, 220, 255), 96, 211);
+  lv_obj_set_width(verticalStateLabel, 80);
+  lv_obj_set_style_text_align(verticalStateLabel, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_long_mode(verticalStateLabel, LV_LABEL_LONG_CLIP);
+  lv_obj_add_flag(verticalStateLabel, LV_OBJ_FLAG_HIDDEN);
 
   selectedInfoButton = lv_btn_create(right);
   lv_obj_set_size(selectedInfoButton, 82, 34);
@@ -1441,6 +1473,9 @@ bool buildRadarPanels(lv_obj_t* root) {
   view.priorityIconBuffer = radarSideIconBuffer(PRIORITY_ICON_INDEX);
   view.headingArrow = headingArrow;
   view.headingLabel = headingLabel;
+  view.verticalStateIcon = verticalStateIcon;
+  view.verticalStateIconBuffer = verticalStateIconBuffer;
+  view.verticalStateLabel = verticalStateLabel;
   view.leftNearestHex = leftNearestHex;
   for (int i = 0; i < NEAREST_LIST_COUNT; ++i) {
     view.listLabels[i] = listLabels[i];
