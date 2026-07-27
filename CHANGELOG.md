@@ -3,18 +3,97 @@
 All notable confirmed changes to Bill's 7-inch ESP32-S3 Aircraft Radar are
 documented in the repository changelog.
 
-This file records the Product 47 through Product 42 updates. Confirmed Product 41
+This file records the Product 48 through Product 42 updates. Confirmed Product 41
 through Product 15 history remains unchanged from the existing repository
 `CHANGELOG.md`.
 
 ## Current status
 
-- **Current source:** Product 47
-- **Current build marker:** `7IN-20260726-PRODUCT47-VERTICAL-STATE-BITMAPS`
+- **Current source:** Product 48
+- **Current build marker:** `7IN-20260726-PRODUCT48-TRACKS-SCROLL-CLAMP`
 - **Intended branch:** `main`
-- **Product 47 source baseline commit:** `c75141f93468b8118c4c63ddd39c780584b712d5`
+- **Product 48 source baseline commit:** `2059f34f1e3825d5912e01a241a5f635a48c825f`
 - **Hardened rollback baseline:** Product 15
 - **Recommended baseline tag:** `product-15-hardened`
+
+## Product 48 - 2026-07-26
+
+**Build:** `7IN-20260726-PRODUCT48-TRACKS-SCROLL-CLAMP`
+**Status:** Host-verified Tracks-page reliability candidate; full PlatformIO and
+physical verification pending
+
+### Fixed
+
+- Prevents the Tracks page from appearing completely empty after moving from a
+  long 80-mile aircraft list back to a much shorter 20-mile list.
+- Preserves the existing Tracks scroll position when it remains valid, but clamps
+  it to the shortened table's new maximum scroll range when rows disappear.
+- Cancels any stale vertical table-scroll animation before restoring the bounded
+  position.
+- Adds a focused serial diagnostic only when an invalid saved Tracks offset is
+  corrected.
+
+### Root cause
+
+- The Tracks page uses an LVGL 8.3 table whose row count follows the current
+  aircraft snapshot.
+- LVGL recalculates the shorter table after a row-count reduction but does not
+  automatically normalize the table's existing vertical scroll offset.
+- After a large 80-mile list had been scrolled, reducing the list to the 20-mile
+  snapshot could leave the viewport below every remaining row, making the table
+  look blank even though valid aircraft were still being published.
+- Rebooting cleared the LVGL scroll state, explaining why the page returned after
+  restart.
+
+### Preserved
+
+- The Tracks page still lists the complete visible snapshot and keeps the same
+  columns, sorting, row selection, aircraft-detail navigation, and bitmap icons.
+- `MAX_TARGETS=200`, PSRAM target buffers, deterministic retention, stable ICAO
+  selection/tracking, outward auto-zoom, MPH display, and single-snapshot radar
+  rendering are unchanged.
+- Core-0 ADS-B ownership, native/fallback HTTPS, 15-second cadence, deadlines,
+  stale-response rejection, Wi-Fi/TLS recovery, and last-good retention are
+  unchanged.
+- Waveshare panel timing, DMA, anti-rolling, OPI PSRAM, Arduino-ESP32 3.0.7, and
+  the 20-scanline RGB bounce buffer are unchanged.
+- No networking, TLS, capacity, settings, display-driver, touch-driver, or
+  credential source was modified.
+- Existing unrelated working-tree changes in the supplied checkout were preserved
+  and excluded from the Product 48 package.
+- `include/config.h` and credentials were not read, modified, or packaged.
+
+### Verification
+
+- Confirmed the supplied checkout is on `main` at Product 47 commit
+  `2059f34f1e3825d5912e01a241a5f635a48c825f`, matching `origin/main`.
+- Confirmed the Product 47 build marker before editing:
+  `7IN-20260726-PRODUCT47-VERTICAL-STATE-BITMAPS`.
+- Confirmed the reproduced log sequence published 111 aircraft at 80 miles and
+  then 10 aircraft at 20 miles without any ADS-B transport or publication failure.
+- Inspected LVGL 8.3.11 table and scrolling internals: row-count refresh updates
+  table size but does not clamp a pre-existing scroll offset; table drawing
+  subtracts that retained offset from every row.
+- Focused source checks confirmed the fix records the old offset, rebuilds the
+  table, normalizes to the top, measures the new valid maximum, and restores only
+  a bounded offset.
+- A focused C++17 host harness extracted the actual scroll-restoration helper,
+  compiled with `-Wall -Wextra -Werror -pedantic`, and passed valid-position,
+  shortened-table, empty-table, negative-offset, and null-object cases.
+- Static forbidden-change checks confirmed no `HTTPClient::GET()`,
+  `setInsecure()`, target-capacity change, networking source change, panel-driver
+  change, or credential file was introduced.
+
+### Pending verification
+
+- Full PlatformIO compile and link.
+- Flash and memory usage report.
+- Firmware upload and physical Product 48 build-marker confirmation.
+- Physical reproduction: open and scroll Tracks with a large 80-mile list, return
+  to 20 miles, then reopen Tracks and confirm visible rows remain in view.
+- Repeated 20/40/80 transitions while Tracks is at the top, middle, and bottom.
+- Selection, aircraft details, tracking, STOP TRACK, touch, page switching, no
+  screen rolling, heap/PSRAM stability, and extended soak testing.
 
 ## Product 47 - 2026-07-26
 

@@ -246,6 +246,31 @@ void setTracksVisible(bool visible) {
   setVisible(tracksTable, visible);
 }
 
+void restoreTracksScrollPosition(lv_coord_t previousScrollY) {
+  if (!tracksTable) return;
+
+  // LVGL 8.3 keeps the old table scroll offset when the row count shrinks.
+  // Normalize at the top first, measure the new valid range, then restore the
+  // prior position only as far as the shortened table can still scroll.
+  lv_obj_scroll_to_y(tracksTable, 0, LV_ANIM_OFF);
+  lv_obj_update_layout(tracksTable);
+
+  const lv_coord_t maxScrollY = lv_obj_get_scroll_bottom(tracksTable);
+  const lv_coord_t restoredScrollY =
+      previousScrollY <= 0 ? 0
+                           : (previousScrollY < maxScrollY
+                                  ? previousScrollY
+                                  : maxScrollY);
+  if (restoredScrollY > 0) {
+    lv_obj_scroll_to_y(tracksTable, restoredScrollY, LV_ANIM_OFF);
+  }
+
+  if (previousScrollY > maxScrollY) {
+    Serial.printf("Tracks scroll clamped: %d -> %d\n",
+                  (int)previousScrollY, (int)restoredScrollY);
+  }
+}
+
 void setAirspaceVisible(bool visible) {
   setVisible(airspaceDashboard, visible);
 }
@@ -869,6 +894,7 @@ void renderTracksPage() {
   const char* headers[] = {
     "FLIGHT", "AIRCRAFT", "", "DIST", "DIR", "ALTITUDE", "SPEED"
   };
+  const lv_coord_t previousScrollY = lv_obj_get_scroll_y(tracksTable);
   lv_table_set_row_cnt(tracksTable, count + 1);
   for (int column = 0; column < 7; ++column) {
     lv_table_set_cell_value(tracksTable, 0, column, headers[column]);
@@ -893,6 +919,7 @@ void renderTracksPage() {
              uiTargets[row].speedKt * 1.15078f);
     lv_table_set_cell_value(tracksTable, row + 1, 6, value);
   }
+  restoreTracksScrollPosition(previousScrollY);
 }
 
 void renderAirspacePage() {
