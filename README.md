@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260725-PRODUCT34-TRACK-LOSS-RECOVERY
+7IN-20260727-PRODUCT50-AIRPORT-OVERLAY
 ```
 
 Current source branch:
@@ -38,11 +38,11 @@ tag:
 product-15-hardened
 ```
 
-Product 34 is the current release candidate. It adds confirmed tracked-aircraft
-loss recovery on top of Product 33 R5 and includes the local PlatformIO workspace
-and cppcheck configuration. Product 34 remains a candidate until the complete
-PlatformIO build, physical tracking-loss test, normal ADS-B operation, and soak
-testing are confirmed.
+Product 50 is the current host-verified candidate. It adds a configurable offline
+airport-awareness overlay and Airports page on top of the Product 49 stable-ICAO
+label-selection behavior. Product 50 remains a candidate until the complete
+PlatformIO build, upload, physical airport-overlay review, normal aircraft
+interaction checks, and soak testing are confirmed.
 
 ## Features
 
@@ -51,6 +51,8 @@ testing are confirmed.
 - Displays all retained aircraft as radar contacts.
 - Provides 20, 40, and 80 mile radar ranges.
 - Uses the compact radar selector as the only range control.
+- Draws configured airport runway/heliport symbols beneath aircraft contacts.
+- Supports independent airport symbol and label filters at 20, 40, and 80 miles.
 - Shows themed contact tags at the 20-mile range.
 - Uses stable ICAO hex identity for contact taps, selection, and tracking.
 - Prioritizes tracked and selected tags during collision-aware label placement.
@@ -99,10 +101,26 @@ Tracked state:
 - **Tracks:** Aircraft table with details and explicit return-to-Tracks behavior.
 - **Airspace:** Live totals, range metrics, aircraft-category cards, and traffic
   highlights.
-- **Setup:** Display name, Wi-Fi, location, and device controls.
-- **System:** Build, network, memory, diagnostics, and project identification.
+- **Airports:** Nearby-airport awareness plus per-category 20/40/80-mile symbol
+  and label controls.
+- **System:** Build, network, memory, diagnostics, display name, Wi-Fi, location,
+  retry/reconnect, and reset controls.
 
 ## Architecture and reliability
+
+### Airport awareness
+
+- Airport data is offline and does not share the ADS-B transport path.
+- A bounded PSRAM cache is built at startup and rebuilt only after a confirmed
+  location change.
+- Airport settings are persisted with checked NVS writes and cached in RAM for
+  rendering.
+- Airport symbols are drawn below aircraft; aircraft contacts and all aircraft
+  labels retain priority.
+- Product 50 ships with a southeastern Wisconsin/northern Illinois starter table
+  for hardware validation plus `tools/generate_airport_database.py` for generating
+  another regional table from the public-domain OurAirports CSV.
+- Airport information is awareness-only and must not be used for navigation.
 
 ### ADS-B networking
 
@@ -160,6 +178,7 @@ without a dedicated display-stability investigation.
 
 ```text
 assets/                 Aircraft artwork and display assets
+tools/                  Generated-data utilities, including airport CSV conversion
 include/                Shared interfaces and hardware configuration
 src/                    Application, networking, state, radar, and UI sources
 platformio.ini          Pinned PlatformIO environment, workspace, and checks

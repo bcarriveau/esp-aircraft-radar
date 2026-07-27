@@ -8,7 +8,9 @@
 #include "adsb_network.h"
 #include "app_state.h"
 #include "aircraft_bitmaps.h"
+#include "airport_data.h"
 #include "radar_contact_bitmaps.h"
+#include "settings.h"
 #include "vertical_state.h"
 #include "vertical_state_bitmaps.h"
 
@@ -24,6 +26,9 @@ constexpr int RANGE_CONTROL_Y1 = HEIGHT - 52;
 constexpr int RADAR_CONTACT_OVERLAP_RADIUS = 16;
 constexpr int RADAR_CONTACT_TAG_CLEARANCE = 16;
 constexpr int DOT_TAG_CLEARANCE = 7;
+constexpr uint16_t MAX_AIRPORT_LABELS = 12;
+constexpr uint16_t LABEL_BOX_CAPACITY =
+    aircraft::MAX_TARGETS + MAX_AIRPORT_LABELS + 2;
 
 View radarView;
 float sweepDegrees = 0;
@@ -145,6 +150,10 @@ struct ContactFrame {
 HitRegion* renderedHits = nullptr;
 ScreenContact* renderedContacts = nullptr;
 LabelBox* renderedLabelBoxes = nullptr;
+airport_data::NearbyAirport* airportWork = nullptr;
+uint16_t airportFrameCount = 0;
+uint8_t airportFrameSymbolMask = 0;
+uint8_t airportFrameLabelMask = 0;
 ContactFrame contactFrame;
 uint8_t renderedHitCount = 0;
 bool renderedTwentyMileRange = false;
@@ -153,7 +162,7 @@ bool drawPlacedTag(int dotX, int dotY, const char* const* lines,
                    const lv_color_t* lineColors, uint8_t lineCount,
                    lv_color_t backgroundColor, lv_color_t borderColor,
                    int maxWidth, int contactClearance, uint8_t hitIndex,
-                   LabelBox* labelBoxes, uint8_t& labelBoxCount) {
+                   LabelBox* labelBoxes, uint16_t& labelBoxCount) {
   if (!lines || !lineColors || lineCount == 0 || !lines[0] || !lines[0][0]) {
     return false;
   }
@@ -183,7 +192,7 @@ bool drawPlacedTag(int dotX, int dotY, const char* const* lines,
     int x2 = labelX + labelWidth;
     int y2 = labelY + labelHeight;
     bool overlaps = false;
-    for (uint8_t box = 0; box < labelBoxCount; ++box) {
+    for (uint16_t box = 0; box < labelBoxCount; ++box) {
       const LabelBox& used = labelBoxes[box];
       if (!(x2 + 3 < used.x1 || labelX - 3 > used.x2 ||
             y2 + 2 < used.y1 || labelY - 2 > used.y2)) {
@@ -211,7 +220,7 @@ bool drawPlacedTag(int dotX, int dotY, const char* const* lines,
                           labelY + 3 + line * lineHeight, labelWidth - 10,
                           &labelDescription, lines[line]);
     }
-    if (labelBoxCount < aircraft::MAX_TARGETS + 2) {
+    if (labelBoxCount < LABEL_BOX_CAPACITY) {
       labelBoxes[labelBoxCount++] = {
         (int16_t)labelX, (int16_t)labelY, (int16_t)x2, (int16_t)y2
       };
@@ -239,16 +248,22 @@ bool allocateWorkingBuffers() {
       aircraft::MAX_TARGETS, sizeof(ScreenContact),
       MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   renderedLabelBoxes = static_cast<LabelBox*>(heap_caps_calloc(
-      aircraft::MAX_TARGETS + 2, sizeof(LabelBox),
+      LABEL_BOX_CAPACITY, sizeof(LabelBox),
+      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  airportWork = static_cast<airport_data::NearbyAirport*>(heap_caps_calloc(
+      airport_data::MAX_NEARBY_AIRPORTS,
+      sizeof(airport_data::NearbyAirport),
       MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
 
   if (!renderedHits || !renderedContacts || !renderedLabelBoxes) {
     free(renderedHits);
     free(renderedContacts);
     free(renderedLabelBoxes);
+    free(airportWork);
     renderedHits = nullptr;
     renderedContacts = nullptr;
     renderedLabelBoxes = nullptr;
+    airportWork = nullptr;
     contactFrame.contacts = nullptr;
     Serial.println("FATAL: Radar working-buffer PSRAM allocation failed");
     return false;
@@ -258,7 +273,15 @@ bool allocateWorkingBuffers() {
   Serial.printf("Radar working buffers in PSRAM: %u bytes\n",
                 (unsigned)(aircraft::MAX_TARGETS * sizeof(HitRegion) +
                            aircraft::MAX_TARGETS * sizeof(ScreenContact) +
-                           (aircraft::MAX_TARGETS + 2) * sizeof(LabelBox)));
+                           LABEL_BOX_CAPACITY * sizeof(LabelBox)));
+  if (airportWork) {
+    Serial.printf("Radar airport work buffer in PSRAM: %u bytes\n",
+                  (unsigned)(airport_data::MAX_NEARBY_AIRPORTS *
+                             sizeof(airport_data::NearbyAirport)));
+  } else {
+    Serial.println(
+        "Airport overlay disabled: radar airport work-buffer allocation failed");
+  }
   return true;
 }
 
@@ -407,6 +430,186 @@ void drawRadarBackground() {
            CENTER_X + (int)(sin(angle) * RADIUS),
            CENTER_Y - (int)(cos(angle) * RADIUS), green);
   fillCircle(CENTER_X, CENTER_Y, 3, green);
+}
+
+
+bool airportScreenPosition(const airport_data::NearbyAirport& airport,
+                           float rangeMiles, int& x, int& y) {
+  if (rangeMiles <= 0.0f || airport.distanceMiles > rangeMiles) return false;
+  const float ratio = airport.distanceMiles / rangeMiles;
+  const float bearingRadians = airport.bearingDegrees * (float)M_PI / 180.0f;
+  x = CENTER_X + (int)lroundf(sinf(bearingRadians) * RADIUS * ratio);
+  y = CENTER_Y - (int)lroundf(cosf(bearingRadians) * RADIUS * ratio);
+  return x >= CENTER_X - RADIUS && x <= CENTER_X + RADIUS &&
+         y >= CENTER_Y - RADIUS && y <= CENTER_Y + RADIUS;
+}
+
+lv_color_t airportColor(airport_data::Category category) {
+  switch (category) {
+    case airport_data::Category::MAJOR: return rgb(62, 150, 165);
+    case airport_data::Category::PUBLIC: return rgb(38, 112, 120);
+    case airport_data::Category::PRIVATE_FIELD: return rgb(72, 88, 92);
+    case airport_data::Category::HELIPORT: return rgb(65, 108, 105);
+    default: return rgb(45, 95, 100);
+  }
+}
+
+void prepareAirportFrame(float rangeMiles) {
+  airportFrameCount = 0;
+  airportFrameSymbolMask = 0;
+  airportFrameLabelMask = 0;
+  if (!airportWork || !settings::airportsEnabled() || !airport_data::ready()) {
+    return;
+  }
+  const uint8_t range = airport_data::rangeIndex(rangeMiles);
+  airportFrameSymbolMask = settings::airportSymbolMask(range);
+  airportFrameLabelMask = settings::airportLabelMask(range);
+  const uint8_t unionMask = airportFrameSymbolMask | airportFrameLabelMask;
+  if (unionMask == 0) return;
+  airportFrameCount = airport_data::copyNearby(
+      airportWork, airport_data::MAX_NEARBY_AIRPORTS, rangeMiles, unionMask);
+}
+
+void drawAirportSymbols(float rangeMiles) {
+  for (uint16_t index = 0; index < airportFrameCount; ++index) {
+    const airport_data::NearbyAirport& airport = airportWork[index];
+    if ((airportFrameSymbolMask & airport_data::categoryBit(airport.category)) == 0) {
+      continue;
+    }
+    int x = 0;
+    int y = 0;
+    if (!airportScreenPosition(airport, rangeMiles, x, y)) continue;
+    if (x >= RANGE_CONTROL_X1 - 7 && y >= RANGE_CONTROL_Y1 - 7) continue;
+    const lv_color_t color = airportColor(airport.category);
+
+    if (airport.category == airport_data::Category::HELIPORT) {
+      drawLine(x - 3, y - 3, x - 3, y + 3, color);
+      drawLine(x + 3, y - 3, x + 3, y + 3, color);
+      drawLine(x - 3, y, x + 3, y, color);
+      continue;
+    }
+
+    const int halfLength = airport.category == airport_data::Category::MAJOR
+        ? 6 : (airport.category == airport_data::Category::PUBLIC ? 5 : 4);
+    const float heading = airport.runwayHeadingDegrees > 0
+        ? airport.runwayHeadingDegrees * (float)M_PI / 180.0f
+        : 45.0f * (float)M_PI / 180.0f;
+    const int dx = (int)lroundf(sinf(heading) * halfLength);
+    const int dy = (int)lroundf(-cosf(heading) * halfLength);
+    drawLine(x - dx, y - dy, x + dx, y + dy, color);
+    if (airport.category == airport_data::Category::MAJOR) {
+      drawCircle(x, y, 2, color);
+    } else {
+      putPixel(x, y, color);
+    }
+  }
+}
+
+bool airportLabelOverlapsContact(int x1, int y1, int x2, int y2,
+                                 const ContactFrame& frame) {
+  constexpr int CONTACT_CLEARANCE = 8;
+  constexpr int CONTACT_CLEARANCE_SQUARED =
+      CONTACT_CLEARANCE * CONTACT_CLEARANCE;
+  for (uint8_t contact = 0; contact < frame.count; ++contact) {
+    const int nearestX = constrain(frame.contacts[contact].x, x1, x2);
+    const int nearestY = constrain(frame.contacts[contact].y, y1, y2);
+    const int dx = frame.contacts[contact].x - nearestX;
+    const int dy = frame.contacts[contact].y - nearestY;
+    if (dx * dx + dy * dy <= CONTACT_CLEARANCE_SQUARED) return true;
+  }
+  return false;
+}
+
+bool drawAirportLabel(const airport_data::NearbyAirport& airport,
+                      float rangeMiles, LabelBox* labelBoxes,
+                      uint16_t& labelBoxCount, const ContactFrame& frame) {
+  int airportX = 0;
+  int airportY = 0;
+  if (!airportScreenPosition(airport, rangeMiles, airportX, airportY)) return false;
+
+  lv_point_t textSize{};
+  lv_txt_get_size(&textSize, airport.ident, &lv_font_montserrat_12,
+                  0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+  const int labelWidth = constrain((int)textSize.x + 8, 30, 66);
+  const int labelHeight = lv_font_get_line_height(&lv_font_montserrat_12) + 4;
+  const int candidateX[6] = {
+    airportX + 7, airportX - labelWidth - 7,
+    airportX - labelWidth / 2, airportX - labelWidth / 2,
+    airportX + 7, airportX - labelWidth - 7
+  };
+  const int candidateY[6] = {
+    airportY - labelHeight / 2, airportY - labelHeight / 2,
+    airportY - labelHeight - 6, airportY + 6,
+    airportY + 6, airportY + 6
+  };
+
+  for (uint8_t candidate = 0; candidate < 6; ++candidate) {
+    const int x1 = constrain(candidateX[candidate], 2, WIDTH - labelWidth - 2);
+    const int y1 = constrain(candidateY[candidate], 2, HEIGHT - labelHeight - 2);
+    const int x2 = x1 + labelWidth;
+    const int y2 = y1 + labelHeight;
+    bool overlaps = airportLabelOverlapsContact(x1, y1, x2, y2, frame);
+    for (uint16_t box = 0; box < labelBoxCount && !overlaps; ++box) {
+      const LabelBox& used = labelBoxes[box];
+      if (!(x2 + 2 < used.x1 || x1 - 2 > used.x2 ||
+            y2 + 2 < used.y1 || y1 - 2 > used.y2)) {
+        overlaps = true;
+      }
+    }
+    if (overlaps) continue;
+
+    lv_draw_rect_dsc_t rectangle;
+    lv_draw_rect_dsc_init(&rectangle);
+    rectangle.bg_opa = static_cast<lv_opa_t>(204);
+    rectangle.bg_color = rgb(3, 13, 18);
+    rectangle.border_opa = LV_OPA_COVER;
+    rectangle.border_color = airportColor(airport.category);
+    rectangle.border_width = airport.category == airport_data::Category::MAJOR ? 1 : 0;
+    rectangle.radius = 2;
+    lv_canvas_draw_rect(radarView.canvas, x1, y1, labelWidth, labelHeight,
+                        &rectangle);
+
+    lv_draw_label_dsc_t label;
+    lv_draw_label_dsc_init(&label);
+    label.font = &lv_font_montserrat_12;
+    label.color = airport.category == airport_data::Category::MAJOR
+        ? rgb(120, 205, 215) : airportColor(airport.category);
+    lv_canvas_draw_text(radarView.canvas, x1 + 4, y1 + 2,
+                        labelWidth - 8, &label, airport.ident);
+    if (labelBoxCount < LABEL_BOX_CAPACITY) {
+      labelBoxes[labelBoxCount++] = {
+        (int16_t)x1, (int16_t)y1, (int16_t)x2, (int16_t)y2
+      };
+    }
+    return true;
+  }
+  return false;
+}
+
+void drawAirportLabels(float rangeMiles, LabelBox* labelBoxes,
+                       uint16_t& labelBoxCount, const ContactFrame& frame) {
+  if (!airportWork || airportFrameLabelMask == 0) return;
+  const uint16_t maximumLabels = rangeMiles <= 20.1f
+      ? 10 : (rangeMiles <= 40.1f ? 8 : 6);
+  uint16_t labelsDrawn = 0;
+
+  // Category priority is deliberate: enabled major-airport labels are attempted
+  // first at every range, but only after all aircraft labels have been placed.
+  for (uint8_t category = 0;
+       category < airport_data::CATEGORY_COUNT && labelsDrawn < maximumLabels;
+       ++category) {
+    const uint8_t categoryMask = static_cast<uint8_t>(1U << category);
+    if ((airportFrameLabelMask & categoryMask) == 0) continue;
+    for (uint16_t index = 0;
+         index < airportFrameCount && labelsDrawn < maximumLabels; ++index) {
+      const airport_data::NearbyAirport& airport = airportWork[index];
+      if (static_cast<uint8_t>(airport.category) != category) continue;
+      if (drawAirportLabel(airport, rangeMiles, labelBoxes, labelBoxCount,
+                           frame)) {
+        ++labelsDrawn;
+      }
+    }
+  }
 }
 
 uint8_t radarContactHeadingIndex(float trackDegrees) {
@@ -626,7 +829,7 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
                        const ContactFrame& frame) {
   (void)snapshot;
   LabelBox* labelBoxes = renderedLabelBoxes;
-  uint8_t labelBoxCount = 0;
+  uint16_t labelBoxCount = 0;
 
   // Reserve the visible range control, including its MILES caption.
   labelBoxes[labelBoxCount++] = {
@@ -689,6 +892,8 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
           screen.hitIndex, labelBoxes, labelBoxCount);
     }
   }
+
+  drawAirportLabels(rangeMiles, labelBoxes, labelBoxCount, frame);
 }
 
 void updateSideIcon(lv_obj_t* canvas, lv_color_t* buffer,
@@ -1159,6 +1364,8 @@ bool render(aircraft::Target* workTargets, const char* selectedHex) {
     }
   }
 
+  prepareAirportFrame(rangeMiles);
+  drawAirportSymbols(rangeMiles);
   drawContacts(workTargets, count, projectionSeconds, rangeMiles, snapshot,
                selectedHex, contactFrame);
   drawContactLabels(workTargets, rangeMiles, snapshot, contactFrame);

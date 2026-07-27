@@ -10,25 +10,104 @@ available.
 
 This consolidated file replaces the earlier split changelog that stopped after
 Product 42. It contains the continuous confirmed history from the current Product
-49 source back through Product 15, the first hardened version-controlled baseline.
+50 source back through Product 15, the first hardened version-controlled baseline.
 Earlier Product history is intentionally omitted where the repository does not
 provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 49
-- **Current build marker:** `7IN-20260727-PRODUCT49-20MI-LABEL-SELECTION`
+- **Current source:** Product 50
+- **Current build marker:** `7IN-20260727-PRODUCT50-AIRPORT-OVERLAY`
 - **Current branch:** `main`
-- **Product 49 source baseline:** [`2813ee1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/2813ee1e72793453f5da02d6eb4d776125c0d39e)
+- **Product 50 source baseline:** [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 49 is host-verified but still requires a complete PlatformIO compile/link,
+Product 50 is host-verified but still requires a complete PlatformIO compile/link,
 flash and memory report, firmware upload, physical regression checks, and extended
 soak testing before being called a fully verified hardware release.
+
+## Product 50 - 2026-07-27
+
+**Build:** `7IN-20260727-PRODUCT50-AIRPORT-OVERLAY`  
+**Status:** Host-verified regional airport-overlay candidate
+
+### Added
+
+- Added an optional offline airport-awareness layer drawn beneath aircraft contacts.
+- Added runway-oriented airport symbols plus a distinct heliport symbol.
+- Added collision-aware airport identifiers that are placed only after tracked,
+  selected, and ordinary aircraft labels.
+- Added a dedicated Airports page with a master overlay control and independent
+  symbol/label visibility matrices for major, public, private, and heliport
+  categories at 20, 40, and 80 miles.
+- Added nearby-airport status, visible counts, and a nearest-airport list.
+- Added checked NVS storage for airport settings with RAM-cached runtime values so
+  the 80 ms renderer performs no NVS reads.
+- Added a bounded 192-entry PSRAM airport cache rebuilt at startup and after a
+  confirmed home-location change.
+- Added a reproducible OurAirports CSV generator and focused database tests.
+
+### Navigation
+
+- Replaced the bottom Setup tab with Airports.
+- Combined the existing device/network settings and system diagnostics under the
+  System tab without changing the saved Wi-Fi, title, or location behavior.
+
+### Airport data scope
+
+- Product 50 includes a 49-record southeastern Wisconsin/northern Illinois starter
+  database for the first hardware validation run.
+- The checked-in generator can create another regional database from the
+  public-domain OurAirports CSV without changing the firmware interfaces.
+- The overlay is awareness-only and is not intended for navigation.
+
+### Preserved
+
+- Product 49 exact-label touch priority and stable ICAO aircraft selection.
+- Aircraft tracking, STOP TRACK, outward auto-zoom, 200-target bounds, and
+  single-snapshot radar rendering.
+- Core-0 ADS-B ownership, native and fallback HTTPS, 15-second cadence, deadlines,
+  stale-response rejection, Wi-Fi/TLS recovery, and last-good retention.
+- Waveshare panel timing, DMA, OPI PSRAM, anti-rolling protections, and the
+  20-scanline RGB bounce buffer.
+
+### Compile correction
+
+- The first user-side PlatformIO run exposed an Arduino preprocessor collision:
+  Arduino defines `radians(...)` as a macro, while the airport cache initially used
+  `radians` as a helper-function name.
+- Renamed the helper to `degreesToRadians()` without changing distance, bearing,
+  cache, rendering, networking, or UI behavior.
+- Added a focused regression check that rejects reintroduction of a helper named
+  `radians`.
+
+### Verification
+
+- Confirmed the uploaded full project matches GitHub `main` commit `29cb94c`;
+  apparent unrelated modifications were line-ending-only.
+- Full changed-source C++17 host syntax checks passed with strict warnings for
+  `airport_data.cpp`, `settings.cpp`, `main.cpp`, `radar_renderer.cpp`, and
+  `ui.cpp` using focused Arduino/LVGL stubs.
+- AddressSanitizer and UndefinedBehaviorSanitizer cache tests passed for startup,
+  distance ordering, range filtering, category masks, and location rebuilds.
+- Generated-table tests passed for duplicate identifiers, all four categories,
+  bounds, required regional facilities, and exclusion of known closed fields.
+- Static comparison confirmed the Product 49 `hitTest()` implementation, ADS-B
+  network source, app-state source, panel configuration, target capacity, and
+  PlatformIO configuration were unchanged.
+
+### Pending verification
+
+- Full PlatformIO compile/link and flash/RAM report.
+- Upload and confirmation of the Product 50 build marker.
+- Physical review of runway symbols, label density, and all 20/40/80 category
+  settings.
+- Location-change cache rebuild, NVS save/reset, page switching, aircraft touch
+  priority, tracking, display stability, and soak testing.
 
 ## Product 49 - 2026-07-27
 

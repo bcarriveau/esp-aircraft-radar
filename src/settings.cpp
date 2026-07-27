@@ -17,6 +17,31 @@ constexpr const char* KEY_WIFI_SSID = "wifi_ssid";
 constexpr const char* KEY_WIFI_PASS = "wifi_pass";
 constexpr const char* KEY_LAT = "home_lat";
 constexpr const char* KEY_LON = "home_lon";
+constexpr const char* KEY_AIRPORTS_ENABLED = "apt_on";
+constexpr const char* KEY_AIRPORT_SYMBOLS[AIRPORT_RANGE_COUNT] = {
+  "apt_s20", "apt_s40", "apt_s80"
+};
+constexpr const char* KEY_AIRPORT_LABELS[AIRPORT_RANGE_COUNT] = {
+  "apt_l20", "apt_l40", "apt_l80"
+};
+
+// Category bits: major, public, private field, heliport.
+constexpr uint8_t DEFAULT_AIRPORT_SYMBOLS[AIRPORT_RANGE_COUNT] = {
+  0x03, 0x03, 0x03
+};
+constexpr uint8_t DEFAULT_AIRPORT_LABELS[AIRPORT_RANGE_COUNT] = {
+  0x03, 0x03, 0x01
+};
+
+bool cachedAirportsEnabled = true;
+uint8_t cachedAirportSymbols[AIRPORT_RANGE_COUNT] = {
+  DEFAULT_AIRPORT_SYMBOLS[0], DEFAULT_AIRPORT_SYMBOLS[1],
+  DEFAULT_AIRPORT_SYMBOLS[2]
+};
+uint8_t cachedAirportLabels[AIRPORT_RANGE_COUNT] = {
+  DEFAULT_AIRPORT_LABELS[0], DEFAULT_AIRPORT_LABELS[1],
+  DEFAULT_AIRPORT_LABELS[2]
+};
 
 String defaultTitle() {
   return String("BILLS AIRCRAFT RADAR");
@@ -47,6 +72,11 @@ bool storedFloatMatches(const char* key, float value) {
   return preferences.getType(key) == PT_BLOB &&
          preferences.getBytesLength(key) == sizeof(float) &&
          preferences.getFloat(key, NAN) == value;
+}
+
+bool storedUCharMatches(const char* key, uint8_t value) {
+  return preferences.getType(key) == PT_U8 &&
+         preferences.getUChar(key, 0) == value;
 }
 
 bool writeStringChecked(const char* key, const String& value) {
@@ -82,9 +112,69 @@ bool writeFloatChecked(const char* key, float value) {
   return true;
 }
 
+bool writeUCharChecked(const char* key, uint8_t value) {
+  if (!storageOpen || !storageHealthy) return false;
+  if (storedUCharMatches(key, value)) return true;
+
+  const size_t writtenLength = preferences.putUChar(key, value);
+  const bool lengthValid = writtenLength == sizeof(uint8_t);
+  const bool storedValueValid = storedUCharMatches(key, value);
+  if (!lengthValid || !storedValueValid) {
+    Serial.printf("NVS byte write failed: %s (%u/%u bytes)\n", key,
+                  (unsigned)writtenLength, (unsigned)sizeof(uint8_t));
+    return false;
+  }
+  return true;
+}
+
 void markStorageError(const char* operation) {
   storageHealthy = false;
   Serial.printf("NVS ERROR: %s did not complete; saving disabled\n", operation);
+}
+
+bool initializeAirportDefaults() {
+  bool initialized = true;
+  if (preferences.getType(KEY_AIRPORTS_ENABLED) != PT_U8 &&
+      !writeUCharChecked(KEY_AIRPORTS_ENABLED, 1)) {
+    initialized = false;
+  }
+  for (uint8_t i = 0; i < AIRPORT_RANGE_COUNT; ++i) {
+    if (preferences.getType(KEY_AIRPORT_SYMBOLS[i]) != PT_U8 &&
+        !writeUCharChecked(KEY_AIRPORT_SYMBOLS[i],
+                           DEFAULT_AIRPORT_SYMBOLS[i])) {
+      initialized = false;
+    }
+    if (preferences.getType(KEY_AIRPORT_LABELS[i]) != PT_U8 &&
+        !writeUCharChecked(KEY_AIRPORT_LABELS[i],
+                           DEFAULT_AIRPORT_LABELS[i])) {
+      initialized = false;
+    }
+  }
+  return initialized;
+}
+
+void setAirportSettingsCacheDefaults() {
+  cachedAirportsEnabled = true;
+  for (uint8_t i = 0; i < AIRPORT_RANGE_COUNT; ++i) {
+    cachedAirportSymbols[i] = DEFAULT_AIRPORT_SYMBOLS[i];
+    cachedAirportLabels[i] = DEFAULT_AIRPORT_LABELS[i];
+  }
+}
+
+void loadAirportSettingsCache() {
+  cachedAirportsEnabled = storageOpen
+      ? preferences.getUChar(KEY_AIRPORTS_ENABLED, 1) != 0
+      : true;
+  for (uint8_t i = 0; i < AIRPORT_RANGE_COUNT; ++i) {
+    cachedAirportSymbols[i] = storageOpen
+        ? preferences.getUChar(KEY_AIRPORT_SYMBOLS[i],
+                               DEFAULT_AIRPORT_SYMBOLS[i]) & 0x0F
+        : DEFAULT_AIRPORT_SYMBOLS[i];
+    cachedAirportLabels[i] = storageOpen
+        ? preferences.getUChar(KEY_AIRPORT_LABELS[i],
+                               DEFAULT_AIRPORT_LABELS[i]) & 0x0F
+        : DEFAULT_AIRPORT_LABELS[i];
+  }
 }
 
 }  // namespace
@@ -93,6 +183,7 @@ bool initialize() {
   storageOpen = preferences.begin(NAMESPACE, false);
   storageHealthy = storageOpen;
   if (!storageOpen) {
+    setAirportSettingsCacheDefaults();
     Serial.println(
         "NVS ERROR: preferences namespace unavailable; using compile-time defaults");
     return false;
@@ -121,12 +212,15 @@ bool initialize() {
       !writeFloatChecked(KEY_LON, defaultLongitude())) {
     initialized = false;
   }
+  if (!initializeAirportDefaults()) initialized = false;
 
   storageHealthy = initialized;
   if (!initialized) {
+    setAirportSettingsCacheDefaults();
     markStorageError("default initialization");
     return false;
   }
+  loadAirportSettingsCache();
 
   Serial.println("NVS: READY");
   return true;
@@ -145,7 +239,22 @@ bool resetToDefaults() {
   if (!writeStringChecked(KEY_WIFI_PASS, defaultWifiPassword())) saved = false;
   if (!writeFloatChecked(KEY_LAT, defaultLatitude())) saved = false;
   if (!writeFloatChecked(KEY_LON, defaultLongitude())) saved = false;
-  if (!saved) markStorageError("reset to defaults");
+  if (!writeUCharChecked(KEY_AIRPORTS_ENABLED, 1)) saved = false;
+  for (uint8_t i = 0; i < AIRPORT_RANGE_COUNT; ++i) {
+    if (!writeUCharChecked(KEY_AIRPORT_SYMBOLS[i],
+                           DEFAULT_AIRPORT_SYMBOLS[i])) {
+      saved = false;
+    }
+    if (!writeUCharChecked(KEY_AIRPORT_LABELS[i],
+                           DEFAULT_AIRPORT_LABELS[i])) {
+      saved = false;
+    }
+  }
+  if (!saved) {
+    markStorageError("reset to defaults");
+  } else {
+    setAirportSettingsCacheDefaults();
+  }
   return saved;
 }
 
@@ -206,6 +315,43 @@ void setHomeLongitude(float longitude) {
   if (!writeFloatChecked(KEY_LON, longitude)) {
     markStorageError("longitude update");
   }
+}
+
+bool airportsEnabled() { return cachedAirportsEnabled; }
+
+uint8_t airportSymbolMask(uint8_t rangeIndex) {
+  if (rangeIndex >= AIRPORT_RANGE_COUNT) rangeIndex = AIRPORT_RANGE_COUNT - 1;
+  return cachedAirportSymbols[rangeIndex];
+}
+
+uint8_t airportLabelMask(uint8_t rangeIndex) {
+  if (rangeIndex >= AIRPORT_RANGE_COUNT) rangeIndex = AIRPORT_RANGE_COUNT - 1;
+  return cachedAirportLabels[rangeIndex];
+}
+
+bool saveAirportSettings(bool enabled,
+                         const uint8_t symbolMasks[AIRPORT_RANGE_COUNT],
+                         const uint8_t labelMasks[AIRPORT_RANGE_COUNT]) {
+  if (!storageAvailable() || !symbolMasks || !labelMasks) return false;
+  bool saved = writeUCharChecked(KEY_AIRPORTS_ENABLED, enabled ? 1 : 0);
+  for (uint8_t i = 0; i < AIRPORT_RANGE_COUNT; ++i) {
+    if (!writeUCharChecked(KEY_AIRPORT_SYMBOLS[i], symbolMasks[i] & 0x0F)) {
+      saved = false;
+    }
+    if (!writeUCharChecked(KEY_AIRPORT_LABELS[i], labelMasks[i] & 0x0F)) {
+      saved = false;
+    }
+  }
+  if (!saved) {
+    markStorageError("airport settings save");
+  } else {
+    cachedAirportsEnabled = enabled;
+    for (uint8_t i = 0; i < AIRPORT_RANGE_COUNT; ++i) {
+      cachedAirportSymbols[i] = symbolMasks[i] & 0x0F;
+      cachedAirportLabels[i] = labelMasks[i] & 0x0F;
+    }
+  }
+  return saved;
 }
 
 bool saveSettings(const String& title, const String& ssid,

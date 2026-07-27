@@ -4,6 +4,7 @@
 #include "adsb_network.h"
 #include "app_state.h"
 #include "aircraft_data.h"
+#include "airport_data.h"
 #include "build_info.h"
 #include "settings.h"
 #include "ui.h"
@@ -37,6 +38,12 @@ void setup() {
   if (!uiReady) {
     Serial.println("FATAL: Required UI construction failed; startup halted");
     return;
+  }
+
+  if (!airport_data::initialize(settings::homeLatitude(),
+                                settings::homeLongitude())) {
+    Serial.println(
+        "WARNING: Airport overlay unavailable; aircraft radar continuing");
   }
 
   if (!adsb::begin()) {
