@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260727-PRODUCT50-AIRPORT-OVERLAY
+7IN-20260727-PRODUCT51-AIRPORT-UI
 ```
 
 Current source branch:
@@ -38,10 +38,10 @@ tag:
 product-15-hardened
 ```
 
-Product 50 is the current host-verified candidate. It adds a configurable offline
-airport-awareness overlay and Airports page on top of the Product 49 stable-ICAO
-label-selection behavior. Product 50 remains a candidate until the complete
-PlatformIO build, upload, physical airport-overlay review, normal aircraft
+Product 51 is the current host-verified candidate. It keeps the Product 50 offline
+airport-awareness overlay while making airport identifiers a stable background map
+layer and reorganizing the combined System settings page. Product 51 remains a
+candidate until PlatformIO compile/link, upload, physical UI review, normal aircraft
 interaction checks, and soak testing are confirmed.
 
 ## Features
@@ -103,8 +103,8 @@ Tracked state:
   highlights.
 - **Airports:** Nearby-airport awareness plus per-category 20/40/80-mile symbol
   and label controls.
-- **System:** Build, network, memory, diagnostics, display name, Wi-Fi, location,
-  retry/reconnect, and reset controls.
+- **System:** Separate status, device/network, and maintenance cards for build,
+  memory, connectivity, saved settings, retry/reconnect, and reset controls.
 
 ## Architecture and reliability
 
@@ -115,6 +115,9 @@ Tracked state:
   location change.
 - Airport settings are persisted with checked NVS writes and cached in RAM for
   rendering.
+- Airport identifiers use fixed positions for each radar range and are drawn before
+  airport symbols, aircraft contacts, and aircraft tags. Moving traffic can cover
+  them but cannot make them jump or blink.
 - Airport symbols are drawn below aircraft; aircraft contacts and all aircraft
   labels retain priority.
 - Product 50 ships with a southeastern Wisconsin/northern Illinois starter table

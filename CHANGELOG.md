@@ -10,29 +10,66 @@ available.
 
 This consolidated file replaces the earlier split changelog that stopped after
 Product 42. It contains the continuous confirmed history from the current Product
-50 source back through Product 15, the first hardened version-controlled baseline.
+51 source back through Product 15, the first hardened version-controlled baseline.
 Earlier Product history is intentionally omitted where the repository does not
 provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 50
-- **Current build marker:** `7IN-20260727-PRODUCT50-AIRPORT-OVERLAY`
+- **Current source:** Product 51
+- **Current build marker:** `7IN-20260727-PRODUCT51-AIRPORT-UI`
 - **Current branch:** `main`
-- **Product 50 source baseline:** [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
+- **Product 51 source baseline:** Product 50 local hardware-tested source derived from [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 50 is host-verified but still requires a complete PlatformIO compile/link,
+Product 51 is host-verified but still requires a complete PlatformIO compile/link,
 flash and memory report, firmware upload, physical regression checks, and extended
 soak testing before being called a fully verified hardware release.
 
+## Product 51 - 2026-07-27
+
+**Build:** `7IN-20260727-PRODUCT51-AIRPORT-UI`
+**Status:** Host-verified airport-label and System-UI refinement candidate
+
+### Changed
+
+- Made airport identifiers a stable background map layer with one deterministic
+  position per airport and radar range.
+- Draws airport labels before airport symbols, aircraft contacts, and aircraft tags,
+  allowing live traffic to cover the map layer without hiding or repositioning it.
+- Removed moving-aircraft and aircraft-label collision decisions from airport-label
+  placement, eliminating frame-to-frame label jumping and blinking.
+- Gave every normal airport label a thin muted border and subdued category coloring;
+  major airports remain only slightly brighter instead of resembling selectable
+  aircraft tags.
+- Reorganized System into dedicated System Status, Device & Network, and Maintenance
+  cards without changing settings, reconnect, retry, reset, or diagnostics behavior.
+- Enlarged the Save Airports button and added explicit horizontal and vertical
+  padding for cleaner spacing.
+
+### Preserved
+
+- Product 50 airport database, bounded cache, per-range filters, NVS persistence,
+  runway symbols, nearby list, and location-rebuild behavior.
+- Product 49 aircraft tag priority, stable ICAO touch selection and tracking.
+- ADS-B networking, HTTPS paths, recovery, cadence, target capacity, panel timing,
+  DMA, OPI PSRAM, and the 20-scanline bounce buffer.
+
+### Pending verification
+
+- PlatformIO compile/link and flash/RAM report.
+- Upload and confirmation of the Product 51 build marker.
+- Physical review of stable airport labels, System layout, touch behavior, and the
+  padded Save Airports control.
+- Normal radar interaction checks and soak testing.
+
 ## Product 50 - 2026-07-27
 
-**Build:** `7IN-20260727-PRODUCT50-AIRPORT-OVERLAY`  
+**Build:** `7IN-20260727-PRODUCT50-AIRPORT-OVERLAY`
 **Status:** Host-verified regional airport-overlay candidate
 
 ### Added
@@ -111,7 +148,7 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 49 - 2026-07-27
 
-**Build:** `7IN-20260727-PRODUCT49-20MI-LABEL-SELECTION`  
+**Build:** `7IN-20260727-PRODUCT49-20MI-LABEL-SELECTION`
 **Status:** Host-verified 20-mile radar interaction candidate
 
 ### Changed
@@ -172,8 +209,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 48 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT48-TRACKS-SCROLL-CLAMP`  
-**Commit:** [`f299720`](https://github.com/bcarriveau/esp-aircraft-radar/commit/f299720257042fe9d38cc20d4dfdcc3a7eb7b0b4)  
+**Build:** `7IN-20260726-PRODUCT48-TRACKS-SCROLL-CLAMP`
+**Commit:** [`f299720`](https://github.com/bcarriveau/esp-aircraft-radar/commit/f299720257042fe9d38cc20d4dfdcc3a7eb7b0b4)
 **Status:** Tracks-page reliability fix retained by Product 49
 
 ### Fixed
@@ -221,8 +258,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 47 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT47-VERTICAL-STATE-BITMAPS`  
-**Commit:** [`2059f34`](https://github.com/bcarriveau/esp-aircraft-radar/commit/2059f34f1e3825d5912e01a241a5f635a48c825f)  
+**Build:** `7IN-20260726-PRODUCT47-VERTICAL-STATE-BITMAPS`
+**Commit:** [`2059f34`](https://github.com/bcarriveau/esp-aircraft-radar/commit/2059f34f1e3825d5912e01a241a5f635a48c825f)
 **Status:** Host-verified selected/tracked-aircraft UI candidate
 
 ### Added
@@ -257,8 +294,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 46 R2 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT46-R2-SUBTLE-SWEEP-TINT`  
-**Commit:** [`c75141f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c75141f93468b8118c4c63ddd39c780584b712d5)  
+**Build:** `7IN-20260726-PRODUCT46-R2-SUBTLE-SWEEP-TINT`
+**Commit:** [`c75141f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c75141f93468b8118c4c63ddd39c780584b712d5)
 **Status:** Superseded by Product 47; radar styling retained
 
 ### Refined
@@ -280,8 +317,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 46 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT46-RADAR-OVERLAP-STABILITY`  
-**Commit:** [`58aee5b`](https://github.com/bcarriveau/esp-aircraft-radar/commit/58aee5b0fda1e364aec68d277ea1d00ffa9a71c3)  
+**Build:** `7IN-20260726-PRODUCT46-RADAR-OVERLAP-STABILITY`
+**Commit:** [`58aee5b`](https://github.com/bcarriveau/esp-aircraft-radar/commit/58aee5b0fda1e364aec68d277ea1d00ffa9a71c3)
 **Status:** Superseded by Product 46 R2; overlap behavior retained
 
 ### Fixed
@@ -307,8 +344,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 45 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT45-EXPLICIT-CLASSIFIER-API`  
-**Commit:** [`c704ca1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c704ca1d15e4da26c48b768cfa04726b9be865c2)  
+**Build:** `7IN-20260726-PRODUCT45-EXPLICIT-CLASSIFIER-API`
+**Commit:** [`c704ca1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c704ca1d15e4da26c48b768cfa04726b9be865c2)
 **Status:** Classifier safety cleanup retained by current firmware
 
 ### Fixed
@@ -337,8 +374,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 44 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT44-NVS-WRITE-VERIFY`  
-**Commit:** [`ec3ac4f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/ec3ac4fcee8e2764c315be959e7a78d2ac9488d9)  
+**Build:** `7IN-20260726-PRODUCT44-NVS-WRITE-VERIFY`
+**Commit:** [`ec3ac4f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/ec3ac4fcee8e2764c315be959e7a78d2ac9488d9)
 **Status:** NVS reliability behavior retained by current firmware
 
 ### Fixed
@@ -370,8 +407,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 43 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT43-WIFI-TIMESTAMP-SYNC`  
-**Commit:** [`cbe6d0f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/cbe6d0fae79ebd15d5d68d09b8aa78cf940e0a42)  
+**Build:** `7IN-20260726-PRODUCT43-WIFI-TIMESTAMP-SYNC`
+**Commit:** [`cbe6d0f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/cbe6d0fae79ebd15d5d68d09b8aa78cf940e0a42)
 **Status:** Cross-core synchronization fix retained
 
 ### Fixed
@@ -391,8 +428,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 42 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT42-STALE-TRANSPORT-SUCCESS`  
-**Commit:** [`251fbc4`](https://github.com/bcarriveau/esp-aircraft-radar/commit/251fbc42fb2350a616dbdbb40c7a72a6f97e5f97)  
+**Build:** `7IN-20260726-PRODUCT42-STALE-TRANSPORT-SUCCESS`
+**Commit:** [`251fbc4`](https://github.com/bcarriveau/esp-aircraft-radar/commit/251fbc42fb2350a616dbdbb40c7a72a6f97e5f97)
 **Status:** Stale-response bookkeeping retained
 
 ### Fixed
@@ -421,8 +458,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 41 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT41-FAST-BODY-RECOVERY`  
-**Commit:** [`8438633`](https://github.com/bcarriveau/esp-aircraft-radar/commit/843863321b5fb2458d8fe60350a585e597129245)  
+**Build:** `7IN-20260726-PRODUCT41-FAST-BODY-RECOVERY`
+**Commit:** [`8438633`](https://github.com/bcarriveau/esp-aircraft-radar/commit/843863321b5fb2458d8fe60350a585e597129245)
 **Status:** ADS-B response-body recovery retained
 
 ### Fixed
@@ -446,8 +483,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 40 R3 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT40-AIRCRAFT-DB-HTTPS-RECOVERY-R3`  
-**Commit:** [`0b099db`](https://github.com/bcarriveau/esp-aircraft-radar/commit/0b099db0f80efbaae1625dbadde68a6ebc86e01a)  
+**Build:** `7IN-20260726-PRODUCT40-AIRCRAFT-DB-HTTPS-RECOVERY-R3`
+**Commit:** [`0b099db`](https://github.com/bcarriveau/esp-aircraft-radar/commit/0b099db0f80efbaae1625dbadde68a6ebc86e01a)
 **Status:** Superseded by Product 41
 
 ### Fixed
@@ -462,8 +499,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 40 R2 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT40-AIRCRAFT-DB-HTTPS-RECOVERY-R2`  
-**Commit:** [`c2a853f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c2a853f7cb7dd6190e7bb368f97bc57a22fc366f)  
+**Build:** `7IN-20260726-PRODUCT40-AIRCRAFT-DB-HTTPS-RECOVERY-R2`
+**Commit:** [`c2a853f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c2a853f7cb7dd6190e7bb368f97bc57a22fc366f)
 **Status:** Superseded by Product 40 R3
 
 ### Changed
@@ -480,8 +517,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 40 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT40-AIRCRAFT-TYPE-DATABASE`  
-**Commit:** [`244f337`](https://github.com/bcarriveau/esp-aircraft-radar/commit/244f337ed6f88d2bccd5fd8a7500376ba22493b6)  
+**Build:** `7IN-20260726-PRODUCT40-AIRCRAFT-TYPE-DATABASE`
+**Commit:** [`244f337`](https://github.com/bcarriveau/esp-aircraft-radar/commit/244f337ed6f88d2bccd5fd8a7500376ba22493b6)
 **Status:** Generated database retained and refined by later firmware
 
 ### Added
@@ -514,8 +551,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 39 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT39-STARTUP-FAILURE-PROPAGATION`  
-**Commit:** [`35b9eca`](https://github.com/bcarriveau/esp-aircraft-radar/commit/35b9ecae8d5c5949950c5512fc3359d575bd1210)  
+**Build:** `7IN-20260726-PRODUCT39-STARTUP-FAILURE-PROPAGATION`
+**Commit:** [`35b9eca`](https://github.com/bcarriveau/esp-aircraft-radar/commit/35b9ecae8d5c5949950c5512fc3359d575bd1210)
 **Status:** Startup reliability retained
 
 ### Fixed
@@ -540,8 +577,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 38 - 2026-07-25
 
-**Build:** `7IN-20260725-PRODUCT38-LOCATION-INVALIDATION`  
-**Commit:** [`34a3c2d`](https://github.com/bcarriveau/esp-aircraft-radar/commit/34a3c2d6dc7193b6b3a38490cfefb9ddbfd72c1c)  
+**Build:** `7IN-20260725-PRODUCT38-LOCATION-INVALIDATION`
+**Commit:** [`34a3c2d`](https://github.com/bcarriveau/esp-aircraft-radar/commit/34a3c2d6dc7193b6b3a38490cfefb9ddbfd72c1c)
 **Status:** Location-state behavior retained
 
 ### Fixed
@@ -570,8 +607,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 37 - 2026-07-25
 
-**Build:** `7IN-20260725-PRODUCT37-FALLBACK-HTTPS-HARDENED`  
-**Commit:** [`63892b1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/63892b11529f609370176159353c4dd67dddd23a)  
+**Build:** `7IN-20260725-PRODUCT37-FALLBACK-HTTPS-HARDENED`
+**Commit:** [`63892b1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/63892b11529f609370176159353c4dd67dddd23a)
 **Status:** Hardened fallback architecture retained
 
 ### Fixed
@@ -612,8 +649,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 36 R4 - 2026-07-25
 
-**Build:** `7IN-20260725-PRODUCT36-RADAR-OVERLAP-PRIORITY-R4`  
-**Commit:** [`9de21e3`](https://github.com/bcarriveau/esp-aircraft-radar/commit/9de21e3d7ac242cdbc57c240b1328b05bc6f53c3)  
+**Build:** `7IN-20260725-PRODUCT36-RADAR-OVERLAP-PRIORITY-R4`
+**Commit:** [`9de21e3`](https://github.com/bcarriveau/esp-aircraft-radar/commit/9de21e3d7ac242cdbc57c240b1328b05bc6f53c3)
 **Status:** Superseded; priority concepts refined by Product 46
 
 ### Changed
@@ -631,8 +668,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 36 R3 - 2026-07-25
 
-**Build:** `7IN-20260725-PRODUCT36-RADAR-HEADING-SPRITES-R3`  
-**Commit:** [`022e7b3`](https://github.com/bcarriveau/esp-aircraft-radar/commit/022e7b3e99311b7ab53effe7399d45b3e1459055)  
+**Build:** `7IN-20260725-PRODUCT36-RADAR-HEADING-SPRITES-R3`
+**Commit:** [`022e7b3`](https://github.com/bcarriveau/esp-aircraft-radar/commit/022e7b3e99311b7ab53effe7399d45b3e1459055)
 **Status:** Heading-sprite architecture retained
 
 ### Added
@@ -658,8 +695,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 36 R2 - 2026-07-25
 
-**Build:** `7IN-20260725-PRODUCT36-RADAR-BITMAP-CONTACTS-R2`  
-**Commit:** [`9494747`](https://github.com/bcarriveau/esp-aircraft-radar/commit/9494747a6b1f8d1233ce03d8c40db140322dd529)  
+**Build:** `7IN-20260725-PRODUCT36-RADAR-BITMAP-CONTACTS-R2`
+**Commit:** [`9494747`](https://github.com/bcarriveau/esp-aircraft-radar/commit/9494747a6b1f8d1233ce03d8c40db140322dd529)
 **Status:** Superseded by Product 36 R3
 
 ### Changed
@@ -672,8 +709,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 36 - 2026-07-25
 
-**Build:** `7IN-20260725-PRODUCT36-RADAR-BITMAP-CONTACTS`  
-**Commit:** [`3ea59bb`](https://github.com/bcarriveau/esp-aircraft-radar/commit/3ea59bbefd674b3728beb98af0a692e56ebb5819)  
+**Build:** `7IN-20260725-PRODUCT36-RADAR-BITMAP-CONTACTS`
+**Commit:** [`3ea59bb`](https://github.com/bcarriveau/esp-aircraft-radar/commit/3ea59bbefd674b3728beb98af0a692e56ebb5819)
 **Status:** First bitmap-contact candidate; superseded by later Product 36 revisions
 
 ### Added
@@ -687,8 +724,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 35 - 2026-07-25
 
-**Build:** `7IN-20260725-PRODUCT35-DESCRIPTION-TYPE-FALLBACK`  
-**Commit:** [`0441bd7`](https://github.com/bcarriveau/esp-aircraft-radar/commit/0441bd70f85abb2da72314540b6c0abb15f9683c)  
+**Build:** `7IN-20260725-PRODUCT35-DESCRIPTION-TYPE-FALLBACK`
+**Commit:** [`0441bd7`](https://github.com/bcarriveau/esp-aircraft-radar/commit/0441bd70f85abb2da72314540b6c0abb15f9683c)
 **Status:** Description fallback retained under Product 40 database
 
 ### Added
@@ -717,8 +754,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 34 - 2026-07-25
 
-**Build:** `7IN-20260725-PRODUCT34-TRACK-LOSS-RECOVERY`  
-**Commit:** [`239a7a5`](https://github.com/bcarriveau/esp-aircraft-radar/commit/239a7a5af8442562e8024f5dec98b6f58c9eddc2)  
+**Build:** `7IN-20260725-PRODUCT34-TRACK-LOSS-RECOVERY`
+**Commit:** [`239a7a5`](https://github.com/bcarriveau/esp-aircraft-radar/commit/239a7a5af8442562e8024f5dec98b6f58c9eddc2)
 **Status:** Tracking-loss behavior retained
 
 ### Fixed
@@ -741,8 +778,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 33 R5 - 2026-07-24
 
-**Build:** `7IN-20260724-PRODUCT33-UI-POLISH-R5`  
-**Commit:** [`14fe9f4`](https://github.com/bcarriveau/esp-aircraft-radar/commit/14fe9f46b8c131ed1a22f5adb93e898f3188e3b1)  
+**Build:** `7IN-20260724-PRODUCT33-UI-POLISH-R5`
+**Commit:** [`14fe9f4`](https://github.com/bcarriveau/esp-aircraft-radar/commit/14fe9f46b8c131ed1a22f5adb93e898f3188e3b1)
 **Status:** Superseded by Product 34
 
 ### Changed
@@ -766,8 +803,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 33 R2 - 2026-07-24
 
-**Build:** `7IN-20260724-PRODUCT33-UI-POLISH-R2`  
-**Commit:** [`52367df`](https://github.com/bcarriveau/esp-aircraft-radar/commit/52367dfa5f85491f2813a3d7103c0aa4a5cf6953)  
+**Build:** `7IN-20260724-PRODUCT33-UI-POLISH-R2`
+**Commit:** [`52367df`](https://github.com/bcarriveau/esp-aircraft-radar/commit/52367dfa5f85491f2813a3d7103c0aa4a5cf6953)
 **Status:** Superseded by Product 33 R5
 
 ### Changed
@@ -781,8 +818,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 32 - 2026-07-24
 
-**Build:** `7IN-20260724-PRODUCT32-UI-DASHBOARD`  
-**Commit:** [`a4cc594`](https://github.com/bcarriveau/esp-aircraft-radar/commit/a4cc594f52c8d8e562cd751dbb528a744d72d00e)  
+**Build:** `7IN-20260724-PRODUCT32-UI-DASHBOARD`
+**Commit:** [`a4cc594`](https://github.com/bcarriveau/esp-aircraft-radar/commit/a4cc594f52c8d8e562cd751dbb528a744d72d00e)
 **Status:** Airspace dashboard retained
 
 ### Added
@@ -810,8 +847,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 31 - 2026-07-23
 
-**Build:** `7IN-20260723-PRODUCT31-NEAREST-HEADING-ARROW`  
-**Commit:** [`1747cb1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/1747cb169969dff12f3a5d794f561b56dc2acc83)  
+**Build:** `7IN-20260723-PRODUCT31-NEAREST-HEADING-ARROW`
+**Commit:** [`1747cb1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/1747cb169969dff12f3a5d794f561b56dc2acc83)
 **Status:** Side-panel bitmap and heading behavior retained
 
 ### Added
@@ -828,8 +865,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 30 - 2026-07-23
 
-**Build:** `7IN-20260723-PRODUCT30-200-TARGET-PSRAM`  
-**Commit:** [`50821ba`](https://github.com/bcarriveau/esp-aircraft-radar/commit/50821badc68efb2e0c8dab597d1db5f1267628ab)  
+**Build:** `7IN-20260723-PRODUCT30-200-TARGET-PSRAM`
+**Commit:** [`50821ba`](https://github.com/bcarriveau/esp-aircraft-radar/commit/50821badc68efb2e0c8dab597d1db5f1267628ab)
 **Status:** Current target-capacity and memory architecture baseline
 
 ### Added
@@ -863,8 +900,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 29 - 2026-07-23
 
-**Build:** `7IN-20260723-PRODUCT29-UI-STATE-FIXES`  
-**Commit:** [`237d06a`](https://github.com/bcarriveau/esp-aircraft-radar/commit/237d06a2b79b0ca76960ad594c435ee0947716a2)  
+**Build:** `7IN-20260723-PRODUCT29-UI-STATE-FIXES`
+**Commit:** [`237d06a`](https://github.com/bcarriveau/esp-aircraft-radar/commit/237d06a2b79b0ca76960ad594c435ee0947716a2)
 **Status:** UI-state behavior retained
 
 ### Fixed
@@ -881,8 +918,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 28 - 2026-07-23
 
-**Build:** `7IN-20260723-PRODUCT28-RADAR-STATE-FLOW`  
-**Commit:** [`61f104c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/61f104ca4a8adb6bf7d9ffb6caf3509ddb05797c)  
+**Build:** `7IN-20260723-PRODUCT28-RADAR-STATE-FLOW`
+**Commit:** [`61f104c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/61f104ca4a8adb6bf7d9ffb6caf3509ddb05797c)
 **Status:** Superseded by Product 29
 
 ### Changed
@@ -901,8 +938,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 27 - 2026-07-23
 
-**Build:** `7IN-20260723-PRODUCT27-RADAR-LAYOUT`  
-**Commit:** [`2dda7ae`](https://github.com/bcarriveau/esp-aircraft-radar/commit/2dda7ae4606dff08fcd34d303610f9d920185362)  
+**Build:** `7IN-20260723-PRODUCT27-RADAR-LAYOUT`
+**Commit:** [`2dda7ae`](https://github.com/bcarriveau/esp-aircraft-radar/commit/2dda7ae4606dff08fcd34d303610f9d920185362)
 **Status:** Superseded
 
 ### Changed
@@ -918,8 +955,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 26 - 2026-07-22
 
-**Build:** `7IN-20260722-PRODUCT26-RADAR-INTERACTION`  
-**Commit:** [`298c87a`](https://github.com/bcarriveau/esp-aircraft-radar/commit/298c87ab43d83ae51e0276fb152789e05ad7423e)  
+**Build:** `7IN-20260722-PRODUCT26-RADAR-INTERACTION`
+**Commit:** [`298c87a`](https://github.com/bcarriveau/esp-aircraft-radar/commit/298c87ab43d83ae51e0276fb152789e05ad7423e)
 **Status:** First themed-tag and direct-interaction candidate
 
 ### Added
@@ -938,8 +975,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 25 - 2026-07-22
 
-**Build:** `7IN-20260722-PRODUCT25-NVS-DEFAULTS`  
-**Commit:** [`1c1d555`](https://github.com/bcarriveau/esp-aircraft-radar/commit/1c1d5557dd1ae34ba9ea47a39e381c0a86bbbeee)  
+**Build:** `7IN-20260722-PRODUCT25-NVS-DEFAULTS`
+**Commit:** [`1c1d555`](https://github.com/bcarriveau/esp-aircraft-radar/commit/1c1d5557dd1ae34ba9ea47a39e381c0a86bbbeee)
 **Status:** First-soak cleanup retained
 
 ### Fixed
@@ -951,8 +988,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 24 - 2026-07-21
 
-**Build:** `7IN-20260721-PRODUCT24-TRANSPORT-RECOVERY`  
-**Commit:** [`dec570e`](https://github.com/bcarriveau/esp-aircraft-radar/commit/dec570eab7324ae6cc00747a037af2090cdf94bd)  
+**Build:** `7IN-20260721-PRODUCT24-TRANSPORT-RECOVERY`
+**Commit:** [`dec570e`](https://github.com/bcarriveau/esp-aircraft-radar/commit/dec570eab7324ae6cc00747a037af2090cdf94bd)
 **Status:** Recovery architecture retained and later hardened
 
 ### Fixed
@@ -969,8 +1006,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 23 - 2026-07-21
 
-**Build:** `7IN-20260721-PRODUCT23-HEADING-CRASH-FIX`  
-**Commit:** [`faa9bc2`](https://github.com/bcarriveau/esp-aircraft-radar/commit/faa9bc28b8524ff9fb850636e1bf356f508d71da)  
+**Build:** `7IN-20260721-PRODUCT23-HEADING-CRASH-FIX`
+**Commit:** [`faa9bc2`](https://github.com/bcarriveau/esp-aircraft-radar/commit/faa9bc28b8524ff9fb850636e1bf356f508d71da)
 **Status:** Physical crash fix confirmed
 
 ### Fixed
@@ -988,8 +1025,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 22 - 2026-07-21
 
-**Build:** `7IN-20260721-PRODUCT22-LARGE-RESPONSE`  
-**Commit:** [`3203bd3`](https://github.com/bcarriveau/esp-aircraft-radar/commit/3203bd3a4263b7c1f65a839466a083d7b9cd8c90)  
+**Build:** `7IN-20260721-PRODUCT22-LARGE-RESPONSE`
+**Commit:** [`3203bd3`](https://github.com/bcarriveau/esp-aircraft-radar/commit/3203bd3a4263b7c1f65a839466a083d7b9cd8c90)
 **Status:** Large-response handling retained
 
 ### Fixed
@@ -1006,8 +1043,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Products 19-21 - 2026-07-21
 
-**Final build:** `7IN-20260721-PRODUCT21-TRACKED-HEADING`  
-**Commit:** [`5d5b0b6`](https://github.com/bcarriveau/esp-aircraft-radar/commit/5d5b0b62cd828349b1120b1be9e24c8bb98cd6e9)  
+**Final build:** `7IN-20260721-PRODUCT21-TRACKED-HEADING`
+**Commit:** [`5d5b0b6`](https://github.com/bcarriveau/esp-aircraft-radar/commit/5d5b0b62cd828349b1120b1be9e24c8bb98cd6e9)
 **Status:** Combined GitHub record; individual Product boundaries not preserved
 
 ### Confirmed changes
@@ -1024,8 +1061,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 18 - 2026-07-21
 
-**Build:** `7IN-20260721-PRODUCT18-CERT-BUNDLE`  
-**Commit:** [`69dce61`](https://github.com/bcarriveau/esp-aircraft-radar/commit/69dce612211326a4a41f0f66becc8eb7d46191f9)  
+**Build:** `7IN-20260721-PRODUCT18-CERT-BUNDLE`
+**Commit:** [`69dce61`](https://github.com/bcarriveau/esp-aircraft-radar/commit/69dce612211326a4a41f0f66becc8eb7d46191f9)
 **Status:** First physically working native TLS baseline
 
 ### Fixed
@@ -1043,7 +1080,7 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 17 - 2026-07-21
 
-**Standalone commit:** Not preserved  
+**Standalone commit:** Not preserved
 **Status:** Confirmed precursor documented by Product 18 history
 
 ### Changed
@@ -1063,8 +1100,8 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 16 - 2026-07-21
 
-**Build:** `7IN-20260721-PRODUCT16-TLS-STABLE`  
-**Commit:** [`c81b34e`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c81b34e5d640e734723964f895c9bb4ec49c1af8)  
+**Build:** `7IN-20260721-PRODUCT16-TLS-STABLE`
+**Commit:** [`c81b34e`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c81b34e5d640e734723964f895c9bb4ec49c1af8)
 **Status:** Superseded by native HTTPS Products 17-18
 
 ### Changed
@@ -1083,9 +1120,9 @@ soak testing before being called a fully verified hardware release.
 
 ## Product 15 - 2026-07-21
 
-**Build:** `7IN-20260721-PRODUCT15-HARDENED`  
-**Commit:** [`b2a0a49`](https://github.com/bcarriveau/esp-aircraft-radar/commit/b2a0a492c424cf192edf71eb7f5dd496ec0bbab8)  
-**Tag:** `product-15-hardened`  
+**Build:** `7IN-20260721-PRODUCT15-HARDENED`
+**Commit:** [`b2a0a49`](https://github.com/bcarriveau/esp-aircraft-radar/commit/b2a0a492c424cf192edf71eb7f5dd496ec0bbab8)
+**Tag:** `product-15-hardened`
 **Status:** First hardened version-controlled and permanent rollback baseline
 
 ### Added

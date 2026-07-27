@@ -141,6 +141,11 @@ lv_obj_t* airportStatusLabel = nullptr;
 lv_obj_t* airportSummaryLabel = nullptr;
 lv_obj_t* airportListLabel = nullptr;
 lv_obj_t* systemCreditPanel = nullptr;
+lv_obj_t* systemStatusCard = nullptr;
+lv_obj_t* systemStatusLabel = nullptr;
+lv_obj_t* systemBuildLabel = nullptr;
+lv_obj_t* deviceNetworkCard = nullptr;
+lv_obj_t* maintenanceCard = nullptr;
 lv_obj_t* detailPanel = nullptr;
 lv_obj_t* detailTitle = nullptr;
 lv_obj_t* detailBody = nullptr;
@@ -306,6 +311,9 @@ void setSystemCreditVisible(bool visible) {
 }
 
 void setSettingsFormVisible(bool visible) {
+  setVisible(systemStatusCard, visible);
+  setVisible(deviceNetworkCard, visible);
+  setVisible(maintenanceCard, visible);
   setVisible(titleField, visible);
   setVisible(ssidField, visible);
   setVisible(passwordField, visible);
@@ -315,7 +323,7 @@ void setSettingsFormVisible(bool visible) {
   setVisible(resetSettingsButton, visible);
   setVisible(settingsStatusLabel, visible);
   for (lv_obj_t* label : settingsFormLabels) setVisible(label, visible);
-  if (!visible) {
+  if (!visible && settingsKeyboard) {
     lv_obj_add_flag(settingsKeyboard, LV_OBJ_FLAG_HIDDEN);
   }
 }
@@ -1270,24 +1278,28 @@ void renderSystemPage() {
   setVisible(reconnectButton, true);
   setVisible(retryButton, true);
   setVisible(showPasswordButton, true);
-  lv_obj_clear_flag(pageBody, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(pageBody, LV_OBJ_FLAG_HIDDEN);
   setLabelTextIfChanged(pageTitle, "SYSTEM // DEVICE & NETWORK");
-  configurePageBody(&lv_font_montserrat_12, 14, 58, 250);
 
   const wl_status_t wifiStatus = app_state::wifiStatus();
   const bool wifiConnected = wifiStatus == WL_CONNECTED;
   const uint32_t dataAgeSeconds = snapshot.lastUpdateMs
       ? (millis() - snapshot.lastUpdateMs) / 1000 : 0;
-  char body[950]{};
+  char body[760]{};
   snprintf(body, sizeof(body),
-      "BUILD\n%s\n\n"
-      "NVS: %s\nWiFi: %s  RSSI: %d\nIP: %s\n"
-      "Aircraft: %u visible / %u max\nData age: %lu sec\n"
-      "Fetch: %lu ms / %lu bytes\nFailures: %u (%s)\n"
-      "Heap: %u / min %u\nPSRAM: %u / min %u\n"
-      "Airports: %s / %u cached",
-      BUILD_ID, settings::storageAvailable() ? "READY" : "ERROR",
-      adsb::wifiStatusName(wifiStatus), wifiConnected ? WiFi.RSSI() : 0,
+      "NVS        %s\n"
+      "WI-FI      %s  %d dBm\n"
+      "IP         %s\n"
+      "AIRCRAFT   %u / %u\n"
+      "DATA AGE   %lu sec\n"
+      "FETCH      %lu ms  %lu B\n"
+      "FAILURES   %u  %s\n"
+      "HEAP       %u KB  MIN %u KB\n"
+      "PSRAM      %u KB  MIN %u KB\n"
+      "AIRPORTS   %s  %u CACHED",
+      settings::storageAvailable() ? "READY" : "ERROR",
+      wifiConnected ? "ONLINE" : adsb::wifiStatusName(wifiStatus),
+      wifiConnected ? WiFi.RSSI() : 0,
       wifiConnected ? WiFi.localIP().toString().c_str() : "--",
       (unsigned)snapshot.count, (unsigned)aircraft::MAX_TARGETS,
       (unsigned long)dataAgeSeconds,
@@ -1295,10 +1307,14 @@ void renderSystemPage() {
       (unsigned long)diagnostics.lastResponseBytes,
       diagnostics.consecutiveFailures,
       app_state::failureStageName(diagnostics.lastFailureStage),
-      ESP.getFreeHeap(), diagnostics.minimumFreeHeap, ESP.getFreePsram(),
-      diagnostics.minimumFreePsram,
-      airportStatus.ready ? "READY" : "OFF", (unsigned)airportStatus.cachedCount);
-  setLabelTextIfChanged(pageBody, body);
+      (unsigned)(ESP.getFreeHeap() / 1024U),
+      (unsigned)(diagnostics.minimumFreeHeap / 1024U),
+      (unsigned)(ESP.getFreePsram() / 1024U),
+      (unsigned)(diagnostics.minimumFreePsram / 1024U),
+      airportStatus.ready ? "READY" : "OFF",
+      (unsigned)airportStatus.cachedCount);
+  setLabelTextIfChanged(systemStatusLabel, body);
+  setLabelTextIfChanged(systemBuildLabel, BUILD_ID);
   syncSettingsStorageState();
 }
 
@@ -1952,10 +1968,12 @@ void buildPageShell(lv_obj_t* root) {
   }
 
   airportSaveButton = lv_btn_create(airportOptionsCard);
-  lv_obj_set_size(airportSaveButton, 124, 34);
-  lv_obj_set_pos(airportSaveButton, 8, 232);
+  lv_obj_set_size(airportSaveButton, 158, 38);
+  lv_obj_set_pos(airportSaveButton, 8, 228);
   lv_obj_set_style_bg_color(airportSaveButton, rgb(24, 128, 84), 0);
   lv_obj_set_style_radius(airportSaveButton, 5, 0);
+  lv_obj_set_style_pad_hor(airportSaveButton, 14, 0);
+  lv_obj_set_style_pad_ver(airportSaveButton, 8, 0);
   lv_obj_add_event_cb(airportSaveButton, airportSaveEvent,
                       LV_EVENT_CLICKED, nullptr);
   lv_obj_t* airportSaveLabel = lv_label_create(airportSaveButton);
@@ -1964,8 +1982,8 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_center(airportSaveLabel);
   airportStatusLabel = makeLabel(
       airportOptionsCard, "", &lv_font_montserrat_12,
-      rgb(120, 240, 155), 142, 240);
-  lv_obj_set_width(airportStatusLabel, 274);
+      rgb(120, 240, 155), 176, 239);
+  lv_obj_set_width(airportStatusLabel, 240);
 
   lv_obj_t* airportNearbyCard = lv_obj_create(airportDashboard);
   lv_obj_set_size(airportNearbyCard, 302, 276);
@@ -1985,37 +2003,29 @@ void buildPageShell(lv_obj_t* root) {
   lv_label_set_long_mode(airportListLabel, LV_LABEL_LONG_WRAP);
   setAirportVisible(false);
 
-  systemCreditPanel = lv_obj_create(pagePanel);
-  lv_obj_set_size(systemCreditPanel, 286, 88);
-  lv_obj_set_pos(systemCreditPanel, 454, 238);
-  styleDashboardCard(systemCreditPanel);
-  makeLabel(systemCreditPanel, "DESIGNED & BUILT BY",
-            &lv_font_montserrat_12, rgb(110, 220, 255), 7, 6);
-  makeLabel(systemCreditPanel, "BILL CARRIVEAU", &lv_font_montserrat_20,
-            rgb(63, 255, 155), 7, 25);
-  makeLabel(systemCreditPanel, "ESP32-S3 ADS-B AIRCRAFT RADAR",
-            &lv_font_montserrat_12, rgb(225, 235, 240), 7, 57);
-  setSystemCreditVisible(false);
+  systemStatusCard = lv_obj_create(pagePanel);
+  lv_obj_set_size(systemStatusCard, 238, 216);
+  lv_obj_set_pos(systemStatusCard, 8, 58);
+  styleDashboardCard(systemStatusCard);
+  makeLabel(systemStatusCard, "SYSTEM STATUS", &lv_font_montserrat_14,
+            rgb(110, 220, 255), 7, 4);
+  systemStatusLabel = makeLabel(
+      systemStatusCard, "", &lv_font_montserrat_12,
+      rgb(225, 235, 240), 7, 28);
+  lv_obj_set_width(systemStatusLabel, 216);
+  lv_label_set_long_mode(systemStatusLabel, LV_LABEL_LONG_WRAP);
+  systemBuildLabel = makeLabel(
+      systemStatusCard, BUILD_ID, &lv_font_montserrat_12,
+      rgb(76, 132, 140), 7, 184);
+  lv_obj_set_width(systemBuildLabel, 216);
+  lv_label_set_long_mode(systemBuildLabel, LV_LABEL_LONG_WRAP);
 
-  reconnectButton = lv_btn_create(pagePanel);
-  lv_obj_set_size(reconnectButton, 220, 38);
-  lv_obj_set_pos(reconnectButton, 14, 284);
-  lv_obj_set_style_bg_color(reconnectButton, rgb(24, 128, 84), 0);
-  lv_obj_add_event_cb(reconnectButton, reconnectEvent, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* reconnectLabel = lv_label_create(reconnectButton);
-  lv_label_set_text(reconnectLabel, "RECONNECT WIFI");
-  lv_obj_set_style_text_font(reconnectLabel, &lv_font_montserrat_16, 0);
-  lv_obj_center(reconnectLabel);
-
-  retryButton = lv_btn_create(pagePanel);
-  lv_obj_set_size(retryButton, 220, 38);
-  lv_obj_set_pos(retryButton, 14, 238);
-  lv_obj_set_style_bg_color(retryButton, rgb(20, 68, 82), 0);
-  lv_obj_add_event_cb(retryButton, retryEvent, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* retryLabel = lv_label_create(retryButton);
-  lv_label_set_text(retryLabel, "RETRY ADSB NOW");
-  lv_obj_set_style_text_font(retryLabel, &lv_font_montserrat_14, 0);
-  lv_obj_center(retryLabel);
+  deviceNetworkCard = lv_obj_create(pagePanel);
+  lv_obj_set_size(deviceNetworkCard, 488, 216);
+  lv_obj_set_pos(deviceNetworkCard, 254, 58);
+  styleDashboardCard(deviceNetworkCard);
+  makeLabel(deviceNetworkCard, "DEVICE & NETWORK", &lv_font_montserrat_14,
+            rgb(110, 220, 255), 7, 4);
 
   settingsKeyboard = lv_keyboard_create(lv_scr_act());
   lv_obj_set_size(settingsKeyboard, 800, 250);
@@ -2033,38 +2043,34 @@ void buildPageShell(lv_obj_t* root) {
                       LV_EVENT_CANCEL, nullptr);
   lv_obj_add_flag(settingsKeyboard, LV_OBJ_FLAG_HIDDEN);
 
-  settingsStatusLabel = makeLabel(pagePanel, "", &lv_font_montserrat_14,
-                                  rgb(120, 240, 155), 292, 294);
-  lv_obj_set_width(settingsStatusLabel, 453);
-
-  titleField = lv_textarea_create(pagePanel);
-  lv_obj_set_size(titleField, 335, 38);
-  lv_obj_set_pos(titleField, 410, 50);
+  titleField = lv_textarea_create(deviceNetworkCard);
+  lv_obj_set_size(titleField, 342, 32);
+  lv_obj_set_pos(titleField, 130, 26);
   lv_textarea_set_placeholder_text(titleField, "Display name");
   lv_obj_add_event_cb(titleField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
   lv_textarea_set_one_line(titleField, true);
   styleSettingsField(titleField);
 
-  ssidField = lv_textarea_create(pagePanel);
-  lv_obj_set_size(ssidField, 335, 38);
-  lv_obj_set_pos(ssidField, 410, 96);
+  ssidField = lv_textarea_create(deviceNetworkCard);
+  lv_obj_set_size(ssidField, 342, 32);
+  lv_obj_set_pos(ssidField, 130, 64);
   lv_textarea_set_placeholder_text(ssidField, "Wi-Fi SSID");
   lv_obj_add_event_cb(ssidField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
   lv_textarea_set_one_line(ssidField, true);
   styleSettingsField(ssidField);
 
-  passwordField = lv_textarea_create(pagePanel);
-  lv_obj_set_size(passwordField, 235, 38);
-  lv_obj_set_pos(passwordField, 410, 142);
+  passwordField = lv_textarea_create(deviceNetworkCard);
+  lv_obj_set_size(passwordField, 240, 32);
+  lv_obj_set_pos(passwordField, 130, 102);
   lv_textarea_set_placeholder_text(passwordField, "Wi-Fi password");
   lv_obj_add_event_cb(passwordField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
   lv_textarea_set_one_line(passwordField, true);
   lv_textarea_set_password_mode(passwordField, true);
   styleSettingsField(passwordField);
 
-  showPasswordButton = lv_btn_create(pagePanel);
-  lv_obj_set_size(showPasswordButton, 90, 38);
-  lv_obj_set_pos(showPasswordButton, 655, 142);
+  showPasswordButton = lv_btn_create(deviceNetworkCard);
+  lv_obj_set_size(showPasswordButton, 92, 32);
+  lv_obj_set_pos(showPasswordButton, 380, 102);
   lv_obj_set_style_bg_color(showPasswordButton, rgb(20, 68, 82), 0);
   lv_obj_add_event_cb(showPasswordButton, showPasswordEvent,
                       LV_EVENT_CLICKED, nullptr);
@@ -2073,48 +2079,88 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_style_text_font(showPasswordLabel, &lv_font_montserrat_12, 0);
   lv_obj_center(showPasswordLabel);
 
-  latitudeField = lv_textarea_create(pagePanel);
-  lv_obj_set_size(latitudeField, 150, 38);
-  lv_obj_set_pos(latitudeField, 372, 188);
+  latitudeField = lv_textarea_create(deviceNetworkCard);
+  lv_obj_set_size(latitudeField, 140, 32);
+  lv_obj_set_pos(latitudeField, 76, 140);
   lv_textarea_set_placeholder_text(latitudeField, "Latitude");
   lv_obj_add_event_cb(latitudeField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
   lv_textarea_set_one_line(latitudeField, true);
   styleSettingsField(latitudeField);
 
-  longitudeField = lv_textarea_create(pagePanel);
-  lv_obj_set_size(longitudeField, 105, 38);
-  lv_obj_set_pos(longitudeField, 640, 188);
+  longitudeField = lv_textarea_create(deviceNetworkCard);
+  lv_obj_set_size(longitudeField, 150, 32);
+  lv_obj_set_pos(longitudeField, 322, 140);
   lv_textarea_set_placeholder_text(longitudeField, "Longitude");
   lv_obj_add_event_cb(longitudeField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
   lv_textarea_set_one_line(longitudeField, true);
   styleSettingsField(longitudeField);
 
-  settingsFormLabels[0] = makeLabel(pagePanel, "DISPLAY NAME",
-      &lv_font_montserrat_14, rgb(110, 220, 255), 292, 61);
-  settingsFormLabels[1] = makeLabel(pagePanel, "WI-FI SSID",
-      &lv_font_montserrat_14, rgb(110, 220, 255), 292, 107);
-  settingsFormLabels[2] = makeLabel(pagePanel, "PASSWORD",
-      &lv_font_montserrat_14, rgb(110, 220, 255), 292, 153);
-  settingsFormLabels[3] = makeLabel(pagePanel, "LATITUDE",
-      &lv_font_montserrat_14, rgb(110, 220, 255), 292, 199);
-  settingsFormLabels[4] = makeLabel(pagePanel, "LONGITUDE",
-      &lv_font_montserrat_14, rgb(110, 220, 255), 540, 199);
+  settingsFormLabels[0] = makeLabel(deviceNetworkCard, "DISPLAY NAME",
+      &lv_font_montserrat_12, rgb(110, 220, 255), 8, 35);
+  settingsFormLabels[1] = makeLabel(deviceNetworkCard, "WI-FI SSID",
+      &lv_font_montserrat_12, rgb(110, 220, 255), 8, 73);
+  settingsFormLabels[2] = makeLabel(deviceNetworkCard, "PASSWORD",
+      &lv_font_montserrat_12, rgb(110, 220, 255), 8, 111);
+  settingsFormLabels[3] = makeLabel(deviceNetworkCard, "LAT",
+      &lv_font_montserrat_12, rgb(110, 220, 255), 8, 149);
+  settingsFormLabels[4] = makeLabel(deviceNetworkCard, "LONGITUDE",
+      &lv_font_montserrat_12, rgb(110, 220, 255), 230, 149);
 
-  saveSettingsButton = lv_btn_create(pagePanel);
-  lv_obj_set_size(saveSettingsButton, 165, 42);
-  lv_obj_set_pos(saveSettingsButton, 292, 240);
+  saveSettingsButton = lv_btn_create(deviceNetworkCard);
+  lv_obj_set_size(saveSettingsButton, 160, 32);
+  lv_obj_set_pos(saveSettingsButton, 130, 176);
   lv_obj_set_style_bg_color(saveSettingsButton, rgb(24, 128, 84), 0);
-  lv_obj_add_event_cb(saveSettingsButton, saveSettingsEvent, LV_EVENT_CLICKED, nullptr);
+  lv_obj_set_style_radius(saveSettingsButton, 5, 0);
+  lv_obj_add_event_cb(saveSettingsButton, saveSettingsEvent,
+                      LV_EVENT_CLICKED, nullptr);
   lv_obj_t* saveLabel = lv_label_create(saveSettingsButton);
   lv_label_set_text(saveLabel, "SAVE SETTINGS");
-  lv_obj_set_style_text_font(saveLabel, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_font(saveLabel, &lv_font_montserrat_12, 0);
   lv_obj_center(saveLabel);
 
-  resetSettingsButton = lv_btn_create(pagePanel);
-  lv_obj_set_size(resetSettingsButton, 170, 42);
-  lv_obj_set_pos(resetSettingsButton, 470, 240);
+  settingsStatusLabel = makeLabel(
+      deviceNetworkCard, "", &lv_font_montserrat_12,
+      rgb(120, 240, 155), 300, 178);
+  lv_obj_set_width(settingsStatusLabel, 172);
+  lv_label_set_long_mode(settingsStatusLabel, LV_LABEL_LONG_WRAP);
+
+  maintenanceCard = lv_obj_create(pagePanel);
+  lv_obj_set_size(maintenanceCard, 734, 52);
+  lv_obj_set_pos(maintenanceCard, 8, 278);
+  styleDashboardCard(maintenanceCard);
+  makeLabel(maintenanceCard, "MAINTENANCE", &lv_font_montserrat_12,
+            rgb(100, 170, 180), 7, 0);
+
+  retryButton = lv_btn_create(maintenanceCard);
+  lv_obj_set_size(retryButton, 200, 30);
+  lv_obj_set_pos(retryButton, 95, 16);
+  lv_obj_set_style_bg_color(retryButton, rgb(20, 68, 82), 0);
+  lv_obj_set_style_radius(retryButton, 5, 0);
+  lv_obj_add_event_cb(retryButton, retryEvent, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* retryLabel = lv_label_create(retryButton);
+  lv_label_set_text(retryLabel, "RETRY ADS-B");
+  lv_obj_set_style_text_font(retryLabel, &lv_font_montserrat_12, 0);
+  lv_obj_center(retryLabel);
+
+  reconnectButton = lv_btn_create(maintenanceCard);
+  lv_obj_set_size(reconnectButton, 200, 30);
+  lv_obj_set_pos(reconnectButton, 305, 16);
+  lv_obj_set_style_bg_color(reconnectButton, rgb(24, 128, 84), 0);
+  lv_obj_set_style_radius(reconnectButton, 5, 0);
+  lv_obj_add_event_cb(reconnectButton, reconnectEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* reconnectLabel = lv_label_create(reconnectButton);
+  lv_label_set_text(reconnectLabel, "RECONNECT WI-FI");
+  lv_obj_set_style_text_font(reconnectLabel, &lv_font_montserrat_12, 0);
+  lv_obj_center(reconnectLabel);
+
+  resetSettingsButton = lv_btn_create(maintenanceCard);
+  lv_obj_set_size(resetSettingsButton, 200, 30);
+  lv_obj_set_pos(resetSettingsButton, 515, 16);
   lv_obj_set_style_bg_color(resetSettingsButton, rgb(20, 68, 82), 0);
-  lv_obj_add_event_cb(resetSettingsButton, resetSettingsEvent, LV_EVENT_CLICKED, nullptr);
+  lv_obj_set_style_radius(resetSettingsButton, 5, 0);
+  lv_obj_add_event_cb(resetSettingsButton, resetSettingsEvent,
+                      LV_EVENT_CLICKED, nullptr);
   resetSettingsLabel = lv_label_create(resetSettingsButton);
   lv_label_set_text(resetSettingsLabel, "RESET DEFAULTS");
   lv_obj_set_style_text_font(resetSettingsLabel, &lv_font_montserrat_12, 0);
