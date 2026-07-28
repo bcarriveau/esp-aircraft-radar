@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <esp_heap_caps.h>
 #include <math.h>
+#include <string.h>
 
 #include "adsb_network.h"
 #include "app_state.h"
@@ -456,11 +457,11 @@ lv_color_t airportColor(airport_data::Category category) {
 
 lv_color_t airportLabelColor(airport_data::Category category) {
   switch (category) {
-    case airport_data::Category::MAJOR: return rgb(88, 168, 178);
-    case airport_data::Category::PUBLIC: return rgb(58, 122, 130);
-    case airport_data::Category::PRIVATE_FIELD: return rgb(76, 94, 98);
-    case airport_data::Category::HELIPORT: return rgb(70, 112, 108);
-    default: return rgb(58, 108, 114);
+    case airport_data::Category::MAJOR: return rgb(72, 142, 152);
+    case airport_data::Category::PUBLIC: return rgb(48, 104, 112);
+    case airport_data::Category::PRIVATE_FIELD: return rgb(65, 82, 86);
+    case airport_data::Category::HELIPORT: return rgb(58, 95, 92);
+    default: return rgb(48, 96, 102);
   }
 }
 
@@ -515,71 +516,155 @@ void drawAirportSymbols(float rangeMiles) {
   }
 }
 
-void drawAirportLabel(const airport_data::NearbyAirport& airport,
-                      float rangeMiles) {
+bool labelBoxesOverlap(const LabelBox& first, const LabelBox& second,
+                       int horizontalGap = 3, int verticalGap = 2) {
+  return !(first.x2 + horizontalGap < second.x1 ||
+           first.x1 - horizontalGap > second.x2 ||
+           first.y2 + verticalGap < second.y1 ||
+           first.y1 - verticalGap > second.y2);
+}
+
+bool placeAirportLabel(const airport_data::NearbyAirport& airport,
+                       float rangeMiles, LabelBox* placedLabels,
+                       uint16_t placedLabelCount, LabelBox& placement) {
   int airportX = 0;
   int airportY = 0;
-  if (!airportScreenPosition(airport, rangeMiles, airportX, airportY)) return;
+  if (!airportScreenPosition(airport, rangeMiles, airportX, airportY)) {
+    return false;
+  }
 
   lv_point_t textSize{};
   lv_txt_get_size(&textSize, airport.ident, &lv_font_montserrat_12,
                   0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
   const int labelWidth = constrain((int)textSize.x + 8, 30, 66);
   const int labelHeight = lv_font_get_line_height(&lv_font_montserrat_12) + 4;
+  constexpr int CLEARANCE = 7;
+
+  const int candidateX[8] = {
+    airportX + CLEARANCE,
+    airportX - labelWidth - CLEARANCE,
+    airportX - labelWidth / 2,
+    airportX - labelWidth / 2,
+    airportX + CLEARANCE,
+    airportX - labelWidth - CLEARANCE,
+    airportX + CLEARANCE,
+    airportX - labelWidth - CLEARANCE
+  };
+  const int candidateY[8] = {
+    airportY - labelHeight / 2,
+    airportY - labelHeight / 2,
+    airportY - labelHeight - CLEARANCE,
+    airportY + CLEARANCE,
+    airportY - labelHeight - CLEARANCE,
+    airportY - labelHeight - CLEARANCE,
+    airportY + CLEARANCE,
+    airportY + CLEARANCE
+  };
+
+  // Prefer the outward side of the radar, then deterministic nearby alternatives.
   const float bearingRadians = airport.bearingDegrees * (float)M_PI / 180.0f;
   const float radialX = sinf(bearingRadians);
   const float radialY = -cosf(bearingRadians);
-
-  int x1 = 0;
-  int y1 = 0;
+  int order[8]{};
   if (fabsf(radialX) >= fabsf(radialY)) {
-    x1 = radialX >= 0.0f ? airportX + 7 : airportX - labelWidth - 7;
-    y1 = airportY - labelHeight / 2;
+    const int preferred[8] = {
+      radialX >= 0.0f ? 0 : 1,
+      radialX >= 0.0f ? 4 : 5,
+      radialX >= 0.0f ? 6 : 7,
+      radialY < 0.0f ? 2 : 3,
+      radialY < 0.0f ? 3 : 2,
+      radialX >= 0.0f ? 1 : 0,
+      radialX >= 0.0f ? 5 : 4,
+      radialX >= 0.0f ? 7 : 6
+    };
+    memcpy(order, preferred, sizeof(order));
   } else {
-    x1 = airportX - labelWidth / 2;
-    y1 = radialY >= 0.0f ? airportY + 7 : airportY - labelHeight - 7;
+    const int preferred[8] = {
+      radialY < 0.0f ? 2 : 3,
+      radialX >= 0.0f ? (radialY < 0.0f ? 4 : 6)
+                      : (radialY < 0.0f ? 5 : 7),
+      radialX >= 0.0f ? (radialY < 0.0f ? 5 : 7)
+                      : (radialY < 0.0f ? 4 : 6),
+      radialX >= 0.0f ? 0 : 1,
+      radialX >= 0.0f ? 1 : 0,
+      radialY < 0.0f ? 3 : 2,
+      radialY < 0.0f ? 6 : 4,
+      radialY < 0.0f ? 7 : 5
+    };
+    memcpy(order, preferred, sizeof(order));
   }
 
-  x1 = constrain(x1, 2, WIDTH - labelWidth - 2);
-  y1 = constrain(y1, 2, HEIGHT - labelHeight - 2);
-  int x2 = x1 + labelWidth;
-  int y2 = y1 + labelHeight;
+  const LabelBox rangeControl = {
+    (int16_t)(RANGE_CONTROL_X1 - 4), (int16_t)(RANGE_CONTROL_Y1 - 4),
+    (int16_t)(WIDTH - 1), (int16_t)(HEIGHT - 1)
+  };
+  const LabelBox homeClearance = {
+    (int16_t)(CENTER_X - 10), (int16_t)(CENTER_Y - 10),
+    (int16_t)(CENTER_X + 10), (int16_t)(CENTER_Y + 10)
+  };
 
-  // The range control is static, so keep labels out of it without introducing
-  // frame-to-frame collision decisions.
-  if (!(x2 < RANGE_CONTROL_X1 - 2 || x1 > WIDTH - 2 ||
-        y2 < RANGE_CONTROL_Y1 - 2 || y1 > HEIGHT - 2)) {
-    y1 = constrain(RANGE_CONTROL_Y1 - labelHeight - 3,
-                   2, HEIGHT - labelHeight - 2);
+  for (uint8_t candidateIndex = 0; candidateIndex < 8; ++candidateIndex) {
+    const int candidate = order[candidateIndex];
+    const int x1 = constrain(candidateX[candidate], 2, WIDTH - labelWidth - 2);
+    const int y1 = constrain(candidateY[candidate], 2, HEIGHT - labelHeight - 2);
+    const LabelBox box = {
+      (int16_t)x1, (int16_t)y1,
+      (int16_t)(x1 + labelWidth), (int16_t)(y1 + labelHeight)
+    };
+    if (labelBoxesOverlap(box, rangeControl, 1, 1) ||
+        labelBoxesOverlap(box, homeClearance, 1, 1)) {
+      continue;
+    }
+
+    bool overlaps = false;
+    for (uint16_t used = 0; used < placedLabelCount; ++used) {
+      if (labelBoxesOverlap(box, placedLabels[used])) {
+        overlaps = true;
+        break;
+      }
+    }
+    if (overlaps) continue;
+    placement = box;
+    return true;
   }
+  return false;
+}
+
+void drawAirportLabel(const airport_data::NearbyAirport& airport,
+                      const LabelBox& placement) {
+  const int labelWidth = placement.x2 - placement.x1;
+  const int labelHeight = placement.y2 - placement.y1;
 
   lv_draw_rect_dsc_t rectangle;
   lv_draw_rect_dsc_init(&rectangle);
-  rectangle.bg_opa = static_cast<lv_opa_t>(150);
+  rectangle.bg_opa = static_cast<lv_opa_t>(96);
   rectangle.bg_color = rgb(3, 12, 17);
-  rectangle.border_opa = static_cast<lv_opa_t>(165);
+  rectangle.border_opa = static_cast<lv_opa_t>(115);
   rectangle.border_color = airportColor(airport.category);
   rectangle.border_width = 1;
-  rectangle.radius = 2;
-  lv_canvas_draw_rect(radarView.canvas, x1, y1, labelWidth, labelHeight,
-                      &rectangle);
+  rectangle.radius = 1;
+  lv_canvas_draw_rect(radarView.canvas, placement.x1, placement.y1,
+                      labelWidth, labelHeight, &rectangle);
 
   lv_draw_label_dsc_t label;
   lv_draw_label_dsc_init(&label);
   label.font = &lv_font_montserrat_12;
   label.color = airportLabelColor(airport.category);
-  lv_canvas_draw_text(radarView.canvas, x1 + 4, y1 + 2,
+  lv_canvas_draw_text(radarView.canvas, placement.x1 + 4, placement.y1 + 2,
                       labelWidth - 8, &label, airport.ident);
 }
 
 void drawAirportLabels(float rangeMiles) {
   if (!airportWork || airportFrameLabelMask == 0) return;
+  constexpr uint16_t AIRPORT_LABEL_CAPACITY = 10;
   const uint16_t maximumLabels = rangeMiles <= 20.1f
-      ? 10 : (rangeMiles <= 40.1f ? 8 : 6);
+      ? 9 : (rangeMiles <= 40.1f ? 8 : 6);
+  LabelBox placedLabels[AIRPORT_LABEL_CAPACITY]{};
   uint16_t labelsDrawn = 0;
 
-  // Airport labels are a stable map layer. Their fixed range-specific positions
-  // never react to moving aircraft, so they cannot jump or blink as traffic moves.
+  // Resolve collisions only against the static airport map layer. The same
+  // airport, range, and settings therefore produce the same placement every
+  // frame, while moving aircraft always draw later and can cover the map.
   for (uint8_t category = 0;
        category < airport_data::CATEGORY_COUNT && labelsDrawn < maximumLabels;
        ++category) {
@@ -589,8 +674,13 @@ void drawAirportLabels(float rangeMiles) {
          index < airportFrameCount && labelsDrawn < maximumLabels; ++index) {
       const airport_data::NearbyAirport& airport = airportWork[index];
       if (static_cast<uint8_t>(airport.category) != category) continue;
-      drawAirportLabel(airport, rangeMiles);
-      ++labelsDrawn;
+      LabelBox placement{};
+      if (!placeAirportLabel(airport, rangeMiles, placedLabels,
+                             labelsDrawn, placement)) {
+        continue;
+      }
+      drawAirportLabel(airport, placement);
+      placedLabels[labelsDrawn++] = placement;
     }
   }
 }

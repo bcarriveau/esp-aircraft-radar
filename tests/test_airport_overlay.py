@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Static integration checks for the Product 51 airport overlay."""
+"""Static integration checks for the Product 52 airport/UI refinement."""
 
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def require(text: str, needle: str, context: str) -> None:
+    assert needle in text, f"missing {context}: {needle}"
 
 
 def main() -> None:
@@ -14,26 +18,58 @@ def main() -> None:
     ui = (ROOT / "src" / "ui.cpp").read_text(encoding="utf-8")
     main_cpp = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
 
-    assert "7IN-20260727-PRODUCT51-AIRPORT-UI" in build
-    assert '{"RADAR", "TRACKS", "AIRSPACE", "AIRPORTS", "SYSTEM"}' in ui
-    assert "AIRPORTS // RADAR OVERLAY" in ui
-    assert "SYSTEM // DEVICE & NETWORK" in ui
-    assert "airportToggleButtons[AIRPORT_CATEGORY_COUNT][AIRPORT_RANGE_COUNT]" in ui
-    assert "lv_obj_set_size(airportSaveButton, 158, 38);" in ui
-    assert "lv_obj_set_style_pad_hor(airportSaveButton, 14, 0);" in ui
-    assert "systemStatusCard = lv_obj_create(pagePanel);" in ui
-    assert "deviceNetworkCard = lv_obj_create(pagePanel);" in ui
-    assert "maintenanceCard = lv_obj_create(pagePanel);" in ui
-    assert "RETRY ADS-B" in ui and "RECONNECT WI-FI" in ui
-    assert "saveAirportSettings" in settings_h
-    assert "cachedAirportSymbols" in settings_cpp
-    assert "cachedAirportLabels" in settings_cpp
+    require(build, "7IN-20260727-PRODUCT52-UI-POLISH", "Product 52 marker")
+    require(ui, '{"RADAR", "TRACKS", "AIRSPACE", "AIRPORTS", "SYSTEM"}',
+            "five-tab navigation")
+    require(ui, "AIRPORTS // RADAR OVERLAY", "Airports page")
+    require(ui, "SYSTEM // DEVICE & NETWORK", "System page")
 
+    # Airport settings remain bounded, range-specific, and RAM-cached.
+    require(ui, "airportToggleButtons[AIRPORT_CATEGORY_COUNT][AIRPORT_RANGE_COUNT]",
+            "airport range matrix")
+    require(ui, "lv_obj_set_size(airportSaveButton, 170, 34);",
+            "padded airport save button size")
+    require(ui, "lv_obj_set_style_pad_hor(airportSaveButton, 16, 0);",
+            "airport save horizontal padding")
+    require(ui, "lv_obj_set_style_pad_ver(airportSaveButton, 7, 0);",
+            "airport save vertical padding")
+    require(settings_h, "saveAirportSettings", "airport NVS API")
+    require(settings_cpp, "cachedAirportSymbols", "RAM-cached symbol settings")
+    require(settings_cpp, "cachedAirportLabels", "RAM-cached label settings")
     getters = settings_cpp[
         settings_cpp.index("bool airportsEnabled()"):
         settings_cpp.index("bool saveAirportSettings")
     ]
     assert "preferences." not in getters, "renderer-facing getters must use RAM cache"
+
+    # System cards must fit the 742x280 page workspace without the Product 51
+    # clipped build marker or maintenance buttons.
+    for needle in (
+        "lv_obj_set_size(systemStatusCard, 260, 194);",
+        "lv_obj_set_pos(systemStatusCard, 8, 58);",
+        "lv_obj_set_size(deviceNetworkCard, 466, 194);",
+        "lv_obj_set_pos(deviceNetworkCard, 276, 58);",
+        "lv_obj_set_size(maintenanceCard, 734, 72);",
+        "lv_obj_set_pos(maintenanceCard, 8, 258);",
+        "lv_obj_set_size(retryButton, 218, 32);",
+        "lv_obj_set_pos(retryButton, 14, 21);",
+        "lv_obj_set_pos(reconnectButton, 250, 21);",
+        "lv_obj_set_pos(resetSettingsButton, 486, 21);",
+        'SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT52-UI-POLISH"',
+    ):
+        require(ui, needle, "System layout")
+
+    # Airport labels are resolved only against the static map layer. Aircraft
+    # are still drawn later and therefore retain visual and touch priority.
+    require(renderer, "bool labelBoxesOverlap(", "airport collision helper")
+    require(renderer, "bool placeAirportLabel(", "deterministic airport placement")
+    require(renderer, "LabelBox placedLabels[AIRPORT_LABEL_CAPACITY]", "bounded label boxes")
+    require(renderer, "same placement every", "stable map-layer comment")
+    require(renderer, "rectangle.bg_opa = static_cast<lv_opa_t>(96);",
+            "subdued airport background")
+    require(renderer, "rectangle.border_opa = static_cast<lv_opa_t>(115);",
+            "subdued airport border")
+    assert "airportLabelOverlapsContact" not in renderer
 
     render_body = renderer[renderer.index("bool render("):]
     assert render_body.index("drawAirportLabels(rangeMiles);") < render_body.index(
@@ -45,23 +81,26 @@ def main() -> None:
     assert render_body.index("drawContacts(workTargets") < render_body.index(
         "drawContactLabels(workTargets"
     )
-    contact_labels = renderer[
-        renderer.index("void drawContactLabels("):
-        renderer.index("void updateSideIcon(")
-    ]
-    assert "drawAirportLabels(" not in contact_labels
-    airport_labels = renderer[
-        renderer.index("void drawAirportLabel("):
+
+    airport_section = renderer[
+        renderer.index("bool labelBoxesOverlap("):
         renderer.index("uint8_t radarContactHeadingIndex")
     ]
-    assert "airportLabelOverlapsContact" not in renderer
-    assert "LabelBox" not in airport_labels
-    assert "rectangle.border_width = 1;" in airport_labels
-    assert "fixed range-specific positions" in airport_labels
-    assert "bool hitTest(int canvasX, int canvasY, HitResult& result)" in renderer
-    assert "airport_data::initialize(settings::homeLatitude()" in main_cpp
-    assert "WARNING: Airport overlay unavailable; aircraft radar continuing" in main_cpp
-    print("Airport overlay integration checks passed")
+    assert "renderedHits" not in airport_section
+    assert "selected" not in airport_section
+    assert "tracked" not in airport_section
+
+    # Aircraft touch behavior remains the existing ICAO-only hit test.
+    require(renderer, "bool hitTest(int canvasX, int canvasY, HitResult& result)",
+            "aircraft hit test")
+    hit_test = renderer[renderer.index("bool hitTest(int canvasX"):]
+    assert "airport" not in hit_test.lower()
+
+    require(main_cpp, "airport_data::initialize(settings::homeLatitude()",
+            "optional airport initialization")
+    require(main_cpp, "WARNING: Airport overlay unavailable; aircraft radar continuing",
+            "optional airport failure behavior")
+    print("Product 52 airport and System UI integration checks passed")
 
 
 if __name__ == "__main__":

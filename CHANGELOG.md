@@ -10,30 +10,73 @@ available.
 
 This consolidated file replaces the earlier split changelog that stopped after
 Product 42. It contains the continuous confirmed history from the current Product
-51 source back through Product 15, the first hardened version-controlled baseline.
+52 source back through Product 15, the first hardened version-controlled baseline.
 Earlier Product history is intentionally omitted where the repository does not
 provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 51
-- **Current build marker:** `7IN-20260727-PRODUCT51-AIRPORT-UI`
+- **Current source:** Product 52
+- **Current build marker:** `7IN-20260727-PRODUCT52-UI-POLISH`
 - **Current branch:** `main`
-- **Product 51 source baseline:** Product 50 local hardware-tested source derived from [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
+- **Product 52 source baseline:** Product 51 local hardware-tested source derived from [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 51 is host-verified but still requires a complete PlatformIO compile/link,
-flash and memory report, firmware upload, physical regression checks, and extended
-soak testing before being called a fully verified hardware release.
+Product 52 is host-verified and requires PlatformIO compile/link, firmware upload,
+physical layout review, normal radar interaction checks, and soak testing before
+being called a fully verified hardware release.
+
+## Product 52 - 2026-07-27
+
+**Build:** `7IN-20260727-PRODUCT52-UI-POLISH`
+**Status:** Host-verified airport-layout and System-screen polish candidate
+
+### Changed
+
+- Added deterministic airport-to-airport label collision resolution using a bounded
+  set of fixed candidate positions. The result depends only on airport data, range,
+  and saved airport settings, never on moving aircraft.
+- Preserved airport labels as a background map layer while preventing airport labels
+  from stacking on one another around dense airport clusters.
+- Kept all enabled airport runway/heliport symbols independent from label placement;
+  labels that cannot fit are omitted deterministically rather than overlapping.
+- Reduced airport-label fill, border opacity, radius, and text intensity so normal
+  airports no longer resemble selectable aircraft tags.
+- Rebalanced the System page into wider System Status and Device & Network cards.
+- Shortened the on-screen build identification while retaining the exact Product 52
+  marker in `build_info.h`.
+- Increased the Maintenance card height and moved all three maintenance controls
+  fully inside its content area to prevent clipping.
+- Tightened field heights and spacing so Save Settings and its status message fit
+  within the Device & Network card.
+- Corrected the Save Airports control dimensions and padding so it remains fully
+  inside the airport options card.
+
+### Preserved
+
+- Product 51 fixed airport-map draw order beneath all aircraft contacts and tags.
+- Product 50 airport database, bounded cache, per-range filters, NVS persistence,
+  nearby list, and location-rebuild behavior.
+- Product 49 aircraft tag priority, stable ICAO selection, tracking, and hit testing.
+- ADS-B networking, native/fallback HTTPS, recovery, cadence, target capacity,
+  display timing, DMA, OPI PSRAM, and the 20-scanline bounce buffer.
+
+### Pending verification
+
+- PlatformIO compile/link and flash/RAM report.
+- Upload and confirmation of the Product 52 build marker.
+- Physical review of airport-label spacing, System layout, Maintenance controls,
+  settings touch behavior, and Save Airports padding.
+- Normal radar interaction checks and soak testing.
 
 ## Product 51 - 2026-07-27
 
 **Build:** `7IN-20260727-PRODUCT51-AIRPORT-UI`
-**Status:** Host-verified airport-label and System-UI refinement candidate
+**Status:** PlatformIO-compiled and physically reviewed; superseded by Product 52 layout polish
 
 ### Changed
 
@@ -59,13 +102,13 @@ soak testing before being called a fully verified hardware release.
 - ADS-B networking, HTTPS paths, recovery, cadence, target capacity, panel timing,
   DMA, OPI PSRAM, and the 20-scanline bounce buffer.
 
-### Pending verification
+### Physical verification
 
-- PlatformIO compile/link and flash/RAM report.
-- Upload and confirmation of the Product 51 build marker.
-- Physical review of stable airport labels, System layout, touch behavior, and the
-  padded Save Airports control.
-- Normal radar interaction checks and soak testing.
+- PlatformIO compile/link completed successfully at 56.2% internal RAM and 33.8%
+  application flash usage.
+- Product 51 was uploaded and the stable airport map-layer behavior was observed.
+- Physical review identified static airport-to-airport label overlap plus clipped
+  System build and Maintenance content, leading to Product 52.
 
 ## Product 50 - 2026-07-27
 
