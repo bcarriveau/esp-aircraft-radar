@@ -10,25 +10,65 @@ available.
 
 This consolidated file replaces the earlier split changelog that stopped after
 Product 42. It contains the continuous confirmed history from the current Product
-52 source back through Product 15, the first hardened version-controlled baseline.
+53 source back through Product 15, the first hardened version-controlled baseline.
 Earlier Product history is intentionally omitted where the repository does not
 provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 52
-- **Current build marker:** `7IN-20260727-PRODUCT52-UI-POLISH`
+- **Current source:** Product 53
+- **Current build marker:** `7IN-20260728-PRODUCT53-PAGE-REDESIGN`
 - **Current branch:** `main`
-- **Product 52 source baseline:** Product 51 local hardware-tested source derived from [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
+- **Product 53 source baseline:** Product 52 local hardware-tested source derived from [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 52 is host-verified and requires PlatformIO compile/link, firmware upload,
+Product 53 is host-verified and requires PlatformIO compile/link, firmware upload,
 physical layout review, normal radar interaction checks, and soak testing before
 being called a fully verified hardware release.
+
+## Product 53 - 2026-07-28
+
+**Build:** `7IN-20260728-PRODUCT53-PAGE-REDESIGN`
+**Status:** Host-verified System and Airports page redesign candidate
+
+### Changed
+
+- Rebuilt the Airports tab as an operational nearby-airports table with columns
+  for identifier, airport name, type, distance, bearing, and runway length.
+- Moved airport overlay controls to a dedicated Display Settings subpage with an
+  explicit Back to Airports action, preserving the existing per-range symbol and
+  label controls without crowding the operational list.
+- Bounded the displayed airport table to 32 copied records and prevented periodic
+  status refreshes from rebuilding the table when its content is unchanged, which
+  preserves the user's scroll position.
+- Increased the System Status and Device & Network card heights and moved the
+  Maintenance controls into a compact lower strip, providing more vertical room
+  for diagnostics and network fields.
+- Realigned device fields, coordinate controls, Save Settings, and status text to
+  fit cleanly within the taller Device & Network card.
+- Updated the compact on-screen Product marker to Product 53.
+
+### Preserved
+
+- Product 52 deterministic airport-label collision handling and subdued map-layer
+  styling beneath all aircraft contacts and tags.
+- Product 50 airport cache, regional database, NVS persistence, and 20/40/80-mile
+  category controls.
+- Product 49 aircraft label priority, stable ICAO selection, tracking, and hit test.
+- ADS-B networking, native/fallback HTTPS, recovery, cadence, target capacity,
+  display timing, DMA, OPI PSRAM, and the 20-scanline bounce buffer.
+
+### Pending verification
+
+- PlatformIO compile/link and flash/RAM report.
+- Upload and confirmation of the Product 53 build marker.
+- Physical review of the Airports table, Display Settings navigation, System card
+  spacing, Maintenance strip, keyboard behavior, and touch targets.
+- Normal radar interaction checks and soak testing.
 
 ## Product 52 - 2026-07-27
 

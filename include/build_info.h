@@ -1,4 +1,4 @@
 #pragma once
 
 constexpr const char* BUILD_ID =
-    "7IN-20260727-PRODUCT52-UI-POLISH";
+    "7IN-20260728-PRODUCT53-PAGE-REDESIGN";
