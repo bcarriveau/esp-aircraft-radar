@@ -10,70 +10,111 @@ available.
 
 This consolidated file replaces the earlier split changelog that stopped after
 Product 42. It contains the continuous confirmed history from the current Product
-53 source back through Product 15, the first hardened version-controlled baseline.
+53R2 source back through Product 15, the first hardened version-controlled baseline.
 Earlier Product history is intentionally omitted where the repository does not
 provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 53
-- **Current build marker:** `7IN-20260728-PRODUCT53-PAGE-REDESIGN`
+- **Current source:** Product 53R2
+- **Current build marker:** `7IN-20260727-PRODUCT53R2-AIRPORT-TABLE`
 - **Current branch:** `main`
-- **Product 53 source baseline:** Product 52 local hardware-tested source derived from [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
+- **Product 53R2 source baseline:** physically reviewed Product 53 source derived from [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 53 is host-verified and requires PlatformIO compile/link, firmware upload,
-physical layout review, normal radar interaction checks, and soak testing before
-being called a fully verified hardware release.
+Product 53R2 is host-verified and requires PlatformIO compile/link, firmware upload,
+physical review of the airport directory table, normal radar interaction checks,
+and soak testing before being called a fully verified hardware release.
 
-## Product 53 - 2026-07-28
+## Product 53R2 - 2026-07-27
 
-**Build:** `7IN-20260728-PRODUCT53-PAGE-REDESIGN`
-**Status:** Host-verified System and Airports page redesign candidate
+**Build:** `7IN-20260727-PRODUCT53R2-AIRPORT-TABLE`  
+**Status:** Host-verified airport-directory table correction candidate
 
 ### Changed
 
-- Rebuilt the Airports tab as an operational nearby-airports table with columns
-  for identifier, airport name, type, distance, bearing, and runway length.
-- Moved airport overlay controls to a dedicated Display Settings subpage with an
-  explicit Back to Airports action, preserving the existing per-range symbol and
-  label controls without crowding the operational list.
-- Bounded the displayed airport table to 32 copied records and prevented periodic
-  status refreshes from rebuilding the table when its content is unchanged, which
-  preserves the user's scroll position.
-- Increased the System Status and Device & Network card heights and moved the
-  Maintenance controls into a compact lower strip, providing more vertical room
-  for diagnostics and network fields.
-- Realigned device fields, coordinate controls, Save Settings, and status text to
-  fit cleanly within the taller Device & Network card.
-- Updated the compact on-screen Product marker to Product 53.
+- Rebalanced the airport directory into a strict single-line `ID / AIRPORT /
+  TYPE / DIST / BRG / RUNWAY` layout.
+- Applied LVGL table text-crop control to every directory cell so identifiers,
+  categories, bearings, and runway values cannot wrap into uneven row heights.
+- Gave the airport-name column most of the table width while retaining bounded
+  widths for every compact data column and room for the vertical scrollbar.
+- Reduced directory bearings to a three-digit numeric value under the `BRG`
+  heading; the full compass direction remains available in Airport Profile.
+- Kept long airport names on one line and safely clipped them; tapping the row
+  still opens the complete Airport Profile.
+- Matched the compact one-line directory summary and `DISPLAY SETTINGS` wording
+  used by the physically reviewed Product 53 screen.
 
 ### Preserved
 
-- Product 52 deterministic airport-label collision handling and subdued map-layer
-  styling beneath all aircraft contacts and tags.
-- Product 50 airport cache, regional database, NVS persistence, and 20/40/80-mile
-  category controls.
-- Product 49 aircraft label priority, stable ICAO selection, tracking, and hit test.
-- ADS-B networking, native/fallback HTTPS, recovery, cadence, target capacity,
-  display timing, DMA, OPI PSRAM, and the 20-scanline bounce buffer.
+- Product 53 directory-first Airports page, Airport Profile, display-settings
+  subview, System-page redesign, and all saved airport controls.
+- Product 52 deterministic airport-label placement beneath aircraft.
+- Stable ICAO selection/tracking, aircraft-only radar hit testing, ADS-B
+  networking, HTTPS recovery, 200-target capacity, panel timing, DMA, OPI PSRAM,
+  and the 20-scanline bounce buffer.
+
+### Pending verification
+
+- PlatformIO compile/link and flash/RAM report.
+- Upload and confirmation of the Product 53R2 build marker.
+- Physical confirmation that headers and all rows remain single-line, long names
+  crop cleanly, scrolling remains usable, and Airport Profile opens correctly.
+
+## Product 53 - 2026-07-27
+
+**Build:** `7IN-20260727-PRODUCT53-PAGE-REDESIGN`
+**Status:** Host-verified Airports-directory and System-page redesign candidate
+
+### Changed
+
+- Rebuilt the main Airports page as a directory-first operational screen rather
+  than combining configuration controls with a narrow text list.
+- Added a bounded, scrollable airport table with aligned IDENT, TYPE, DISTANCE,
+  BEARING, RUNWAY, and AIRPORT columns, plus a compact current-range/database
+  summary.
+- Made airport rows open a dedicated Airport Profile view with airport name,
+  category, distance, bearing, runway length, runway heading, and elevation,
+  matching the Tracks-page drill-down pattern without affecting radar selection.
+- Added a dedicated `DISPLAY OPTIONS` view under the Airports tab, with a clear
+  `BACK TO AIRPORTS` action and the full per-range symbol/label matrix using the
+  available screen width.
+- Reloads saved airport options when entering the options view and discards
+  unsaved edits when backing out, so the directory always reflects the settings
+  actually used by the radar renderer.
+- Moved the Maintenance card to the bottom of the System workspace and increased
+  the two primary cards to restore vertical breathing room.
+- Realigned all Device & Network fields to a consistent grid, moved Save Settings
+  into a dedicated action row, and gave status messages a full-width line below it.
+- Expanded System Status vertically and separated data age from fetch duration and
+  payload size for easier scanning.
+
+### Preserved
+
+- Product 52 deterministic airport-label layout and background-map draw order.
+- Product 50 airport database, bounded cache, per-range settings, verified NVS
+  writes, and location-rebuild behavior.
+- Stable ICAO aircraft selection/tracking, aircraft-only hit testing, 200-target
+  capacity, ADS-B networking, HTTPS recovery, panel timing, DMA, OPI PSRAM, and
+  the 20-scanline bounce buffer.
 
 ### Pending verification
 
 - PlatformIO compile/link and flash/RAM report.
 - Upload and confirmation of the Product 53 build marker.
-- Physical review of the Airports table, Display Settings navigation, System card
-  spacing, Maintenance strip, keyboard behavior, and touch targets.
+- Physical review of the Airport directory, display-options view, System spacing,
+  maintenance strip, settings keyboard, and all save/reset actions.
 - Normal radar interaction checks and soak testing.
 
 ## Product 52 - 2026-07-27
 
 **Build:** `7IN-20260727-PRODUCT52-UI-POLISH`
-**Status:** Host-verified airport-layout and System-screen polish candidate
+**Status:** PlatformIO-compiled, uploaded, and physically reviewed; superseded by Product 53 page redesign
 
 ### Changed
 
@@ -105,13 +146,13 @@ being called a fully verified hardware release.
 - ADS-B networking, native/fallback HTTPS, recovery, cadence, target capacity,
   display timing, DMA, OPI PSRAM, and the 20-scanline bounce buffer.
 
-### Pending verification
+### Physical verification
 
-- PlatformIO compile/link and flash/RAM report.
-- Upload and confirmation of the Product 52 build marker.
-- Physical review of airport-label spacing, System layout, Maintenance controls,
-  settings touch behavior, and Save Airports padding.
-- Normal radar interaction checks and soak testing.
+- PlatformIO compile/link completed successfully at 56.2% internal RAM and 33.8%
+  application flash usage.
+- Product 52 was uploaded and the deterministic airport-label layout was observed.
+- Physical review confirmed the need for a directory-first Airports screen and
+  more deliberate System-page vertical spacing, leading to Product 53.
 
 ## Product 51 - 2026-07-27
 
