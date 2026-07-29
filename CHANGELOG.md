@@ -10,25 +10,68 @@ available.
 
 This consolidated file replaces the earlier split changelog that stopped after
 Product 42. It contains the continuous confirmed history from the current Product
-53R2 source back through Product 15, the first hardened version-controlled baseline.
+53R3 source back through Product 15, the first hardened version-controlled baseline.
 Earlier Product history is intentionally omitted where the repository does not
 provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 53R2
-- **Current build marker:** `7IN-20260727-PRODUCT53R2-AIRPORT-TABLE`
+- **Current source:** Product 53R3
+- **Current build marker:** `7IN-20260729-PRODUCT53R3-AIRPORT-LABELS`
 - **Current branch:** `main`
-- **Product 53R2 source baseline:** physically reviewed Product 53 source derived from [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
+- **Product 53R3 source baseline:** physically reviewed Product 53R2 source derived from [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 53R2 is host-verified and requires PlatformIO compile/link, firmware upload,
-physical review of the airport directory table, normal radar interaction checks,
-and soak testing before being called a fully verified hardware release.
+Product 53R3 is host-verified and requires PlatformIO compile/link, firmware upload,
+physical review of the expanded airport labels and slightly taller directory rows,
+normal radar interaction checks, and soak testing before being called a fully
+verified hardware release.
+
+## Product 53R3 - 2026-07-29
+
+**Build:** `7IN-20260729-PRODUCT53R3-AIRPORT-LABELS`  
+**Status:** Host-verified focused airport-label refinement candidate
+
+### Changed
+
+- Removed the small 9/8/6 airport-label quotas. The renderer now attempts every
+  enabled airport in deterministic major, public, private, and heliport order and
+  displays every identifier that fits the fixed airport-to-airport collision rules.
+- Added a bounded PSRAM label-placement buffer sized from the existing 192-airport
+  nearby-cache limit, avoiding additional main-loop stack pressure while retaining
+  deterministic storage bounds.
+- Added renderer label-count diagnostics so the Airports directory reports the
+  actual number of labels drawn rather than describing every in-range entry as
+  visible.
+- Invalidates the displayed label count after airport setting or home-location
+  changes until the radar has rendered the new configuration.
+- Set compile-time and reset defaults to show major and public symbols and labels at
+  20, 40, and 80 miles; private fields and heliports remain off by default.
+- Increased airport-directory vertical cell padding slightly for easier touch and
+  reading while preserving the Product 53R2 columns and page structure.
+
+### Preserved
+
+- Product 53R2 Airports directory, profile, display-settings page, column widths,
+  single-line cropped rows, and System layout.
+- Stable airport labels beneath aircraft, deterministic airport-only collision
+  handling, and aircraft-only ICAO hit testing.
+- Existing saved airport settings; the revised defaults apply only to new NVS keys
+  or an explicit Reset Defaults operation.
+- ADS-B networking, HTTPS paths, 15-second cadence, stale rejection, Wi-Fi/TLS
+  recovery, 200-target capacity, panel timing, DMA, OPI PSRAM, and the 20-scanline
+  bounce buffer.
+
+### Pending verification
+
+- PlatformIO compile/link and flash/RAM report.
+- Upload and confirmation of the Product 53R3 build marker.
+- Physical confirmation that additional major/public labels fill available space
+  without overlap and that the taller directory rows remain comfortable to scroll.
 
 ## Product 53R2 - 2026-07-27
 

@@ -155,6 +155,11 @@ airport_data::NearbyAirport* airportWork = nullptr;
 uint16_t airportFrameCount = 0;
 uint8_t airportFrameSymbolMask = 0;
 uint8_t airportFrameLabelMask = 0;
+LabelBox* airportLabelBoxes = nullptr;
+bool airportLabelStatsValid = false;
+uint8_t airportLabelStatsRangeIndex = 0;
+uint8_t airportLabelStatsMask = 0;
+uint16_t airportLabelStatsCount = 0;
 ContactFrame contactFrame;
 uint8_t renderedHitCount = 0;
 bool renderedTwentyMileRange = false;
@@ -255,16 +260,21 @@ bool allocateWorkingBuffers() {
       airport_data::MAX_NEARBY_AIRPORTS,
       sizeof(airport_data::NearbyAirport),
       MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  airportLabelBoxes = static_cast<LabelBox*>(heap_caps_calloc(
+      airport_data::MAX_NEARBY_AIRPORTS, sizeof(LabelBox),
+      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
 
   if (!renderedHits || !renderedContacts || !renderedLabelBoxes) {
     free(renderedHits);
     free(renderedContacts);
     free(renderedLabelBoxes);
     free(airportWork);
+    free(airportLabelBoxes);
     renderedHits = nullptr;
     renderedContacts = nullptr;
     renderedLabelBoxes = nullptr;
     airportWork = nullptr;
+    airportLabelBoxes = nullptr;
     contactFrame.contacts = nullptr;
     Serial.println("FATAL: Radar working-buffer PSRAM allocation failed");
     return false;
@@ -283,10 +293,33 @@ bool allocateWorkingBuffers() {
     Serial.println(
         "Airport overlay disabled: radar airport work-buffer allocation failed");
   }
+  if (airportLabelBoxes) {
+    Serial.printf("Radar airport label buffer in PSRAM: %u bytes\n",
+                  (unsigned)(airport_data::MAX_NEARBY_AIRPORTS *
+                             sizeof(LabelBox)));
+  } else {
+    Serial.println(
+        "Airport labels disabled: placement-buffer allocation failed");
+  }
   return true;
 }
 
 void configure(const View& view) { radarView = view; }
+
+bool airportLabelCount(uint8_t rangeIndex, uint8_t labelMask,
+                       uint16_t& count) {
+  if (!airportLabelStatsValid || airportLabelStatsRangeIndex != rangeIndex ||
+      airportLabelStatsMask != labelMask) {
+    return false;
+  }
+  count = airportLabelStatsCount;
+  return true;
+}
+
+void invalidateAirportLabelCount() {
+  airportLabelStatsValid = false;
+  airportLabelStatsCount = 0;
+}
 
 void drawAircraftPreview(lv_obj_t* canvas, lv_color_t* buffer,
                          const aircraft::Target& target) {
@@ -655,32 +688,29 @@ void drawAirportLabel(const airport_data::NearbyAirport& airport,
 }
 
 void drawAirportLabels(float rangeMiles) {
-  if (!airportWork || airportFrameLabelMask == 0) return;
-  constexpr uint16_t AIRPORT_LABEL_CAPACITY = 10;
-  const uint16_t maximumLabels = rangeMiles <= 20.1f
-      ? 9 : (rangeMiles <= 40.1f ? 8 : 6);
-  LabelBox placedLabels[AIRPORT_LABEL_CAPACITY]{};
-  uint16_t labelsDrawn = 0;
+  airportLabelStatsRangeIndex = airport_data::rangeIndex(rangeMiles);
+  airportLabelStatsMask = airportFrameLabelMask;
+  airportLabelStatsCount = 0;
+  airportLabelStatsValid = true;
+  if (!airportWork || !airportLabelBoxes || airportFrameLabelMask == 0) return;
 
-  // Resolve collisions only against the static airport map layer. The same
-  // airport, range, and settings therefore produce the same placement every
-  // frame, while moving aircraft always draw later and can cover the map.
-  for (uint8_t category = 0;
-       category < airport_data::CATEGORY_COUNT && labelsDrawn < maximumLabels;
+  // Attempt every enabled airport in deterministic category/distance order.
+  // The bounded nearby cache and airport-to-airport collision checks determine
+  // the practical count; there is no small range-specific label quota.
+  for (uint8_t category = 0; category < airport_data::CATEGORY_COUNT;
        ++category) {
     const uint8_t categoryMask = static_cast<uint8_t>(1U << category);
     if ((airportFrameLabelMask & categoryMask) == 0) continue;
-    for (uint16_t index = 0;
-         index < airportFrameCount && labelsDrawn < maximumLabels; ++index) {
+    for (uint16_t index = 0; index < airportFrameCount; ++index) {
       const airport_data::NearbyAirport& airport = airportWork[index];
       if (static_cast<uint8_t>(airport.category) != category) continue;
       LabelBox placement{};
-      if (!placeAirportLabel(airport, rangeMiles, placedLabels,
-                             labelsDrawn, placement)) {
+      if (!placeAirportLabel(airport, rangeMiles, airportLabelBoxes,
+                             airportLabelStatsCount, placement)) {
         continue;
       }
       drawAirportLabel(airport, placement);
-      placedLabels[labelsDrawn++] = placement;
+      airportLabelBoxes[airportLabelStatsCount++] = placement;
     }
   }
 }

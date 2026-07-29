@@ -26,7 +26,7 @@ constexpr uint8_t AIRSPACE_CATEGORY_COUNT = 6;
 constexpr uint8_t AIRSPACE_METRIC_COUNT = 4;
 constexpr uint8_t AIRPORT_CATEGORY_COUNT = airport_data::CATEGORY_COUNT;
 constexpr uint8_t AIRPORT_RANGE_COUNT = airport_data::RANGE_COUNT;
-constexpr const char* SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT53R2-AIRPORT-TABLE";
+constexpr const char* SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT53R3-AIRPORT-LABELS";
 constexpr uint8_t AIRPORT_CONFIG_MODE_COUNT = 2;
 constexpr uint16_t AIRPORT_DIRECTORY_CAPACITY = 32;
 static_assert(AIRPORT_RANGE_COUNT == settings::AIRPORT_RANGE_COUNT,
@@ -482,15 +482,27 @@ void updateAirportDirectory() {
   const bool overlayEnabled = settings::airportsEnabled();
   const uint8_t visibleMask = static_cast<uint8_t>(
       settings::airportSymbolMask(range) | settings::airportLabelMask(range));
-  const uint16_t visibleCount = overlayEnabled
+  const uint16_t inRangeCount = overlayEnabled
       ? airport_data::visibleCount(rangeMiles, visibleMask) : 0;
+  const uint8_t activeLabelMask = overlayEnabled
+      ? settings::airportLabelMask(range) : 0;
+  uint16_t labelsDrawn = 0;
+  const bool labelCountCurrent = radar::airportLabelCount(
+      range, activeLabelMask, labelsDrawn);
 
   char summary[192];
-  snprintf(summary, sizeof(summary),
-           "OVERLAY %s  |  RANGE %.0f MI  |  %u CACHED  |  %u VISIBLE  |  DB %s",
-           overlayEnabled ? "ON" : "OFF", rangeMiles,
-           (unsigned)status.cachedCount, (unsigned)visibleCount,
-           airport_data::databaseDate());
+  if (labelCountCurrent) {
+    snprintf(summary, sizeof(summary),
+             "%s  |  %.0f MI  |  %u IN RANGE  |  %u LABELS  |  DB %s",
+             overlayEnabled ? "OVERLAY ON" : "OVERLAY OFF", rangeMiles,
+             (unsigned)inRangeCount, (unsigned)labelsDrawn,
+             airport_data::databaseDate());
+  } else {
+    snprintf(summary, sizeof(summary),
+             "%s  |  %.0f MI  |  %u IN RANGE  |  LABELS --  |  DB %s",
+             overlayEnabled ? "OVERLAY ON" : "OVERLAY OFF", rangeMiles,
+             (unsigned)inRangeCount, airport_data::databaseDate());
+  }
   setLabelTextIfChanged(airportDirectorySummaryLabel, summary);
 
   airportDirectoryCount = overlayEnabled
@@ -679,6 +691,7 @@ void airportSaveEvent(lv_event_t*) {
     return;
   }
   airportOptionsDirty = false;
+  radar::invalidateAirportLabelCount();
   setAirportStatus("Airport settings saved", rgb(120, 240, 155));
 }
 
@@ -769,6 +782,7 @@ void saveSettingsEvent(lv_event_t*) {
                                fabsf(previousLongitude - longitude) > 0.00001f;
   if (locationChanged) {
     app_state::invalidateLocation();
+    radar::invalidateAirportLabelCount();
     if (!airport_data::rebuild(latitude, longitude)) {
       Serial.println("Airport cache rebuild failed after location change");
     }
@@ -823,6 +837,7 @@ void resetSettingsEvent(lv_event_t*) {
       fabsf(previousLongitude - settings::homeLongitude()) > 0.00001f;
   if (locationChanged) {
     app_state::invalidateLocation();
+    radar::invalidateAirportLabelCount();
     if (!airport_data::rebuild(settings::homeLatitude(),
                                settings::homeLongitude())) {
       Serial.println("Airport cache rebuild failed after defaults reset");
@@ -2110,7 +2125,7 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_style_text_color(airportDirectoryTable, rgb(225, 235, 240),
                               LV_PART_ITEMS);
   lv_obj_set_style_pad_hor(airportDirectoryTable, 6, LV_PART_ITEMS);
-  lv_obj_set_style_pad_ver(airportDirectoryTable, 5, LV_PART_ITEMS);
+  lv_obj_set_style_pad_ver(airportDirectoryTable, 7, LV_PART_ITEMS);
   lv_obj_add_event_cb(airportDirectoryTable, airportDirectoryTableEvent,
                       LV_EVENT_VALUE_CHANGED, nullptr);
 

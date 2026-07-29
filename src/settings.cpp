@@ -30,7 +30,7 @@ constexpr uint8_t DEFAULT_AIRPORT_SYMBOLS[AIRPORT_RANGE_COUNT] = {
   0x03, 0x03, 0x03
 };
 constexpr uint8_t DEFAULT_AIRPORT_LABELS[AIRPORT_RANGE_COUNT] = {
-  0x03, 0x03, 0x01
+  0x03, 0x03, 0x03
 };
 
 bool cachedAirportsEnabled = true;

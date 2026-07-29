@@ -59,6 +59,9 @@ bool allocateWorkingBuffers();
 void configure(const View& view);
 bool render(aircraft::Target* workTargets, const char* selectedHex);
 bool hitTest(int canvasX, int canvasY, HitResult& result);
+bool airportLabelCount(uint8_t rangeIndex, uint8_t labelMask,
+                       uint16_t& count);
+void invalidateAirportLabelCount();
 
 void drawAircraftPreview(lv_obj_t* canvas, lv_color_t* buffer,
                          const aircraft::Target& target);
