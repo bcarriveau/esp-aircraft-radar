@@ -509,9 +509,12 @@ void prepareAirportFrame(float rangeMiles) {
   airportFrameSymbolMask = settings::airportSymbolMask(range);
   airportFrameLabelMask = settings::airportLabelMask(range);
   const uint8_t unionMask = airportFrameSymbolMask | airportFrameLabelMask;
-  if (unionMask == 0) return;
+  const bool hasManualShow = settings::airportLabelOverrideCount(
+      settings::AirportLabelMode::SHOW) > 0;
+  if (unionMask == 0 && !hasManualShow) return;
   airportFrameCount = airport_data::copyNearby(
-      airportWork, airport_data::MAX_NEARBY_AIRPORTS, rangeMiles, unionMask);
+      airportWork, airport_data::MAX_NEARBY_AIRPORTS, rangeMiles,
+      airport_data::CATEGORY_MASK_ALL);
 }
 
 void drawAirportSymbols(float rangeMiles) {
@@ -692,18 +695,44 @@ void drawAirportLabels(float rangeMiles) {
   airportLabelStatsMask = airportFrameLabelMask;
   airportLabelStatsCount = 0;
   airportLabelStatsValid = true;
-  if (!airportWork || !airportLabelBoxes || airportFrameLabelMask == 0) return;
+  const bool hasManualShow = settings::airportLabelOverrideCount(
+      settings::AirportLabelMode::SHOW) > 0;
+  if (!airportWork || !airportLabelBoxes ||
+      (airportFrameLabelMask == 0 && !hasManualShow)) {
+    return;
+  }
 
-  // Attempt every enabled airport in deterministic category/distance order.
-  // The bounded nearby cache and airport-to-airport collision checks determine
-  // the practical count; there is no small range-specific label quota.
+  // Manual SHOW entries are placed first, nearest first, so they can displace
+  // automatic labels without changing the fixed collision rules.
+  for (uint16_t index = 0; index < airportFrameCount; ++index) {
+    const airport_data::NearbyAirport& airport = airportWork[index];
+    if (settings::airportLabelMode(airport.ident) !=
+        settings::AirportLabelMode::SHOW) {
+      continue;
+    }
+    LabelBox placement{};
+    if (!placeAirportLabel(airport, rangeMiles, airportLabelBoxes,
+                           airportLabelStatsCount, placement)) {
+      continue;
+    }
+    drawAirportLabel(airport, placement);
+    airportLabelBoxes[airportLabelStatsCount++] = placement;
+  }
+
+  // AUTO entries retain deterministic major/public/private/heliport priority,
+  // with distance ordering supplied by the bounded nearby cache. HIDE entries
+  // are never attempted and SHOW entries are not drawn a second time.
   for (uint8_t category = 0; category < airport_data::CATEGORY_COUNT;
        ++category) {
     const uint8_t categoryMask = static_cast<uint8_t>(1U << category);
     if ((airportFrameLabelMask & categoryMask) == 0) continue;
     for (uint16_t index = 0; index < airportFrameCount; ++index) {
       const airport_data::NearbyAirport& airport = airportWork[index];
-      if (static_cast<uint8_t>(airport.category) != category) continue;
+      if (static_cast<uint8_t>(airport.category) != category ||
+          settings::airportLabelMode(airport.ident) !=
+              settings::AirportLabelMode::AUTO) {
+        continue;
+      }
       LabelBox placement{};
       if (!placeAirportLabel(airport, rangeMiles, airportLabelBoxes,
                              airportLabelStatsCount, placement)) {

@@ -1,7 +1,9 @@
 #include "settings.h"
 
 #include <WiFi.h>
+#include <ctype.h>
 #include <math.h>
+#include <string.h>
 
 #include "config.h"
 
@@ -18,6 +20,7 @@ constexpr const char* KEY_WIFI_PASS = "wifi_pass";
 constexpr const char* KEY_LAT = "home_lat";
 constexpr const char* KEY_LON = "home_lon";
 constexpr const char* KEY_AIRPORTS_ENABLED = "apt_on";
+constexpr const char* KEY_AIRPORT_OVERRIDES = "apt_ovr";
 constexpr const char* KEY_AIRPORT_SYMBOLS[AIRPORT_RANGE_COUNT] = {
   "apt_s20", "apt_s40", "apt_s80"
 };
@@ -42,6 +45,29 @@ uint8_t cachedAirportLabels[AIRPORT_RANGE_COUNT] = {
   DEFAULT_AIRPORT_LABELS[0], DEFAULT_AIRPORT_LABELS[1],
   DEFAULT_AIRPORT_LABELS[2]
 };
+
+constexpr uint8_t AIRPORT_OVERRIDE_STORAGE_VERSION = 1;
+constexpr size_t AIRPORT_IDENT_CAPACITY = 8;
+
+struct StoredAirportLabelOverride {
+  char ident[AIRPORT_IDENT_CAPACITY]{};
+  uint8_t mode = static_cast<uint8_t>(AirportLabelMode::AUTO);
+};
+
+struct StoredAirportLabelOverrides {
+  uint8_t version = AIRPORT_OVERRIDE_STORAGE_VERSION;
+  uint8_t count = 0;
+  uint16_t reserved = 0;
+  StoredAirportLabelOverride entries[AIRPORT_LABEL_OVERRIDE_CAPACITY]{};
+};
+
+static_assert(sizeof(StoredAirportLabelOverride) == 9,
+              "Airport override record layout changed");
+static_assert(sizeof(StoredAirportLabelOverrides) ==
+                  4 + 9 * AIRPORT_LABEL_OVERRIDE_CAPACITY,
+              "Airport override storage layout changed");
+
+StoredAirportLabelOverrides cachedAirportOverrides{};
 
 String defaultTitle() {
   return String("BILLS AIRCRAFT RADAR");
@@ -77,6 +103,19 @@ bool storedFloatMatches(const char* key, float value) {
 bool storedUCharMatches(const char* key, uint8_t value) {
   return preferences.getType(key) == PT_U8 &&
          preferences.getUChar(key, 0) == value;
+}
+
+bool storedBytesMatch(const char* key, const void* value, size_t length) {
+  if (!value || preferences.getType(key) != PT_BLOB ||
+      preferences.getBytesLength(key) != length) {
+    return false;
+  }
+  StoredAirportLabelOverrides stored{};
+  if (length != sizeof(stored) ||
+      preferences.getBytes(key, &stored, sizeof(stored)) != sizeof(stored)) {
+    return false;
+  }
+  return memcmp(&stored, value, length) == 0;
 }
 
 bool writeStringChecked(const char* key, const String& value) {
@@ -127,6 +166,123 @@ bool writeUCharChecked(const char* key, uint8_t value) {
   return true;
 }
 
+bool writeBytesChecked(const char* key, const void* value, size_t length) {
+  if (!storageOpen || !storageHealthy || !value || length == 0) return false;
+  if (storedBytesMatch(key, value, length)) return true;
+
+  const size_t writtenLength = preferences.putBytes(key, value, length);
+  const bool lengthValid = writtenLength == length;
+  const bool storedValueValid = storedBytesMatch(key, value, length);
+  if (!lengthValid || !storedValueValid) {
+    Serial.printf("NVS blob write failed: %s (%u/%u bytes)\n", key,
+                  (unsigned)writtenLength, (unsigned)length);
+    return false;
+  }
+  return true;
+}
+
+bool airportIdentValid(const char* ident) {
+  if (!ident || !ident[0]) return false;
+  size_t length = 0;
+  for (; ident[length] && length < AIRPORT_IDENT_CAPACITY; ++length) {
+    const unsigned char character = static_cast<unsigned char>(ident[length]);
+    if (!isalnum(character) && character != '-') return false;
+  }
+  return length > 0 && length < AIRPORT_IDENT_CAPACITY && ident[length] == 0;
+}
+
+void normalizeAirportIdent(const char* ident, char out[AIRPORT_IDENT_CAPACITY]) {
+  memset(out, 0, AIRPORT_IDENT_CAPACITY);
+  if (!ident) return;
+  for (size_t index = 0; index + 1 < AIRPORT_IDENT_CAPACITY && ident[index];
+       ++index) {
+    out[index] = static_cast<char>(toupper(
+        static_cast<unsigned char>(ident[index])));
+  }
+}
+
+void clearAirportOverrideCache() {
+  cachedAirportOverrides = StoredAirportLabelOverrides{};
+}
+
+int compareAirportIdent(const char* first, const char* second) {
+  return strcmp(first ? first : "", second ? second : "");
+}
+
+uint8_t airportOverrideLowerBound(const char* ident, bool& found) {
+  uint8_t low = 0;
+  uint8_t high = cachedAirportOverrides.count;
+  while (low < high) {
+    const uint8_t middle = static_cast<uint8_t>(low + (high - low) / 2);
+    const int comparison = compareAirportIdent(
+        cachedAirportOverrides.entries[middle].ident, ident);
+    if (comparison < 0) {
+      low = static_cast<uint8_t>(middle + 1);
+    } else {
+      high = middle;
+    }
+  }
+  found = low < cachedAirportOverrides.count &&
+          compareAirportIdent(cachedAirportOverrides.entries[low].ident,
+                              ident) == 0;
+  return low;
+}
+
+bool airportOverrideStorageValid(const StoredAirportLabelOverrides& storage) {
+  if (storage.version != AIRPORT_OVERRIDE_STORAGE_VERSION ||
+      storage.count > AIRPORT_LABEL_OVERRIDE_CAPACITY) {
+    return false;
+  }
+  const char* previous = nullptr;
+  for (uint8_t index = 0; index < storage.count; ++index) {
+    const StoredAirportLabelOverride& entry = storage.entries[index];
+    char normalized[AIRPORT_IDENT_CAPACITY]{};
+    normalizeAirportIdent(entry.ident, normalized);
+    if (!airportIdentValid(entry.ident) ||
+        strcmp(normalized, entry.ident) != 0 ||
+        (entry.mode != static_cast<uint8_t>(AirportLabelMode::SHOW) &&
+         entry.mode != static_cast<uint8_t>(AirportLabelMode::HIDE))) {
+      return false;
+    }
+    if (previous && compareAirportIdent(previous, entry.ident) >= 0) {
+      return false;
+    }
+    previous = entry.ident;
+  }
+  return true;
+}
+
+bool initializeAirportOverrideDefaults() {
+  if (preferences.getType(KEY_AIRPORT_OVERRIDES) == PT_BLOB &&
+      preferences.getBytesLength(KEY_AIRPORT_OVERRIDES) ==
+          sizeof(StoredAirportLabelOverrides)) {
+    return true;
+  }
+  StoredAirportLabelOverrides empty{};
+  return writeBytesChecked(KEY_AIRPORT_OVERRIDES, &empty, sizeof(empty));
+}
+
+bool loadAirportOverrideCache() {
+  clearAirportOverrideCache();
+  if (!storageOpen) return true;
+  StoredAirportLabelOverrides loaded{};
+  if (preferences.getType(KEY_AIRPORT_OVERRIDES) == PT_BLOB &&
+      preferences.getBytesLength(KEY_AIRPORT_OVERRIDES) == sizeof(loaded) &&
+      preferences.getBytes(KEY_AIRPORT_OVERRIDES, &loaded, sizeof(loaded)) ==
+          sizeof(loaded) &&
+      airportOverrideStorageValid(loaded)) {
+    cachedAirportOverrides = loaded;
+    return true;
+  }
+  Serial.println("Airport label overrides invalid; resetting to AUTO");
+  StoredAirportLabelOverrides empty{};
+  if (!writeBytesChecked(KEY_AIRPORT_OVERRIDES, &empty, sizeof(empty))) {
+    return false;
+  }
+  cachedAirportOverrides = empty;
+  return true;
+}
+
 void markStorageError(const char* operation) {
   storageHealthy = false;
   Serial.printf("NVS ERROR: %s did not complete; saving disabled\n", operation);
@@ -150,6 +306,7 @@ bool initializeAirportDefaults() {
       initialized = false;
     }
   }
+  if (!initializeAirportOverrideDefaults()) initialized = false;
   return initialized;
 }
 
@@ -159,9 +316,10 @@ void setAirportSettingsCacheDefaults() {
     cachedAirportSymbols[i] = DEFAULT_AIRPORT_SYMBOLS[i];
     cachedAirportLabels[i] = DEFAULT_AIRPORT_LABELS[i];
   }
+  clearAirportOverrideCache();
 }
 
-void loadAirportSettingsCache() {
+bool loadAirportSettingsCache() {
   cachedAirportsEnabled = storageOpen
       ? preferences.getUChar(KEY_AIRPORTS_ENABLED, 1) != 0
       : true;
@@ -175,6 +333,7 @@ void loadAirportSettingsCache() {
                                DEFAULT_AIRPORT_LABELS[i]) & 0x0F
         : DEFAULT_AIRPORT_LABELS[i];
   }
+  return loadAirportOverrideCache();
 }
 
 }  // namespace
@@ -220,7 +379,11 @@ bool initialize() {
     markStorageError("default initialization");
     return false;
   }
-  loadAirportSettingsCache();
+  if (!loadAirportSettingsCache()) {
+    setAirportSettingsCacheDefaults();
+    markStorageError("airport override initialization");
+    return false;
+  }
 
   Serial.println("NVS: READY");
   return true;
@@ -249,6 +412,11 @@ bool resetToDefaults() {
                            DEFAULT_AIRPORT_LABELS[i])) {
       saved = false;
     }
+  }
+  StoredAirportLabelOverrides emptyOverrides{};
+  if (!writeBytesChecked(KEY_AIRPORT_OVERRIDES, &emptyOverrides,
+                         sizeof(emptyOverrides))) {
+    saved = false;
   }
   if (!saved) {
     markStorageError("reset to defaults");
@@ -327,6 +495,85 @@ uint8_t airportSymbolMask(uint8_t rangeIndex) {
 uint8_t airportLabelMask(uint8_t rangeIndex) {
   if (rangeIndex >= AIRPORT_RANGE_COUNT) rangeIndex = AIRPORT_RANGE_COUNT - 1;
   return cachedAirportLabels[rangeIndex];
+}
+
+AirportLabelMode airportLabelMode(const char* ident) {
+  if (!airportIdentValid(ident) || cachedAirportOverrides.count == 0) {
+    return AirportLabelMode::AUTO;
+  }
+  char normalized[AIRPORT_IDENT_CAPACITY]{};
+  normalizeAirportIdent(ident, normalized);
+  bool found = false;
+  const uint8_t index = airportOverrideLowerBound(normalized, found);
+  if (!found) return AirportLabelMode::AUTO;
+  return static_cast<AirportLabelMode>(cachedAirportOverrides.entries[index].mode);
+}
+
+const char* airportLabelModeName(AirportLabelMode mode) {
+  switch (mode) {
+    case AirportLabelMode::SHOW: return "SHOW";
+    case AirportLabelMode::HIDE: return "HIDE";
+    case AirportLabelMode::AUTO:
+    default: return "AUTO";
+  }
+}
+
+uint8_t airportLabelOverrideCount(AirportLabelMode mode) {
+  if (mode == AirportLabelMode::AUTO) return 0;
+  uint8_t count = 0;
+  for (uint8_t index = 0; index < cachedAirportOverrides.count; ++index) {
+    if (cachedAirportOverrides.entries[index].mode ==
+        static_cast<uint8_t>(mode)) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+bool setAirportLabelMode(const char* ident, AirportLabelMode mode) {
+  if (!storageAvailable() || !airportIdentValid(ident) ||
+      (mode != AirportLabelMode::AUTO && mode != AirportLabelMode::SHOW &&
+       mode != AirportLabelMode::HIDE)) {
+    return false;
+  }
+
+  char normalized[AIRPORT_IDENT_CAPACITY]{};
+  normalizeAirportIdent(ident, normalized);
+  bool found = false;
+  const uint8_t index = airportOverrideLowerBound(normalized, found);
+  StoredAirportLabelOverrides updated = cachedAirportOverrides;
+
+  if (mode == AirportLabelMode::AUTO) {
+    if (!found) return true;
+    const uint8_t following = static_cast<uint8_t>(
+        updated.count - index - 1);
+    if (following > 0) {
+      memmove(&updated.entries[index], &updated.entries[index + 1],
+              following * sizeof(updated.entries[0]));
+    }
+    --updated.count;
+    updated.entries[updated.count] = StoredAirportLabelOverride{};
+  } else if (found) {
+    updated.entries[index].mode = static_cast<uint8_t>(mode);
+  } else {
+    if (updated.count >= AIRPORT_LABEL_OVERRIDE_CAPACITY) return false;
+    const uint8_t following = static_cast<uint8_t>(updated.count - index);
+    if (following > 0) {
+      memmove(&updated.entries[index + 1], &updated.entries[index],
+              following * sizeof(updated.entries[0]));
+    }
+    updated.entries[index] = StoredAirportLabelOverride{};
+    memcpy(updated.entries[index].ident, normalized, AIRPORT_IDENT_CAPACITY);
+    updated.entries[index].mode = static_cast<uint8_t>(mode);
+    ++updated.count;
+  }
+
+  if (!writeBytesChecked(KEY_AIRPORT_OVERRIDES, &updated, sizeof(updated))) {
+    markStorageError("airport label override save");
+    return false;
+  }
+  cachedAirportOverrides = updated;
+  return true;
 }
 
 bool saveAirportSettings(bool enabled,

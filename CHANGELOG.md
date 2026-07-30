@@ -10,26 +10,72 @@ available.
 
 This consolidated file replaces the earlier split changelog that stopped after
 Product 42. It contains the continuous confirmed history from the current Product
-53R3 source back through Product 15, the first hardened version-controlled baseline.
+53R4 source back through Product 15, the first hardened version-controlled baseline.
 Earlier Product history is intentionally omitted where the repository does not
 provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 53R3
-- **Current build marker:** `7IN-20260729-PRODUCT53R3-AIRPORT-LABELS`
+- **Current source:** Product 53R4
+- **Current build marker:** `7IN-20260729-PRODUCT53R4-AIRPORT-CONTROL`
 - **Current branch:** `main`
-- **Product 53R3 source baseline:** physically reviewed Product 53R2 source derived from [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
+- **Product 53R4 source baseline:** Product 53R3 airport-label source derived from [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 53R3 is host-verified and requires PlatformIO compile/link, firmware upload,
-physical review of the expanded airport labels and slightly taller directory rows,
-normal radar interaction checks, and soak testing before being called a fully
-verified hardware release.
+Product 53R4 is host-verified and requires PlatformIO compile/link, firmware upload,
+physical review of the airport label controls and 64-row directory, normal radar
+interaction checks, and soak testing before being called a fully verified hardware
+release.
+
+## Product 53R4 - 2026-07-29
+
+**Build:** `7IN-20260729-PRODUCT53R4-AIRPORT-CONTROL`  
+**Status:** Host-verified focused airport-label control candidate
+
+### Changed
+
+- Replaced the airport-directory bearing column with a compact `LABEL` control.
+  Tapping that cell cycles the stable airport identifier through `AUTO`, `SHOW`,
+  and `HIDE`; tapping any other cell still opens Airport Profile.
+- `SHOW` airports are attempted first, nearest first, before the normal automatic
+  major/public/private/heliport passes. `HIDE` suppresses only the identifier label;
+  runway and heliport symbols remain governed by the existing display settings.
+- Preserved `AUTO` as the default for every airport. Major and public categories
+  remain enabled by default, while private fields and heliports remain disabled by
+  default unless enabled by category or individually promoted with `SHOW`.
+- Added a versioned, verified NVS blob containing up to 64 identifier-based manual
+  exceptions. The sorted RAM cache provides bounded binary lookup during rendering;
+  no NVS reads occur in the render path. Reset Defaults clears all exceptions.
+- Increased the bounded airport directory from 32 to 64 rows and lists all airport
+  categories in range so disabled private fields and heliports can be individually
+  selected without enabling the entire category.
+- Updated the directory summary to distinguish actual rendered labels from manual
+  `SHOW` and `HIDE` exceptions while retaining the current range and database date.
+- Preserved Product 53R3 row height and page structure; only the column allocation
+  changed to accommodate the new control.
+
+### Preserved
+
+- Product 53R3 fit-based airport label placement with no small 9/8/6 quotas.
+- Fixed airport-to-airport collision behavior, airport rendering beneath aircraft,
+  aircraft-only ICAO hit testing, Airport Profile, Display Settings, and System UI.
+- Existing per-range symbol and label settings, verified NVS handling, airport
+  database/cache bounds, and location-rebuild behavior.
+- ADS-B networking, native/fallback HTTPS, 15-second cadence, stale rejection,
+  Wi-Fi/TLS recovery, 200-target capacity, panel timing, DMA, OPI PSRAM, and the
+  20-scanline bounce buffer.
+
+### Pending verification
+
+- PlatformIO compile/link and flash/RAM report.
+- Upload and confirmation of the Product 53R4 build marker.
+- Physical confirmation that `AUTO / SHOW / HIDE` taps are reliable, manual `SHOW`
+  entries receive priority on the radar, `HIDE` removes only labels, and all 48
+  regional records remain reachable at 80 miles.
 
 ## Product 53R3 - 2026-07-29
 

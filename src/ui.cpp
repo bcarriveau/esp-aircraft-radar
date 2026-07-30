@@ -26,9 +26,9 @@ constexpr uint8_t AIRSPACE_CATEGORY_COUNT = 6;
 constexpr uint8_t AIRSPACE_METRIC_COUNT = 4;
 constexpr uint8_t AIRPORT_CATEGORY_COUNT = airport_data::CATEGORY_COUNT;
 constexpr uint8_t AIRPORT_RANGE_COUNT = airport_data::RANGE_COUNT;
-constexpr const char* SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT53R3-AIRPORT-LABELS";
+constexpr const char* SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT53R4-AIRPORT-CONTROL";
 constexpr uint8_t AIRPORT_CONFIG_MODE_COUNT = 2;
-constexpr uint16_t AIRPORT_DIRECTORY_CAPACITY = 32;
+constexpr uint16_t AIRPORT_DIRECTORY_CAPACITY = 64;
 static_assert(AIRPORT_RANGE_COUNT == settings::AIRPORT_RANGE_COUNT,
               "Airport range settings must stay synchronized");
 constexpr uint8_t RANGE_OPTION_COUNT = 3;
@@ -181,6 +181,7 @@ airport_data::NearbyAirport airportDirectoryEntries[AIRPORT_DIRECTORY_CAPACITY]{
 uint16_t airportDirectoryCount = 0;
 airport_data::NearbyAirport airportDetailAirport{};
 bool airportDetailValid = false;
+bool airportDirectoryUpdating = false;
 
 enum class AirportView : uint8_t {
   DIRECTORY,
@@ -474,53 +475,74 @@ void setAirportDirectoryCell(uint16_t row, uint8_t column,
 
 void updateAirportDirectory() {
   if (!airportDirectorySummaryLabel || !airportDirectoryTable) return;
+  airportDirectoryUpdating = true;
+  lv_obj_set_style_text_color(airportDirectorySummaryLabel,
+                              rgb(180, 210, 215), 0);
 
   airport_data::Status status;
   airport_data::copyStatus(status);
   const float rangeMiles = app_state::radarRangeMiles();
   const uint8_t range = airport_data::rangeIndex(rangeMiles);
   const bool overlayEnabled = settings::airportsEnabled();
-  const uint8_t visibleMask = static_cast<uint8_t>(
-      settings::airportSymbolMask(range) | settings::airportLabelMask(range));
   const uint16_t inRangeCount = overlayEnabled
-      ? airport_data::visibleCount(rangeMiles, visibleMask) : 0;
-  const uint8_t activeLabelMask = overlayEnabled
+      ? airport_data::visibleCount(rangeMiles,
+                                   airport_data::CATEGORY_MASK_ALL)
+      : 0;
+  const uint8_t labelMask = overlayEnabled
       ? settings::airportLabelMask(range) : 0;
-  uint16_t labelsDrawn = 0;
+  uint16_t renderedLabelCount = 0;
   const bool labelCountCurrent = radar::airportLabelCount(
-      range, activeLabelMask, labelsDrawn);
-
-  char summary[192];
-  if (labelCountCurrent) {
-    snprintf(summary, sizeof(summary),
-             "%s  |  %.0f MI  |  %u IN RANGE  |  %u LABELS  |  DB %s",
-             overlayEnabled ? "OVERLAY ON" : "OVERLAY OFF", rangeMiles,
-             (unsigned)inRangeCount, (unsigned)labelsDrawn,
-             airport_data::databaseDate());
-  } else {
-    snprintf(summary, sizeof(summary),
-             "%s  |  %.0f MI  |  %u IN RANGE  |  LABELS --  |  DB %s",
-             overlayEnabled ? "OVERLAY ON" : "OVERLAY OFF", rangeMiles,
-             (unsigned)inRangeCount, airport_data::databaseDate());
-  }
-  setLabelTextIfChanged(airportDirectorySummaryLabel, summary);
+      range, labelMask, renderedLabelCount);
 
   airportDirectoryCount = overlayEnabled
       ? airport_data::copyNearby(airportDirectoryEntries,
                                  AIRPORT_DIRECTORY_CAPACITY,
-                                 rangeMiles, visibleMask)
+                                 rangeMiles,
+                                 airport_data::CATEGORY_MASK_ALL)
       : 0;
+
+  uint16_t manualShowCount = 0;
+  uint16_t manualHideCount = 0;
+  for (uint16_t row = 0; row < airportDirectoryCount; ++row) {
+    const settings::AirportLabelMode mode =
+        settings::airportLabelMode(airportDirectoryEntries[row].ident);
+    if (mode == settings::AirportLabelMode::SHOW) {
+      ++manualShowCount;
+    } else if (mode == settings::AirportLabelMode::HIDE) {
+      ++manualHideCount;
+    }
+  }
+
+  char summary[192];
+  if (labelCountCurrent) {
+    snprintf(summary, sizeof(summary),
+             "%s  |  %.0f MI  |  %u RANGE  |  %u LABELS  |  SHOW %u  HIDE %u  |  DB %s",
+             overlayEnabled ? "ON" : "OFF", rangeMiles,
+             (unsigned)inRangeCount, (unsigned)renderedLabelCount,
+             (unsigned)manualShowCount, (unsigned)manualHideCount,
+             status.ready ? airport_data::databaseDate() : "OFFLINE");
+  } else {
+    snprintf(summary, sizeof(summary),
+             "%s  |  %.0f MI  |  %u RANGE  |  LABELS --  |  SHOW %u  HIDE %u  |  DB %s",
+             overlayEnabled ? "ON" : "OFF", rangeMiles,
+             (unsigned)inRangeCount, (unsigned)manualShowCount,
+             (unsigned)manualHideCount,
+             status.ready ? airport_data::databaseDate() : "OFFLINE");
+  }
+  setLabelTextIfChanged(airportDirectorySummaryLabel, summary);
+
   lv_table_set_row_cnt(airportDirectoryTable,
                        airportDirectoryCount ? airportDirectoryCount : 1);
 
   if (airportDirectoryCount == 0) {
     setAirportDirectoryCell(0, 0, "");
     setAirportDirectoryCell(
-        0, 1, status.ready ? "No enabled airports in current range"
+        0, 1, status.ready ? "No airports in current range"
                            : "Airport database unavailable");
     for (uint8_t column = 2; column < 6; ++column) {
       setAirportDirectoryCell(0, column, "");
     }
+    airportDirectoryUpdating = false;
     return;
   }
 
@@ -533,16 +555,19 @@ void updateAirportDirectory() {
         row, 2, airport_data::categoryName(airport.category));
     snprintf(value, sizeof(value), "%.1f mi", airport.distanceMiles);
     setAirportDirectoryCell(row, 3, value);
-    snprintf(value, sizeof(value), "%03.0f", airport.bearingDegrees);
-    setAirportDirectoryCell(row, 4, value);
     if (airport.runwayLengthFt) {
       snprintf(value, sizeof(value), "%u ft",
                (unsigned)airport.runwayLengthFt);
     } else {
       snprintf(value, sizeof(value), "--");
     }
-    setAirportDirectoryCell(row, 5, value);
+    setAirportDirectoryCell(row, 4, value);
+    setAirportDirectoryCell(
+        row, 5,
+        settings::airportLabelModeName(
+            settings::airportLabelMode(airport.ident)));
   }
+  airportDirectoryUpdating = false;
 }
 
 void showAirportDirectory() {
@@ -617,11 +642,63 @@ void showAirportDetail(const airport_data::NearbyAirport& airport) {
 }
 
 void airportDirectoryTableEvent(lv_event_t*) {
+  if (airportDirectoryUpdating) return;
   uint16_t row = 0;
   uint16_t column = 0;
   lv_table_get_selected_cell(airportDirectoryTable, &row, &column);
   if (row == LV_TABLE_CELL_NONE || row >= airportDirectoryCount) return;
-  showAirportDetail(airportDirectoryEntries[row]);
+  if (column != 5) {
+    showAirportDetail(airportDirectoryEntries[row]);
+    return;
+  }
+
+  const char* ident = airportDirectoryEntries[row].ident;
+  const settings::AirportLabelMode current = settings::airportLabelMode(ident);
+  settings::AirportLabelMode next = settings::AirportLabelMode::SHOW;
+  if (current == settings::AirportLabelMode::SHOW) {
+    next = settings::AirportLabelMode::HIDE;
+  } else if (current == settings::AirportLabelMode::HIDE) {
+    next = settings::AirportLabelMode::AUTO;
+  }
+  if (!settings::setAirportLabelMode(ident, next)) {
+    setLabelTextIfChanged(airportDirectorySummaryLabel,
+                          "NVS ERROR: airport label preference not saved");
+    lv_obj_set_style_text_color(airportDirectorySummaryLabel,
+                                rgb(255, 120, 110), 0);
+    return;
+  }
+  lv_obj_set_style_text_color(airportDirectorySummaryLabel,
+                              rgb(180, 210, 215), 0);
+  radar::invalidateAirportLabelCount();
+  updateAirportDirectory();
+}
+
+void airportDirectoryTableDrawEvent(lv_event_t* event) {
+  lv_obj_draw_part_dsc_t* part = lv_event_get_draw_part_dsc(event);
+  if (!part || part->part != LV_PART_ITEMS || !part->label_dsc ||
+      !part->rect_dsc) {
+    return;
+  }
+  const uint16_t columns = lv_table_get_col_cnt(airportDirectoryTable);
+  if (columns == 0) return;
+  const uint16_t row = static_cast<uint16_t>(part->id / columns);
+  const uint16_t column = static_cast<uint16_t>(part->id % columns);
+  if (column != 5 || row >= airportDirectoryCount) return;
+
+  part->label_dsc->align = LV_TEXT_ALIGN_CENTER;
+  const settings::AirportLabelMode mode =
+      settings::airportLabelMode(airportDirectoryEntries[row].ident);
+  if (mode == settings::AirportLabelMode::SHOW) {
+    part->label_dsc->color = rgb(120, 240, 155);
+    part->rect_dsc->bg_color = rgb(14, 54, 42);
+    part->rect_dsc->bg_opa = LV_OPA_COVER;
+  } else if (mode == settings::AirportLabelMode::HIDE) {
+    part->label_dsc->color = rgb(255, 190, 105);
+    part->rect_dsc->bg_color = rgb(58, 36, 24);
+    part->rect_dsc->bg_opa = LV_OPA_COVER;
+  } else {
+    part->label_dsc->color = rgb(110, 220, 255);
+  }
 }
 
 void airportDetailBackEvent(lv_event_t*) {
@@ -2095,9 +2172,9 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_style_pad_all(airportTableHeader, 0, 0);
   lv_obj_clear_flag(airportTableHeader, LV_OBJ_FLAG_SCROLLABLE);
   const char* airportHeaders[] = {
-    "ID", "AIRPORT", "TYPE", "DIST", "BRG", "RUNWAY"
+    "ID", "AIRPORT", "TYPE", "DIST", "RUNWAY", "LABEL"
   };
-  const int airportHeaderX[] = {6, 68, 362, 446, 524, 594};
+  const int airportHeaderX[] = {6, 68, 372, 452, 524, 628};
   for (uint8_t column = 0; column < 6; ++column) {
     makeLabel(airportTableHeader, airportHeaders[column],
               &lv_font_montserrat_12, rgb(110, 220, 255),
@@ -2109,11 +2186,11 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_pos(airportDirectoryTable, 0, 80);
   lv_table_set_col_cnt(airportDirectoryTable, 6);
   lv_table_set_col_width(airportDirectoryTable, 0, 62);
-  lv_table_set_col_width(airportDirectoryTable, 1, 294);
-  lv_table_set_col_width(airportDirectoryTable, 2, 84);
-  lv_table_set_col_width(airportDirectoryTable, 3, 78);
-  lv_table_set_col_width(airportDirectoryTable, 4, 70);
-  lv_table_set_col_width(airportDirectoryTable, 5, 126);
+  lv_table_set_col_width(airportDirectoryTable, 1, 304);
+  lv_table_set_col_width(airportDirectoryTable, 2, 80);
+  lv_table_set_col_width(airportDirectoryTable, 3, 72);
+  lv_table_set_col_width(airportDirectoryTable, 4, 104);
+  lv_table_set_col_width(airportDirectoryTable, 5, 92);
   lv_obj_set_style_text_font(airportDirectoryTable, &lv_font_montserrat_12,
                              LV_PART_ITEMS);
   lv_obj_set_style_bg_color(airportDirectoryTable, rgb(8, 18, 26),
@@ -2128,6 +2205,8 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_style_pad_ver(airportDirectoryTable, 7, LV_PART_ITEMS);
   lv_obj_add_event_cb(airportDirectoryTable, airportDirectoryTableEvent,
                       LV_EVENT_VALUE_CHANGED, nullptr);
+  lv_obj_add_event_cb(airportDirectoryTable, airportDirectoryTableDrawEvent,
+                      LV_EVENT_DRAW_PART_BEGIN, nullptr);
 
   airportOptionsView = lv_obj_create(airportDashboard);
   lv_obj_set_size(airportOptionsView, 742, 280);

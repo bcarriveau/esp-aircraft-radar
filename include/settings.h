@@ -6,6 +6,13 @@
 namespace settings {
 
 constexpr uint8_t AIRPORT_RANGE_COUNT = 3;
+constexpr uint8_t AIRPORT_LABEL_OVERRIDE_CAPACITY = 64;
+
+enum class AirportLabelMode : uint8_t {
+  AUTO = 0,
+  SHOW = 1,
+  HIDE = 2
+};
 
 bool initialize();
 bool storageAvailable();
@@ -29,6 +36,10 @@ void setHomeLongitude(float longitude);
 bool airportsEnabled();
 uint8_t airportSymbolMask(uint8_t rangeIndex);
 uint8_t airportLabelMask(uint8_t rangeIndex);
+AirportLabelMode airportLabelMode(const char* ident);
+const char* airportLabelModeName(AirportLabelMode mode);
+uint8_t airportLabelOverrideCount(AirportLabelMode mode);
+bool setAirportLabelMode(const char* ident, AirportLabelMode mode);
 bool saveAirportSettings(bool enabled,
                          const uint8_t symbolMasks[AIRPORT_RANGE_COUNT],
                          const uint8_t labelMasks[AIRPORT_RANGE_COUNT]);
