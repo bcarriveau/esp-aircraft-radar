@@ -10,26 +10,58 @@ available.
 
 This consolidated file replaces the earlier split changelog that stopped after
 Product 42. It contains the continuous confirmed history from the current Product
-53R4 source back through Product 15, the first hardened version-controlled baseline.
+53R5 source back through Product 15, the first hardened version-controlled baseline.
 Earlier Product history is intentionally omitted where the repository does not
 provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 53R4
-- **Current build marker:** `7IN-20260729-PRODUCT53R4-AIRPORT-CONTROL`
+- **Current source:** Product 53R5
+- **Current build marker:** `7IN-20260729-PRODUCT53R5-AIRPORT-EYE`
 - **Current branch:** `main`
-- **Product 53R4 source baseline:** Product 53R3 airport-label source derived from [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
+- **Product 53R5 source baseline:** Product 53R4 airport-control source derived from [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 53R4 is host-verified and requires PlatformIO compile/link, firmware upload,
-physical review of the airport label controls and 64-row directory, normal radar
-interaction checks, and soak testing before being called a fully verified hardware
-release.
+Product 53R5 is host-verified and requires PlatformIO compile/link, firmware upload,
+physical review of the airport visibility-eye indicators, normal radar interaction
+checks, and soak testing before being called a fully verified hardware release.
+
+## Product 53R5 - 2026-07-29
+
+**Build:** `7IN-20260729-PRODUCT53R5-AIRPORT-EYE`  
+**Status:** Host-verified focused airport-directory visibility candidate
+
+### Changed
+
+- Added a small open-eye indicator inside the existing `LABEL` cell when that
+  airport identifier was actually placed on the latest completed radar frame.
+- `AUTO` and `SHOW` continue to describe the saved preference; the eye independently
+  reports the current result. `HIDE` never displays the eye.
+- Added a bounded PSRAM buffer containing only the stable identifiers successfully
+  drawn during the current airport-label pass. The Airports directory reads that
+  completed-frame result through a range/mask-validated renderer API.
+- Added the eye source artwork under `assets/` and its compact alpha-mask header for
+  deterministic LVGL 8.3 drawing after the table text.
+- Preserved the Product 53R4 table columns, row spacing, controls, page navigation,
+  label priority, collision behavior, override persistence, and 64-row bound.
+
+### Preserved
+
+- Airport labels remain fixed beneath aircraft and never affect aircraft ICAO hit
+  testing, selection, tracking, or aircraft-tag priority.
+- ADS-B networking, native/fallback HTTPS, 15-second cadence, stale rejection,
+  Wi-Fi/TLS recovery, display timing, DMA, OPI PSRAM, and bounce-buffer behavior.
+
+### Pending verification
+
+- PlatformIO compile/link and flash/RAM report.
+- Upload and confirmation of the Product 53R5 build marker.
+- Physical confirmation that the eye appears only beside labels visible at the
+  current 20/40/80-mile range and updates after range or preference changes.
 
 ## Product 53R4 - 2026-07-29
 

@@ -10,6 +10,7 @@
 #include "app_state.h"
 #include "aircraft_data.h"
 #include "airport_data.h"
+#include "airport_status_bitmaps.h"
 #include "build_info.h"
 #include "config.h"
 #include "radar_renderer.h"
@@ -26,7 +27,7 @@ constexpr uint8_t AIRSPACE_CATEGORY_COUNT = 6;
 constexpr uint8_t AIRSPACE_METRIC_COUNT = 4;
 constexpr uint8_t AIRPORT_CATEGORY_COUNT = airport_data::CATEGORY_COUNT;
 constexpr uint8_t AIRPORT_RANGE_COUNT = airport_data::RANGE_COUNT;
-constexpr const char* SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT53R4-AIRPORT-CONTROL";
+constexpr const char* SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT53R5-AIRPORT-EYE";
 constexpr uint8_t AIRPORT_CONFIG_MODE_COUNT = 2;
 constexpr uint16_t AIRPORT_DIRECTORY_CAPACITY = 64;
 static_assert(AIRPORT_RANGE_COUNT == settings::AIRPORT_RANGE_COUNT,
@@ -178,6 +179,8 @@ uint8_t airportConfigMode = 0;
 bool airportOptionsLoaded = false;
 bool airportOptionsDirty = false;
 airport_data::NearbyAirport airportDirectoryEntries[AIRPORT_DIRECTORY_CAPACITY]{};
+bool airportDirectoryLabelVisible[AIRPORT_DIRECTORY_CAPACITY]{};
+bool airportDirectoryLabelVisibilityCurrent = false;
 uint16_t airportDirectoryCount = 0;
 airport_data::NearbyAirport airportDetailAirport{};
 bool airportDetailValid = false;
@@ -501,6 +504,24 @@ void updateAirportDirectory() {
                                  airport_data::CATEGORY_MASK_ALL)
       : 0;
 
+  memset(airportDirectoryLabelVisible, 0,
+         sizeof(airportDirectoryLabelVisible));
+  airportDirectoryLabelVisibilityCurrent = labelCountCurrent;
+  if (airportDirectoryLabelVisibilityCurrent) {
+    for (uint16_t row = 0; row < airportDirectoryCount; ++row) {
+      bool visible = false;
+      if (!radar::airportLabelVisible(
+              range, labelMask, airportDirectoryEntries[row].ident,
+              visible)) {
+        airportDirectoryLabelVisibilityCurrent = false;
+        memset(airportDirectoryLabelVisible, 0,
+               sizeof(airportDirectoryLabelVisible));
+        break;
+      }
+      airportDirectoryLabelVisible[row] = visible;
+    }
+  }
+
   uint16_t manualShowCount = 0;
   uint16_t manualHideCount = 0;
   for (uint16_t row = 0; row < airportDirectoryCount; ++row) {
@@ -699,6 +720,49 @@ void airportDirectoryTableDrawEvent(lv_event_t* event) {
   } else {
     part->label_dsc->color = rgb(110, 220, 255);
   }
+}
+
+void airportDirectoryTableEyeDrawEvent(lv_event_t* event) {
+  lv_obj_draw_part_dsc_t* part = lv_event_get_draw_part_dsc(event);
+  if (!part || part->part != LV_PART_ITEMS || !part->draw_ctx ||
+      !part->draw_area) {
+    return;
+  }
+  const uint16_t columns = lv_table_get_col_cnt(airportDirectoryTable);
+  if (columns == 0) return;
+  const uint16_t row = static_cast<uint16_t>(part->id / columns);
+  const uint16_t column = static_cast<uint16_t>(part->id % columns);
+  if (column != 5 || row >= airportDirectoryCount ||
+      !airportDirectoryLabelVisibilityCurrent ||
+      !airportDirectoryLabelVisible[row]) {
+    return;
+  }
+
+  const settings::AirportLabelMode mode =
+      settings::airportLabelMode(airportDirectoryEntries[row].ident);
+  if (mode == settings::AirportLabelMode::HIDE) return;
+
+  const lv_coord_t cellHeight =
+      part->draw_area->y2 - part->draw_area->y1 + 1;
+  lv_area_t eyeArea{
+      static_cast<lv_coord_t>(part->draw_area->x2 -
+                              AIRPORT_LABEL_EYE_W - 6),
+      static_cast<lv_coord_t>(part->draw_area->y1 +
+                              (cellHeight - AIRPORT_LABEL_EYE_H) / 2),
+      static_cast<lv_coord_t>(part->draw_area->x2 - 7),
+      0
+  };
+  eyeArea.y2 = static_cast<lv_coord_t>(
+      eyeArea.y1 + AIRPORT_LABEL_EYE_H - 1);
+
+  lv_draw_img_dsc_t image;
+  lv_draw_img_dsc_init(&image);
+  image.recolor = mode == settings::AirportLabelMode::SHOW
+      ? rgb(120, 240, 155) : rgb(110, 220, 255);
+  image.recolor_opa = LV_OPA_COVER;
+  image.opa = LV_OPA_COVER;
+  lv_draw_img_decoded(part->draw_ctx, &image, &eyeArea,
+                      AIRPORT_LABEL_EYE_ALPHA, LV_IMG_CF_ALPHA_8BIT);
 }
 
 void airportDetailBackEvent(lv_event_t*) {
@@ -2207,6 +2271,9 @@ void buildPageShell(lv_obj_t* root) {
                       LV_EVENT_VALUE_CHANGED, nullptr);
   lv_obj_add_event_cb(airportDirectoryTable, airportDirectoryTableDrawEvent,
                       LV_EVENT_DRAW_PART_BEGIN, nullptr);
+  lv_obj_add_event_cb(airportDirectoryTable,
+                      airportDirectoryTableEyeDrawEvent,
+                      LV_EVENT_DRAW_PART_END, nullptr);
 
   airportOptionsView = lv_obj_create(airportDashboard);
   lv_obj_set_size(airportOptionsView, 742, 280);

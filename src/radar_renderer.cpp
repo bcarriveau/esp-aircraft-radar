@@ -156,6 +156,8 @@ uint16_t airportFrameCount = 0;
 uint8_t airportFrameSymbolMask = 0;
 uint8_t airportFrameLabelMask = 0;
 LabelBox* airportLabelBoxes = nullptr;
+using AirportIdent = char[8];
+AirportIdent* airportVisibleLabelIdents = nullptr;
 bool airportLabelStatsValid = false;
 uint8_t airportLabelStatsRangeIndex = 0;
 uint8_t airportLabelStatsMask = 0;
@@ -263,6 +265,9 @@ bool allocateWorkingBuffers() {
   airportLabelBoxes = static_cast<LabelBox*>(heap_caps_calloc(
       airport_data::MAX_NEARBY_AIRPORTS, sizeof(LabelBox),
       MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  airportVisibleLabelIdents = static_cast<AirportIdent*>(heap_caps_calloc(
+      airport_data::MAX_NEARBY_AIRPORTS, sizeof(AirportIdent),
+      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
 
   if (!renderedHits || !renderedContacts || !renderedLabelBoxes) {
     free(renderedHits);
@@ -270,11 +275,13 @@ bool allocateWorkingBuffers() {
     free(renderedLabelBoxes);
     free(airportWork);
     free(airportLabelBoxes);
+    free(airportVisibleLabelIdents);
     renderedHits = nullptr;
     renderedContacts = nullptr;
     renderedLabelBoxes = nullptr;
     airportWork = nullptr;
     airportLabelBoxes = nullptr;
+    airportVisibleLabelIdents = nullptr;
     contactFrame.contacts = nullptr;
     Serial.println("FATAL: Radar working-buffer PSRAM allocation failed");
     return false;
@@ -301,6 +308,14 @@ bool allocateWorkingBuffers() {
     Serial.println(
         "Airport labels disabled: placement-buffer allocation failed");
   }
+  if (airportVisibleLabelIdents) {
+    Serial.printf("Radar airport label-status buffer in PSRAM: %u bytes\n",
+                  (unsigned)(airport_data::MAX_NEARBY_AIRPORTS *
+                             sizeof(AirportIdent)));
+  } else {
+    Serial.println(
+        "Airport directory label-status icons disabled: buffer allocation failed");
+  }
   return true;
 }
 
@@ -313,6 +328,24 @@ bool airportLabelCount(uint8_t rangeIndex, uint8_t labelMask,
     return false;
   }
   count = airportLabelStatsCount;
+  return true;
+}
+
+bool airportLabelVisible(uint8_t rangeIndex, uint8_t labelMask,
+                         const char* ident, bool& visible) {
+  visible = false;
+  if (!ident || !ident[0] || !airportVisibleLabelIdents ||
+      !airportLabelStatsValid || airportLabelStatsRangeIndex != rangeIndex ||
+      airportLabelStatsMask != labelMask) {
+    return false;
+  }
+  for (uint16_t index = 0; index < airportLabelStatsCount; ++index) {
+    if (strncmp(airportVisibleLabelIdents[index], ident,
+                sizeof(AirportIdent)) == 0) {
+      visible = true;
+      break;
+    }
+  }
   return true;
 }
 
@@ -716,7 +749,14 @@ void drawAirportLabels(float rangeMiles) {
       continue;
     }
     drawAirportLabel(airport, placement);
-    airportLabelBoxes[airportLabelStatsCount++] = placement;
+    airportLabelBoxes[airportLabelStatsCount] = placement;
+    if (airportVisibleLabelIdents) {
+      strncpy(airportVisibleLabelIdents[airportLabelStatsCount],
+              airport.ident, sizeof(AirportIdent) - 1);
+      airportVisibleLabelIdents[airportLabelStatsCount]
+                               [sizeof(AirportIdent) - 1] = 0;
+    }
+    ++airportLabelStatsCount;
   }
 
   // AUTO entries retain deterministic major/public/private/heliport priority,
@@ -739,7 +779,14 @@ void drawAirportLabels(float rangeMiles) {
         continue;
       }
       drawAirportLabel(airport, placement);
-      airportLabelBoxes[airportLabelStatsCount++] = placement;
+      airportLabelBoxes[airportLabelStatsCount] = placement;
+      if (airportVisibleLabelIdents) {
+        strncpy(airportVisibleLabelIdents[airportLabelStatsCount],
+                airport.ident, sizeof(AirportIdent) - 1);
+        airportVisibleLabelIdents[airportLabelStatsCount]
+                                 [sizeof(AirportIdent) - 1] = 0;
+      }
+      ++airportLabelStatsCount;
     }
   }
 }
