@@ -22,7 +22,7 @@ def test_product_56_mqtt_is_optional_bounded_and_isolated() -> None:
     radar_control = read("src/radar_control.cpp")
     display_power = read("src/display_power.cpp")
 
-    assert "7IN-20260801-PRODUCT56-HA-MQTT" in build
+    assert "7IN-20260801-PRODUCT56-R2-MQTT-MEMORY" in build
     assert "INACTIVE = 0" in mqtt_header
     assert "State::DISABLED" not in mqtt and "State::DISABLED" not in ui
     assert "#define MQTT_ENABLED_DEFAULT 0" in config
@@ -44,7 +44,10 @@ def test_product_56_mqtt_is_optional_bounded_and_isolated() -> None:
     assert "heap_caps_malloc" in start_client
     assert "jsonBuffer" in start_client
     assert "MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT" in mqtt
+    assert "MQTT_BUFFER_BYTES = 1024" in mqtt
+    assert "MQTT_TASK_STACK_BYTES = 4096" in mqtt
     assert "MQTT_OUTBOX_BYTES = 16U * 1024U" in mqtt
+    assert "mqttConfig.task.stack_size = MQTT_TASK_STACK_BYTES" in mqtt
     assert "mqttConfig.outbox.limit = MQTT_OUTBOX_BYTES" in mqtt
     assert "static_cast<int>(length), 0, retain, true" in mqtt
 

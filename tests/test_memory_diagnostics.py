@@ -16,7 +16,7 @@ def test_product_56_r1_tracks_contiguous_internal_memory() -> None:
     state = read("src/app_state.cpp")
     ui = read("src/ui.cpp")
 
-    assert "7IN-20260801-PRODUCT56-R1-MEMORY" in build
+    assert "7IN-20260801-PRODUCT56-R2-MQTT-MEMORY" in build
     assert "minimumLargestInternalBlock" in header
     assert "heap_caps_get_largest_free_block" in state
     assert "MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT" in state
@@ -68,7 +68,10 @@ def test_mqtt_memory_checkpoints_cover_lifecycle() -> None:
     ):
         assert f'logMemoryStage("{stage}")' in mqtt
 
-    # Diagnostics only: retain the existing resource bounds and service behavior.
-    assert "mqttConfig.task.stack_size = 6144" in mqtt
+    # Product 56 R2 recovers contiguous internal RAM for the preferred native TLS path.
+    assert "MQTT_BUFFER_BYTES = 1024" in mqtt
+    assert "MQTT_TASK_STACK_BYTES = 4096" in mqtt
+    assert "mqttConfig.task.stack_size = MQTT_TASK_STACK_BYTES" in mqtt
     assert "mqttConfig.buffer.size = MQTT_BUFFER_BYTES" in mqtt
+    assert "mqttConfig.buffer.out_size = MQTT_BUFFER_BYTES" in mqtt
     assert "mqttConfig.outbox.limit = MQTT_OUTBOX_BYTES" in mqtt

@@ -16,8 +16,8 @@ provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 56 R1
-- **Current build marker:** `7IN-20260801-PRODUCT56-R1-MEMORY`
+- **Current source:** Product 56 R2
+- **Current build marker:** `7IN-20260801-PRODUCT56-R2-MQTT-MEMORY`
 - **Current branch:** unavailable in the uploaded ZIP; source matches the Product 55
   repository baseline used for this focused update
 - **Product 56 source baseline:** Uploaded Product 55 source with build marker
@@ -28,36 +28,63 @@ provide authoritative evidence.
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 56 has passed the available focused host source tests. PlatformIO
-compile/link, installation, Home Assistant discovery/control checks, physical display
-power and shared-range checks, normal Radar/OTA regression checks, and soak testing
-remain user-side. Product 54 was previously confirmed to compile successfully under
+Product 56 R1 compiled, uploaded, and produced the physical memory-stage log used to
+identify the MQTT/native-TLS overlap. Product 56 R2 has passed the available focused
+host source tests. R2 PlatformIO compile/link, installation, native ADS-B TLS with MQTT
+enabled, Home Assistant discovery/control checks, normal Radar/OTA regression checks,
+and soak testing remain user-side. Product 54 was previously confirmed to compile successfully under
 the pinned PlatformIO and Arduino-ESP32 3.0.7 environment after its OTA enum and
 mbedTLS compatibility fixes.
 
-## Product 56 R1 - 2026-08-01
+## Product 56 R2 - 2026-08-01
 
-**Build:** `7IN-20260801-PRODUCT56-R1-MEMORY`  
-**Status:** Focused memory-diagnostic refinement for physical MQTT/ADS-B testing
+**Build:** `7IN-20260801-PRODUCT56-R2-MQTT-MEMORY`  
+**Status:** Focused host-verified MQTT internal-memory correction; PlatformIO and
+physical verification pending
 
-### Added
+### Confirmed diagnosis
 
-- Added current and minimum largest-contiguous internal heap-block diagnostics to
-  the System page alongside total heap and PSRAM.
-- Added bounded serial memory checkpoints around ADS-B DNS, native/fallback TLS,
-  headers, payload allocation, transport release, JSON parsing, and task return.
-- Added MQTT memory checkpoints around PSRAM workspace allocation, native client
-  initialization/start, broker connection, discovery completion, and client cleanup.
-- Updated memory minima at each checkpoint so short-lived internal-RAM valleys are
-  not missed by the existing one-second background sample.
+- Product 56 R1 completed four preferred native ADS-B HTTPS requests with MQTT
+  disabled. Before the native TLS handshake, the largest internal block was about
+  51 KB; after connection it was about 10 KB.
+- Enabling MQTT reduced idle internal heap from about 71 KB to 59 KB and reduced the
+  largest internal block from 51 KB to 45 KB. After native HTTP-client creation, the
+  largest block was about 40 KB.
+- Every subsequent preferred native handshake failed at the ESP-IDF SHA/AES allocation
+  stage. The verified WiFiClientSecure fallback continued to connect and publish
+  current aircraft data, proving the broker did not cause a general Wi-Fi, DNS,
+  certificate, API, or JSON failure.
+- The exactly 6,144-byte reduction in the largest block at MQTT task startup matched
+  the configured 6,144-byte MQTT task stack. The two configured 2 KB MQTT buffers also
+  consumed avoidable internal memory for this local, command-light integration.
+
+### Changed
+
+- Reduced the ESP-MQTT task stack from 6,144 bytes to 4,096 bytes.
+- Reduced ESP-MQTT input and output buffers from 2,048 bytes each to 1,024 bytes each.
+- Kept the 4 KB PSRAM JSON workspace, 200-target PSRAM snapshot, 16 KB bounded MQTT
+  outbox, sequential discovery, command queue, 60-second heartbeat, and runtime
+  enable/disable behavior unchanged.
+- Retained Product 56 R1 `MEM ADSB`, `MEM MQTT`, HEAP, and BLOCK diagnostics for direct
+  physical confirmation of the recovered native-TLS margin.
 
 ### Preserved
 
-- No ADS-B transport, TLS verification, HTTP framing, timeout, retry, recovery,
-  cadence, stale-response, last-good, target-capacity, UI interaction, display,
-  PSRAM, OTA, or MQTT behavior was changed.
-- This build intentionally measures the low-memory stage before attempting any
-  buffer or task-stack reduction.
+- No ADS-B fetch, native HTTPS, fallback HTTPS, TLS verification, framing, timeout,
+  cadence, recovery, stale-response, last-good, capacity, UI, airport, display, PSRAM,
+  or OTA code was changed.
+- MQTT remains optional, disabled by default, isolated from Wi-Fi recovery, and fully
+  quiesced for OTA.
+
+### Validation
+
+- All repository Python tests passed after updating the Product marker and focused MQTT
+  memory-profile assertions.
+- Complete-file comparison confirmed the functional source change is limited to the
+  MQTT stack/buffer configuration and build marker.
+- PlatformIO compile/link, upload, MQTT stack stability, preferred native ADS-B TLS with
+  MQTT enabled, Home Assistant telemetry/control, OTA transfer, and soak testing were
+  not run here.
 
 ## Product 56 - 2026-08-01
 

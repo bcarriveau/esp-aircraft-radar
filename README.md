@@ -22,10 +22,10 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260801-PRODUCT56-R1-MEMORY
+7IN-20260801-PRODUCT56-R2-MQTT-MEMORY
 ```
 
-Current source branch:
+Current intended repository branch:
 
 ```text
 main
@@ -38,16 +38,20 @@ tag:
 product-15-hardened
 ```
 
-Product 56 R1 is the current diagnostic candidate. It retains Product 56 optional
-native MQTT integration and adds focused internal-memory instrumentation for the
-combined MQTT and ADS-B HTTPS load. The System page now reports both total internal
-heap and the largest contiguous internal block, including their observed minima, and
-serial logs identify the memory level at DNS, TLS, headers, payload, JSON, MQTT
-startup/discovery, and cleanup stages. MQTT remains disabled by default and creates
-no client task, broker traffic, aircraft snapshot buffer, or JSON buffer until it is
-configured and enabled from the System page. Product 54 guarded local browser OTA
-and Product 55 Airspace behavior remain intact. No transport deadlines, cadence,
-recovery rules, display timing, capacity, or rendering behavior were changed.
+Product 56 R2 is the current host-verified candidate. It adds optional native MQTT
+integration for Home Assistant, a dependency-free dashboard view, physical-display
+backlight control, shared 20/40/80-mile range control, bounded aircraft telemetry, and
+read-only system diagnostics. MQTT is disabled by default and creates no client task,
+broker traffic, aircraft snapshot buffer, or JSON buffer until it is configured and
+enabled from the System page. Product 56 R1 hardware diagnostics confirmed that the
+original 6 KB MQTT task stack and two 2 KB MQTT buffers reduced the largest contiguous
+internal block enough for the preferred native ADS-B TLS handshake to fail in the
+SHA/AES allocation stage, while the verified fallback still succeeded. R2 reduces only
+the MQTT task stack to 4 KB and the native MQTT input/output buffers to 1 KB each;
+transport behavior, the 16 KB bounded outbox, telemetry limits, ADS-B logic, OTA,
+Product 54, and Product 55 behavior remain intact. R2 remains a candidate until
+PlatformIO compile/link, native ADS-B TLS with MQTT enabled, MQTT discovery/control,
+OTA regression, and soak testing are confirmed.
 
 ## Features
 
