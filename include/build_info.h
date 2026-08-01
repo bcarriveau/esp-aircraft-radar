@@ -1,4 +1,4 @@
 #pragma once
 
 constexpr const char* BUILD_ID =
-    "7IN-20260801-PRODUCT56-HA-MQTT";
+    "7IN-20260801-PRODUCT56-R1-MEMORY";

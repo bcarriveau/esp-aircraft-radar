@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260801-PRODUCT56-HA-MQTT
+7IN-20260801-PRODUCT56-R1-MEMORY
 ```
 
 Current source branch:
@@ -38,15 +38,16 @@ tag:
 product-15-hardened
 ```
 
-Product 56 is the current host-verified candidate. It adds optional native MQTT
-integration for Home Assistant, a dependency-free dashboard view, physical-display
-backlight control, shared 20/40/80-mile range control, bounded aircraft telemetry, and
-read-only system diagnostics. MQTT is disabled by default and creates no client task,
-broker traffic, aircraft snapshot buffer, or JSON buffer until it is configured and
-enabled from the System page. Product 54 guarded local browser OTA and Product 55 Airspace behavior
-remain intact. Product 56 remains a candidate until PlatformIO compile/link,
-installation, MQTT discovery/control checks, OTA regression checks, and soak testing
-are confirmed.
+Product 56 R1 is the current diagnostic candidate. It retains Product 56 optional
+native MQTT integration and adds focused internal-memory instrumentation for the
+combined MQTT and ADS-B HTTPS load. The System page now reports both total internal
+heap and the largest contiguous internal block, including their observed minima, and
+serial logs identify the memory level at DNS, TLS, headers, payload, JSON, MQTT
+startup/discovery, and cleanup stages. MQTT remains disabled by default and creates
+no client task, broker traffic, aircraft snapshot buffer, or JSON buffer until it is
+configured and enabled from the System page. Product 54 guarded local browser OTA
+and Product 55 Airspace behavior remain intact. No transport deadlines, cadence,
+recovery rules, display timing, capacity, or rendering behavior were changed.
 
 ## Features
 

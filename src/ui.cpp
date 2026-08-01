@@ -1936,7 +1936,7 @@ void renderSystemPage() {
   const bool wifiConnected = wifiStatus == WL_CONNECTED;
   const uint32_t dataAgeSeconds = snapshot.lastUpdateMs
       ? (millis() - snapshot.lastUpdateMs) / 1000 : 0;
-  char body[760]{};
+  char body[840]{};
   snprintf(body, sizeof(body),
       "NVS        %s\n"
       "WI-FI      %s  %d dBm\n"
@@ -1946,6 +1946,7 @@ void renderSystemPage() {
       "FETCH      %lu ms / %lu B\n"
       "FAILURES   %u  %s\n"
       "HEAP       %u KB  MIN %u KB\n"
+      "BLOCK      %u KB  MIN %u KB\n"
       "PSRAM      %u KB  MIN %u KB\n"
       "AIRPORTS   %s  %u CACHED",
       settings::storageAvailable() ? "READY" : "ERROR",
@@ -1960,6 +1961,9 @@ void renderSystemPage() {
       app_state::failureStageName(diagnostics.lastFailureStage),
       (unsigned)(ESP.getFreeHeap() / 1024U),
       (unsigned)(diagnostics.minimumFreeHeap / 1024U),
+      (unsigned)(heap_caps_get_largest_free_block(
+          MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) / 1024U),
+      (unsigned)(diagnostics.minimumLargestInternalBlock / 1024U),
       (unsigned)(ESP.getFreePsram() / 1024U),
       (unsigned)(diagnostics.minimumFreePsram / 1024U),
       airportStatus.ready ? "READY" : "OFF",
@@ -2928,7 +2932,7 @@ void buildPageShell(lv_obj_t* root) {
   lv_label_set_long_mode(systemStatusLabel, LV_LABEL_LONG_CLIP);
   systemFirmwareButton = lv_btn_create(systemStatusCard);
   lv_obj_set_size(systemFirmwareButton, 250, 27);
-  lv_obj_set_pos(systemFirmwareButton, 3, 179);
+  lv_obj_set_pos(systemFirmwareButton, 3, 182);
   lv_obj_set_style_bg_color(systemFirmwareButton, rgb(20, 68, 82), 0);
   lv_obj_set_style_radius(systemFirmwareButton, 5, 0);
   lv_obj_set_style_pad_all(systemFirmwareButton, 0, 0);

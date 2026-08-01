@@ -43,6 +43,7 @@ struct Diagnostics {
   uint32_t networkRecoveries = 0;
   uint32_t discardedResponses = 0;
   uint32_t minimumFreeHeap = 0;
+  uint32_t minimumLargestInternalBlock = 0;
   uint32_t minimumFreePsram = 0;
   uint16_t lastReceivedCount = 0;
   uint16_t lastEligibleCount = 0;

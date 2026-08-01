@@ -61,6 +61,16 @@ constexpr uint8_t PUBLISH_AIRSPACE = 1U << 3;
 constexpr uint8_t PUBLISH_ALL =
     PUBLISH_STATUS | PUBLISH_TRAFFIC | PUBLISH_TRACKED | PUBLISH_AIRSPACE;
 
+void logMemoryStage(const char* stage) {
+  app_state::observeMemory();
+  Serial.printf(
+      "MEM MQTT %-18s heap=%u block=%u psram=%u\n",
+      stage ? stage : "unknown", ESP.getFreeHeap(),
+      heap_caps_get_largest_free_block(
+          MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+      ESP.getFreePsram());
+}
+
 class JsonWriter {
  public:
   JsonWriter(char* buffer, size_t capacity)
@@ -336,6 +346,7 @@ void mqttEventHandler(void*, esp_event_base_t, int32_t eventId,
 
   switch (eventId) {
     case MQTT_EVENT_CONNECTED: {
+      logMemoryStage("broker-connected");
       bool active = false;
       portENTER_CRITICAL(&stateMux);
       clientConnected = true;
@@ -437,6 +448,7 @@ void resetObservedState() {
 }
 
 void destroyClient() {
+  logMemoryStage("destroy-begin");
   esp_mqtt_client_handle_t localClient = nullptr;
   portENTER_CRITICAL(&stateMux);
   localClient = client;
@@ -463,6 +475,7 @@ void destroyClient() {
   availabilityPublished = false;
   stopAfterMs = 0;
   stopRequested = false;
+  logMemoryStage("destroy-complete");
 }
 
 bool enqueueMessage(const char* topic, const char* payload, size_t length,
@@ -516,6 +529,7 @@ void serviceStop(uint32_t now) {
 }
 
 bool startClient() {
+  logMemoryStage("start-begin");
   if (!targetBuffer) {
     targetBuffer = static_cast<aircraft::Target*>(heap_caps_calloc(
         aircraft::MAX_TARGETS, sizeof(aircraft::Target),
@@ -536,6 +550,7 @@ bool startClient() {
     }
     jsonBuffer[0] = 0;
   }
+  logMemoryStage("psram-ready");
 
   esp_mqtt_client_config_t mqttConfig{};
   mqttConfig.broker.address.uri = MQTT_BROKER_URI;
@@ -567,6 +582,7 @@ bool startClient() {
     setState(State::ERROR, "MQTT client initialization failed");
     return false;
   }
+  logMemoryStage("client-init");
   portENTER_CRITICAL(&stateMux);
   client = newClient;
   clientConnected = false;
@@ -601,6 +617,7 @@ bool startClient() {
     return false;
   }
   Serial.printf("MQTT client started: %s\n", deviceId);
+  logMemoryStage("client-started");
   return true;
 }
 
@@ -1271,7 +1288,12 @@ void service() {
     return;
   }
   if (discoveryIndex < DISCOVERY_COUNT) {
-    if (publishDiscovery(discoveryIndex)) ++discoveryIndex;
+    if (publishDiscovery(discoveryIndex)) {
+      ++discoveryIndex;
+      if (discoveryIndex == DISCOVERY_COUNT) {
+        logMemoryStage("discovery-complete");
+      }
+    }
     return;
   }
 

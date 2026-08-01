@@ -30,6 +30,16 @@ constexpr size_t MAX_CHUNK_FRAMING_BYTES = 16384;
 constexpr uint8_t MAX_NATIVE_ATTEMPTS = 2;
 constexpr uint32_t RETRY_DELAY_MS = 500;
 
+void logMemoryStage(const char* stage) {
+  app_state::observeMemory();
+  Serial.printf(
+      "MEM ADSB %-18s heap=%u block=%u psram=%u\n",
+      stage ? stage : "unknown", ESP.getFreeHeap(),
+      heap_caps_get_largest_free_block(
+          MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+      ESP.getFreePsram());
+}
+
 struct AttemptResult {
   bool success = false;
   bool fallbackEligible = false;
@@ -571,6 +581,7 @@ AttemptResult fetchAttemptWithSecureClient(const String& path,
   client.setHandshakeTimeout((HTTP_NETWORK_TIMEOUT_MS + 999) / 1000);
 
   const uint32_t connectStarted = millis();
+  logMemoryStage("fallback-start");
   if (!client.connect("opendata.adsb.fi", 443,
                       static_cast<int32_t>(HTTP_NETWORK_TIMEOUT_MS))) {
     char tlsError[160]{};
@@ -583,6 +594,7 @@ AttemptResult fetchAttemptWithSecureClient(const String& path,
     return failed(app_state::FetchFailureStage::TLS);
   }
 
+  logMemoryStage("fallback-tls");
   client.setTimeout(BODY_READ_TIMEOUT_MS);
   if (!writeFallbackRequest(client, path)) {
     releaseFallbackClient(client);
@@ -607,6 +619,7 @@ AttemptResult fetchAttemptWithSecureClient(const String& path,
     Serial.printf("ADSB.fi fallback HTTP error: %d\n", headers.statusCode);
     return failed(app_state::FetchFailureStage::HTTP_STATUS);
   }
+  logMemoryStage("fallback-headers");
 
   const size_t capacity =
       headers.contentLength >= 0
@@ -620,6 +633,7 @@ AttemptResult fetchAttemptWithSecureClient(const String& path,
     return failed(app_state::FetchFailureStage::RESPONSE_BODY,
                   static_cast<uint32_t>(capacity));
   }
+  logMemoryStage("fallback-payload");
 
   size_t received = 0;
   SecureReadResult bodyResult = SecureReadResult::OK;
@@ -636,6 +650,7 @@ AttemptResult fetchAttemptWithSecureClient(const String& path,
                                         responseStarted, lastProgress);
   }
   releaseFallbackClient(client);
+  logMemoryStage("fallback-release");
 
   if (bodyResult != SecureReadResult::OK) {
     Serial.printf(
@@ -660,6 +675,7 @@ AttemptResult fetchAttemptWithSecureClient(const String& path,
   DeserializationError error = deserializeJson(
       doc, payload, received, DeserializationOption::Filter(filter));
   free(payload);
+  logMemoryStage("fallback-json");
   if (error) {
     Serial.printf("ADSB.fi fallback JSON error: %s\n", error.c_str());
     return failed(app_state::FetchFailureStage::JSON, received);
@@ -686,8 +702,8 @@ AttemptResult fetchAttemptWithSecureClient(const String& path,
 AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
                            JsonDocument& doc, uint8_t attempt) {
   Serial.printf("ADSB.fi native HTTPS attempt %u\n", attempt);
-  Serial.printf("Heap before request: %u, free PSRAM: %u, RSSI: %d dBm\n",
-                ESP.getFreeHeap(), ESP.getFreePsram(), WiFi.RSSI());
+  logMemoryStage("native-start");
+  Serial.printf("ADSB RSSI: %d dBm\n", WiFi.RSSI());
 
   // Resolve for each attempt. A failed Cloudflare edge is never pinned across
   // both retries, and the address remains available for TCP-vs-TLS diagnosis.
@@ -698,6 +714,7 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
   }
   Serial.printf("ADSB DNS attempt %u: opendata.adsb.fi -> %s\n", attempt,
                 serverIp.toString().c_str());
+  logMemoryStage("after-dns");
 
   String url = "https://opendata.adsb.fi" + path;
   esp_http_client_config_t config{};
@@ -722,6 +739,7 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
     Serial.println("ADSB.fi native HTTPS client allocation failed");
     return failed(app_state::FetchFailureStage::TLS);
   }
+  logMemoryStage("client-init");
 
   esp_http_client_set_header(client, "Accept", "application/json");
   esp_http_client_set_header(client, "Accept-Encoding", "identity");
@@ -748,6 +766,7 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
   }
   Serial.printf("ADSB.fi native TLS connected in %lu ms\n",
                 (unsigned long)(millis() - connectStarted));
+  logMemoryStage("tls-connected");
   const bool clientOpened = true;
 
   const int64_t headerLength = esp_http_client_fetch_headers(client);
@@ -782,6 +801,7 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
       lengthKnown ? static_cast<size_t>(headerLength) : MAX_RESPONSE_BYTES;
   Serial.printf("ADSB.fi HTTP 200, content length: %lld, chunked: %s\n",
                 static_cast<long long>(headerLength), chunked ? "yes" : "no");
+  logMemoryStage("headers-complete");
 
   uint8_t* payload = allocatePayload(capacity);
   if (!payload) {
@@ -791,6 +811,7 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
     return failed(app_state::FetchFailureStage::RESPONSE_BODY,
                   static_cast<uint32_t>(capacity));
   }
+  logMemoryStage("payload-ready");
 
   size_t received = 0;
   const uint32_t readStarted = millis();
@@ -848,6 +869,7 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
   const bool responseComplete =
       esp_http_client_is_complete_data_received(client);
   releaseNativeClient(client, clientOpened);
+  logMemoryStage("transport-released");
 
   const bool lengthMismatch = lengthKnown && received != capacity;
   if (readFailed || endedEarly || lengthMismatch || !responseComplete) {
@@ -872,6 +894,7 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
   DeserializationError error = deserializeJson(
       doc, payload, received, DeserializationOption::Filter(filter));
   free(payload);
+  logMemoryStage("json-complete");
   if (error) {
     Serial.printf("ADSB.fi JSON error: %s\n", error.c_str());
     return failed(app_state::FetchFailureStage::JSON, received);

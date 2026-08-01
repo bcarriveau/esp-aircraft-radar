@@ -28,6 +28,16 @@ uint32_t lastWifiAttempt = 0;
 uint32_t wifiAttempts = 0;
 wl_status_t lastLoggedWifiStatus = WL_IDLE_STATUS;
 
+void logFetchMemory(const char* stage) {
+  app_state::observeMemory();
+  Serial.printf(
+      "MEM ADSB %-18s heap=%u block=%u psram=%u\n",
+      stage ? stage : "unknown", ESP.getFreeHeap(),
+      heap_caps_get_largest_free_block(
+          MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+      ESP.getFreePsram());
+}
+
 void configureTimeSync() {
   configTzTime("CST6CDT,M3.2.0/2,M11.1.0/2", "pool.ntp.org",
                "time.google.com");
@@ -190,7 +200,9 @@ void fetchTask(void* parameter) {
 
     const uint32_t pollStartedAt = millis();
     app_state::beginFetch();
+    logFetchMemory("task-before-fetch");
     adsb_fetch::Result result = adsb_fetch::fetchAircraft(incoming);
+    logFetchMemory("task-after-fetch");
     bool immediateFollowup = false;
 
     if (result.success) {

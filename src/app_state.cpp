@@ -44,10 +44,17 @@ void unlockState(bool locked) {
 
 void observeMemoryLocked() {
   const uint32_t freeHeap = ESP.getFreeHeap();
+  const uint32_t largestInternalBlock =
+      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const uint32_t freePsram = ESP.getFreePsram();
   if (state.diagnostics.minimumFreeHeap == 0 ||
       freeHeap < state.diagnostics.minimumFreeHeap) {
     state.diagnostics.minimumFreeHeap = freeHeap;
+  }
+  if (state.diagnostics.minimumLargestInternalBlock == 0 ||
+      largestInternalBlock <
+          state.diagnostics.minimumLargestInternalBlock) {
+    state.diagnostics.minimumLargestInternalBlock = largestInternalBlock;
   }
   if (freePsram > 0 && (state.diagnostics.minimumFreePsram == 0 ||
                        freePsram < state.diagnostics.minimumFreePsram)) {

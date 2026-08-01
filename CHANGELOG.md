@@ -16,8 +16,8 @@ provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 56
-- **Current build marker:** `7IN-20260801-PRODUCT56-HA-MQTT`
+- **Current source:** Product 56 R1
+- **Current build marker:** `7IN-20260801-PRODUCT56-R1-MEMORY`
 - **Current branch:** unavailable in the uploaded ZIP; source matches the Product 55
   repository baseline used for this focused update
 - **Product 56 source baseline:** Uploaded Product 55 source with build marker
@@ -34,6 +34,30 @@ power and shared-range checks, normal Radar/OTA regression checks, and soak test
 remain user-side. Product 54 was previously confirmed to compile successfully under
 the pinned PlatformIO and Arduino-ESP32 3.0.7 environment after its OTA enum and
 mbedTLS compatibility fixes.
+
+## Product 56 R1 - 2026-08-01
+
+**Build:** `7IN-20260801-PRODUCT56-R1-MEMORY`  
+**Status:** Focused memory-diagnostic refinement for physical MQTT/ADS-B testing
+
+### Added
+
+- Added current and minimum largest-contiguous internal heap-block diagnostics to
+  the System page alongside total heap and PSRAM.
+- Added bounded serial memory checkpoints around ADS-B DNS, native/fallback TLS,
+  headers, payload allocation, transport release, JSON parsing, and task return.
+- Added MQTT memory checkpoints around PSRAM workspace allocation, native client
+  initialization/start, broker connection, discovery completion, and client cleanup.
+- Updated memory minima at each checkpoint so short-lived internal-RAM valleys are
+  not missed by the existing one-second background sample.
+
+### Preserved
+
+- No ADS-B transport, TLS verification, HTTP framing, timeout, retry, recovery,
+  cadence, stale-response, last-good, target-capacity, UI interaction, display,
+  PSRAM, OTA, or MQTT behavior was changed.
+- This build intentionally measures the low-memory stage before attempting any
+  buffer or task-stack reduction.
 
 ## Product 56 - 2026-08-01
 
