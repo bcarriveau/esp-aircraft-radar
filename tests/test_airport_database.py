@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Focused checks for the Product 50 regional airport database."""
+"""Region-independent checks for the compiled airport database header."""
 
 from __future__ import annotations
 
-import math
 import re
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +15,7 @@ RECORD_RE = re.compile(
     r'\{"([^"]+)",\s*"([^"]+)",\s*(-?\d+),\s*(-?\d+),\s*'
     r'(-?\d+),\s*(\d+),\s*(\d+),\s*(\d+)\}'
 )
+COUNT_RE = re.compile(r"constexpr\s+uint16_t\s+RECORD_COUNT")
 
 
 def records() -> list[tuple[str, str, int, int, int, int, int, int]]:
@@ -25,46 +26,38 @@ def records() -> list[tuple[str, str, int, int, int, int, int, int]]:
     ]
 
 
-def distance_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    radius = 3958.7613
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlon / 2) ** 2
-    return 2 * radius * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1.0 - a)))
-
-
 def main() -> None:
+    text = HEADER.read_text(encoding="utf-8")
     data = records()
-    assert len(data) >= 40, "starter database unexpectedly small"
+    assert data, "airport database contains no records"
+    assert COUNT_RE.search(text), "RECORD_COUNT declaration is missing"
+    assert "DATABASE_DATE" in text and "DATABASE_COVERAGE" in text
+    assert "DATABASE_CENTER" not in text, "private generation center must not be stored"
+
     idents = [record[0] for record in data]
     assert len(idents) == len(set(idents)), "duplicate airport identifiers"
-    assert {0, 1, 2, 3}.issubset({record[7] for record in data}), "missing airport category"
-    assert {"KUES", "KMKE", "KORD", "WS21", "WI26"}.issubset(idents)
     assert all(1 <= len(record[0]) <= 7 for record in data)
     assert all(1 <= len(record[1]) <= 31 for record in data)
     assert all(-90_000_000 <= record[2] <= 90_000_000 for record in data)
     assert all(-180_000_000 <= record[3] <= 180_000_000 for record in data)
+    assert all(-32768 <= record[4] <= 32767 for record in data)
+    assert all(0 <= record[5] <= 65535 for record in data)
     assert all(0 <= record[6] <= 360 for record in data)
+    assert all(0 <= record[7] <= 3 for record in data)
 
-    # Use the public KUES facility coordinates as a repeatable regional test center.
-    home_lat, home_lon = 43.041, -88.237099
-    nearby = [
-        record for record in data
-        if distance_miles(home_lat, home_lon, record[2] / 1_000_000, record[3] / 1_000_000) <= 90.0
-    ]
-    assert len(nearby) >= 25, "insufficient records in the hardware-test radius"
+    if SOURCE.exists():
+        source = SOURCE.read_text(encoding="utf-8")
+        assert "float radians(" not in source, (
+            "Arduino defines radians(...) as a macro; use a non-conflicting helper name"
+        )
+        assert "degreesToRadians(" in source
 
-    source = SOURCE.read_text(encoding="utf-8")
-    assert "float radians(" not in source, (
-        "Arduino defines radians(...) as a macro; use a non-conflicting helper name"
+    categories = Counter(record[7] for record in data)
+    print(
+        "Airport database checks passed: "
+        f"{len(data)} records; "
+        + ", ".join(f"category {key}={categories[key]}" for key in sorted(categories))
     )
-    assert "degreesToRadians(" in source
-
-    text = HEADER.read_text(encoding="utf-8").upper()
-    assert "KOLLER" not in text, "known closed airport must not be included"
-    assert "SIMANDL" not in text, "known closed airport must not be included"
-    print(f"Airport database checks passed: {len(data)} records, {len(nearby)} within 90 miles")
 
 
 if __name__ == "__main__":

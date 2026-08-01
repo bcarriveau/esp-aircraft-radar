@@ -7,3 +7,28 @@ include/config.h
 *.env
 logs/*.log
 *.log
+
+# Python tooling caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Airport database source downloads and optional in-project caches
+/airports.csv
+/runways.csv
+/tools/airports.csv
+/tools/runways.csv
+/tools/airport-data/
+/tools/airport-data-cache/
+/tools/airport_data/
+/tools/airport_data_cache/
+/tools/.airport-data-cache/
+
+# Interrupted atomic airport-header replacements
+/include/.generated_airport_database.h.*.tmp
+/include/.generated_airport_database.h.*.restore
+
+# Delivery-only files from replacement ZIP packages
+/COMMIT_MESSAGE.txt
+/PACKAGE_README.txt
+/SHA256SUMS.txt

@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260801-PRODUCT56-R5-SYSTEM-UI
+7IN-20260801-PRODUCT57-AIRPORT-DATABASE-SETUP
 ```
 
 Current intended repository branch:
@@ -38,11 +38,18 @@ tag:
 product-15-hardened
 ```
 
-Product 56 R5 is the intended final Product 56 revision. It adds an optional Home
-Assistant MQTT device, dashboard, display/range/refresh controls, bounded aircraft
-telemetry, diagnostics, and MQTT-aware OTA coordination. MQTT remains disabled by
-default and creates no client, broker traffic, aircraft snapshot buffer, or JSON
-buffer until configured and enabled from the System page.
+Product 57 retains the Product 56 R6 runtime firmware and adds a guided,
+region-independent airport-database setup workflow. It combines the public
+OurAirports airport and runway datasets, previews the generated region, replaces
+the compiled header atomically, restores the previous header after validation
+failure, and documents clearly when a coordinate change does or does not require a
+new firmware build.
+
+Product 56 R5 added an optional Home Assistant MQTT device, dashboard,
+display/range/refresh controls, bounded aircraft telemetry, diagnostics, and
+MQTT-aware OTA coordination. MQTT remains disabled by default and creates no
+client, broker traffic, aircraft snapshot buffer, or JSON buffer until configured
+and enabled from the System page.
 
 Product 56 R1 and R2 hardware logs proved that the native ESP-MQTT task, socket state,
 and persistent allocations fragmented internal RAM enough that later preferred ADS-B
@@ -54,12 +61,13 @@ while an ADS-B fetch is active. Extended hardware logging then completed repeate
 preferred native HTTPS/TLS ADS-B cycles with MQTT connected, stable post-request heap
 recovery, and no fallback use, allocation failures, or Wi-Fi recovery.
 
-Product 56 R5 removes the redundant Home Assistant Last Update Age entity while
-retaining the internal LIVE/UPDATING/STALE/OFFLINE state logic, and finalizes the
+Product 56 R5 removed the redundant Home Assistant Last Update Age entity while
+retaining the internal LIVE/UPDATING/STALE/OFFLINE state logic, and finalized the
 System Status, Device & Network, and maintenance-control layout for the physical
-800x480 display. ADS-B HTTPS, TLS verification, deadlines, recovery, 15-second
-cadence, stable-ICAO interaction, target bounds, OTA behavior, panel timing, DMA,
-OPI PSRAM, and the 20-scanline RGB bounce buffer remain unchanged.
+800x480 display. The checked-in Product 56 R6 build identity retained that reviewed
+layout. ADS-B HTTPS, TLS verification, deadlines, recovery, 15-second cadence,
+stable-ICAO interaction, target bounds, OTA behavior, panel timing, DMA, OPI PSRAM,
+and the 20-scanline RGB bounce buffer remain unchanged.
 
 ## Features
 
@@ -120,8 +128,9 @@ Tracked state:
 - **Airspace:** Live totals, a green 20/40/80-mile range toggle, aircraft-category
   cards, and tappable nearest, fastest, lowest-airborne, and highest-airborne
   shortcuts that select the aircraft on Radar by stable ICAO hex.
-- **Airports:** Nearby-airport awareness plus per-category 20/40/80-mile symbol
-  and label controls.
+- **Airports:** Nearby-airport awareness, directory/profile views, per-category
+  20/40/80-mile symbol and label controls, `AUTO / SHOW / HIDE` preferences,
+  current-label eye indicators, and `SHOW ON RADAR` range selection.
 - **System:** A tall status card for build, memory, connectivity, and airport
   diagnostics; a separate Device & Network form; a two-row retry/reconnect/MQTT/reset
   control card; and a dedicated local firmware-update overlay.
@@ -143,9 +152,17 @@ Tracked state:
   them but cannot make them jump or blink.
 - Airport symbols are drawn below aircraft; aircraft contacts and all aircraft
   labels retain priority.
-- Product 50 ships with a southeastern Wisconsin/northern Illinois starter table
-  for hardware validation plus `tools/generate_airport_database.py` for generating
-  another regional table from the public-domain OurAirports CSV.
+- The checked-in generated header is the exact regional airport table compiled into
+  the firmware and remains tracked in Git.
+- Product 57 provides `tools/Build Airport Database.bat` for a guided Windows flow
+  and `tools/generate_airport_database.py` for advanced command-line use.
+- The generator combines `airports.csv` and `runways.csv`, selects the longest open
+  runway, validates the result, and does not store the private generation-center
+  coordinates in the header.
+- Downloaded source CSV files are cached outside the repository. Python caches,
+  accidental in-project CSV copies, interrupted temporary files, and delivery-only
+  package notes are ignored by `.gitignore`.
+- See `docs/AIRPORT_DATABASE.md` for nearby-move versus new-region instructions.
 - Airport information is awareness-only and must not be used for navigation.
 
 ### ADS-B networking
@@ -175,7 +192,6 @@ Tracked state:
 - Manual STOP TRACK and starting a new tracked aircraft reset the loss counter.
 - Tracking is cleared atomically under the existing app-state mutex after three
   consecutive confirmed misses.
-
 
 ### Home Assistant MQTT
 
@@ -258,7 +274,9 @@ without a dedicated display-stability investigation.
 
 ```text
 assets/                 Aircraft artwork and display assets
+docs/                   User-facing project guides
 tools/                  Generated-data utilities, including airport CSV conversion
+tests/                  Focused host and source regression checks
 scripts/                PlatformIO post-build OTA package generation
 release/                Latest generated OTA package after a successful build
 home-assistant/          Built-in-card dashboard view and installation notes
@@ -281,6 +299,7 @@ Install:
 - Visual Studio Code
 - PlatformIO extension
 - Git
+- Python 3 for airport generation and host tests
 
 ### 2. Clone the repository
 
@@ -304,7 +323,37 @@ radar's **System > HA MQTT** panel.
 
 Never commit this file.
 
-### 4. Build
+### 4. Generate another airport region when needed
+
+A nearby move within the compiled region needs only a coordinate change on the
+radar's System page. A move to another region requires a new generated header and
+firmware build.
+
+Windows guided setup:
+
+```text
+tools\Build Airport Database.bat
+```
+
+The tool downloads or reuses OurAirports data, previews the region, and replaces
+only `include/generated_airport_database.h` after confirmation. The previous
+header is restored if validation fails.
+
+Advanced command-line generation:
+
+```bash
+python tools/generate_airport_database.py airports.csv \
+  --runways-csv runways.csv \
+  --latitude YOUR_LATITUDE \
+  --longitude YOUR_LONGITUDE \
+  --radius 120 \
+  --coverage "YOUR REGION"
+```
+
+Use `--dry-run` to preview without replacing the generated header. Full directions
+are in `docs/AIRPORT_DATABASE.md`.
+
+### 5. Build
 
 PlatformIO environment:
 
@@ -351,12 +400,14 @@ local browser update page or as a GitHub Release asset. Attaching the package to
 GitHub Release avoids adding a new multi-megabyte binary revision to normal source
 commit history.
 
-### 5. Static inspection
+### 6. Static inspection
 
 Run:
 
 ```bash
 pio check -e waveshare-s3-touch-lcd-7
+python tests/test_airport_database.py
+python tests/test_airport_generator.py
 ```
 
 The project passes `cppcheck: --skip-packages`, which keeps static analysis on
@@ -364,7 +415,7 @@ the application sources while skipping downloaded framework, toolchain, and
 library packages. This avoids false syntax failures in package headers such as
 `bits/c++config.h` and does not alter normal compilation, linking, or upload.
 
-### 6. Local browser update
+### 7. Local browser update
 
 Product 54 must first be installed by USB. For later updates:
 
@@ -377,7 +428,7 @@ Product 54 must first be installed by USB. For later updates:
 
 A partial, rejected, or interrupted package is not selected as the next boot image.
 
-### 7. Home Assistant MQTT
+### 8. Home Assistant MQTT
 
 1. Configure `MQTT_BROKER_URI`, `MQTT_USERNAME`, and `MQTT_PASSWORD` in private
    `include/config.h`.
@@ -389,7 +440,7 @@ A partial, rejected, or interrupted package is not selected as the next boot ima
 Disabling MQTT from the radar stops and destroys the client and releases its PSRAM
 snapshot and JSON buffers without disconnecting Wi-Fi or changing ADS-B behavior.
 
-### 8. Upload and monitor
+### 9. Upload and monitor
 
 ```bash
 pio run -e waveshare-s3-touch-lcd-7 -t upload
@@ -405,6 +456,7 @@ Confirm the serial log reports:
 - The intended Product build marker
 - PSRAM detected
 - App-state, radar, UI, and ADS-B buffers allocated in PSRAM
+- The airport database and nearby-cache counts
 - The core-0 ADS-B task started
 - Native HTTPS or the configured fallback connected successfully
 - Aircraft received, eligible, stored, dropped, and published counts
@@ -449,13 +501,15 @@ Before calling a Product release complete:
     request.
 19. Start OTA with MQTT connected and confirm OTA does not become ready until both
     ADS-B and MQTT maintenance holds are active; confirm cancellation resumes both.
-20. Complete an extended soak test.
+20. Generate a different airport region with synthetic or downloaded data, confirm
+    the generic tests pass, then verify the intended regional airports appear.
+21. Complete an extended soak test.
 
 ## Screenshots
 
-Current Product 56 R5 display photographs have been used for physical layout
-review but are not yet committed under a documentation image directory. Selected
-current-display photographs can be added under `docs/images/` when repository-facing
+Current Product 56 R6 display photographs have been used for physical layout review
+but are not yet committed under a documentation image directory. Selected current-
+display photographs can be added under `docs/images/` when repository-facing
 screenshots are prepared.
 
 ## Major milestones
@@ -486,6 +540,8 @@ screenshots are prepared.
   update grace period, temporary lost-signal messaging, and automatic return to
   idle mode. The accompanying PlatformIO update isolates generated files from
   Google Drive and skips third-party package headers during cppcheck.
+- **Products 50-53:** Offline airport awareness, deterministic labels, directory
+  and profile views, per-airport label controls, touch safety, and radar focus.
 - **Product 54:** Temporarily armed local browser OTA with generated hardware-bound
   packages, streamed inactive-slot writes, SHA-256 and ESP image validation, and an
   acknowledged core-0 ADS-B maintenance hold.
@@ -496,6 +552,9 @@ screenshots are prepared.
   behavior, MQTT-aware OTA coordination, the lightweight PubSubClient transport that
   preserves native ADS-B TLS memory, removal of the redundant update-age entity, and
   the finalized System-page layout.
+- **Product 57:** Guided regional airport and runway generation, atomic validation
+  and rollback, location-independent tests, plain-language setup documentation, and
+  Git exclusions for local tooling artifacts.
 
 Detailed Product-by-Product history is maintained in `CHANGELOG.md`. Unconfirmed
 older history is not guessed.
@@ -503,6 +562,9 @@ older history is not guessed.
 ## License and data source
 
 Add the repository's chosen license before distributing the firmware.
+
+Airport information is derived from public OurAirports datasets and is for visual
+awareness only, without a guarantee of accuracy or fitness for navigation.
 
 ADS-B data availability and permitted use remain subject to the selected data
 provider's terms and service availability.

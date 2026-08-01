@@ -8,33 +8,101 @@ Dates follow preserved firmware build markers. Commit links refer to the current
 `main` history in `bcarriveau/esp-aircraft-radar` where a standalone commit is
 available.
 
-This consolidated file replaces the earlier split changelog that stopped after
-Product 42. It contains the continuous confirmed history from the current Product
-56 source back through Product 15, the first hardened version-controlled baseline.
-Earlier Product history is intentionally omitted where the repository does not
-provide authoritative evidence.
+The authoritative numbered history begins with Product 15, the first hardened
+version-controlled baseline. Earlier history is intentionally omitted where the
+repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 56 R5
-- **Current build marker:** `7IN-20260801-PRODUCT56-R5-SYSTEM-UI`
-- **Current branch:** unavailable in the supplied source tree
-- **Product 56 source baseline:** Product 55 source with build marker
-  `7IN-20260801-PRODUCT55-AIRSPACE`
+- **Current source:** Product 57
+- **Current build marker:** `7IN-20260801-PRODUCT57-AIRPORT-DATABASE-SETUP`
+- **Current branch:** `main`
+- **Product 57 source baseline:** Product 56 R6 at commit `49035a62e4684ef1696fb325fbc12b0a8a53cce7`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 56 R5 is the intended final Product 56 revision. The user confirmed a
-successful PlatformIO build and hardware upload of the lightweight MQTT implementation.
-An extended hardware log then showed repeated preferred native HTTPS/TLS ADS-B
-requests completing with MQTT connected, stable post-request internal-heap recovery,
-and no TLS allocation failures, fallback use, fetch failures, or Wi-Fi recovery.
-The final Home Assistant cleanup and System-page layout were subsequently reviewed
-on the physical 800x480 display. OTA transfer regression and a longer general soak
-remain separate user-side checks.
+Product 57 changes the repository setup workflow and Product identity while
+preserving the physically reviewed Product 56 R6 runtime behavior. PlatformIO
+compile/link, generated OTA packaging, upload, and physical confirmation of the
+new Product 57 marker remain user-side.
+
+## Product 57 - 2026-08-01
+
+**Build:** `7IN-20260801-PRODUCT57-AIRPORT-DATABASE-SETUP`  
+**Status:** Focused tooling and documentation update; PlatformIO and hardware marker verification pending
+
+### Added
+
+- Added `tools/Build Airport Database.bat` as the normal Windows entry point for
+  rebuilding the offline airport region.
+- Added a guided Python setup flow that explains nearby coordinate changes versus
+  moves to another region, accepts a bounded coverage radius, and offers current
+  download, cached download, or existing local CSV input.
+- Added current OurAirports `airports.csv` and `runways.csv` handling, including
+  longest-open-runway length and heading selection.
+- Added a preview showing major, public, private, and heliport counts plus estimated
+  flash data before any project file is replaced.
+- Added atomic replacement and automatic restoration of the prior generated header
+  when validation fails.
+- Added region-independent airport-database tests and deterministic generator tests.
+- Added `docs/AIRPORT_DATABASE.md` with plain-language relocation, build, safety,
+  command-line, and troubleshooting instructions.
+
+### Git hygiene
+
+- Kept `include/generated_airport_database.h` tracked because it is the exact
+  regional database compiled into firmware.
+- Ignored Python bytecode/cache directories, accidental in-project airport/runway
+  CSV downloads, optional tool cache folders, interrupted atomic header files, and
+  delivery-only `COMMIT_MESSAGE.txt`, `PACKAGE_README.txt`, and `SHA256SUMS.txt`.
+- The guided downloader normally stores its CSV cache outside the repository under
+  the operating system's user cache directory.
+
+### Preserved
+
+- Product 56 R6 UI, System layout, Home Assistant MQTT behavior, local OTA behavior,
+  ADS-B transport, 15-second cadence, Wi-Fi/TLS recovery, stale-response rejection,
+  last-good retention, airport rendering and interaction, stable ICAO tracking,
+  200-target bounds, panel timing, DMA, OPI PSRAM, and the 20-scanline bounce buffer.
+- No credentials or private coordinates are stored by the generator or included in
+  the delivery package.
+
+### Validation
+
+- Python syntax compilation passed for the guided setup and low-level generator.
+- Synthetic generation passed for major, public, private, and heliport records.
+- Longest-open-runway selection, heading normalization, closed-runway rejection,
+  out-of-region exclusion, duplicate handling, deterministic output, and atomic
+  replacement were exercised.
+- The current checked-in regional header passed the new location-independent test.
+- Forced validation failure restored the previous generated header.
+- PlatformIO compilation, OTA package generation, upload, and physical hardware
+  testing were not run here.
+
+## Product 56 R6 - 2026-08-01
+
+**Build:** `7IN-20260801-PRODUCT56-R6-SYSTEM-UI`  
+**Commit:** [`49035a6`](https://github.com/bcarriveau/esp-aircraft-radar/commit/49035a62e4684ef1696fb325fbc12b0a8a53cce7)  
+**Status:** Hardware-reviewed Product 56 baseline retained by Product 57
+
+### Finalized
+
+- Retained the Product 56 R5 lightweight MQTT implementation and final System-page
+  arrangement under the checked-in Product 56 R6 build identity.
+- Preserved the physically reviewed System Status, Device & Network, and two-row
+  maintenance-control layout on the 800x480 Waveshare display.
+- Preserved the successful preferred native HTTPS/TLS ADS-B behavior observed with
+  MQTT connected and the recovered internal-heap margin from Product 56 R3.
+
+### Preserved
+
+- Home Assistant discovery and controls, bounded PSRAM telemetry workspaces,
+  MQTT-aware OTA coordination, native/fallback HTTPS behavior, 15-second cadence,
+  recovery, stable ICAO interaction, 200-target bounds, airport behavior, panel
+  timing, DMA, OPI PSRAM, and the 20-scanline bounce buffer.
 
 ## Product 56 R5 - 2026-08-01
 
