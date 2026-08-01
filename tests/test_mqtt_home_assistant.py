@@ -21,22 +21,24 @@ def test_product_56_mqtt_is_optional_bounded_and_isolated() -> None:
     ui = read("src/ui.cpp")
     radar_control = read("src/radar_control.cpp")
     display_power = read("src/display_power.cpp")
+    platformio = read("platformio.ini")
 
-    assert "7IN-20260801-PRODUCT56-R2-MQTT-MEMORY" in build
+    assert "7IN-20260801-PRODUCT56-R3-LIGHTWEIGHT-MQTT" in build
     assert "INACTIVE = 0" in mqtt_header
     assert "State::DISABLED" not in mqtt and "State::DISABLED" not in ui
     assert "#define MQTT_ENABLED_DEFAULT 0" in config
     assert 'constexpr const char* KEY_MQTT_ENABLED = "mqtt_on";' in settings
     assert "bool setMqttEnabled(bool enabled)" in settings
+    assert "knolleary/PubSubClient@2.8" in platformio
 
-    # Disabled mode must not construct the native client or allocate target PSRAM.
+    # Disabled mode must not construct the MQTT client or allocate target PSRAM.
     disabled_branch = mqtt[mqtt.index("if (!localMaintenanceRequested"):
                            mqtt.index("processCommands();")]
     assert "!localDesiredEnabled" in disabled_branch
     assert "!localClientPresent" in disabled_branch
     assert "!localBufferPresent" in disabled_branch
     assert "return;" in disabled_branch
-    assert "esp_mqtt_client_init" not in disabled_branch
+    assert "new (std::nothrow) PubSubClient" not in disabled_branch
     assert "heap_caps_calloc" not in disabled_branch
     start_client = mqtt[mqtt.index("bool startClient"):
                         mqtt.index("void writeDevice")]
@@ -44,14 +46,17 @@ def test_product_56_mqtt_is_optional_bounded_and_isolated() -> None:
     assert "heap_caps_malloc" in start_client
     assert "jsonBuffer" in start_client
     assert "MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT" in mqtt
-    assert "MQTT_BUFFER_BYTES = 1024" in mqtt
-    assert "MQTT_TASK_STACK_BYTES = 4096" in mqtt
-    assert "MQTT_OUTBOX_BYTES = 16U * 1024U" in mqtt
-    assert "mqttConfig.task.stack_size = MQTT_TASK_STACK_BYTES" in mqtt
-    assert "mqttConfig.outbox.limit = MQTT_OUTBOX_BYTES" in mqtt
-    assert "static_cast<int>(length), 0, retain, true" in mqtt
+    assert "MQTT_PACKET_BUFFER_BYTES = 384" in mqtt
+    assert "MQTT_WRITE_CHUNK_BYTES = 512" in mqtt
+    assert "new (std::nothrow) PubSubClient" in mqtt
+    assert "beginPublish(topic" in mqtt
+    assert "mqttClient->write(" in mqtt
+    assert "mqttClient->endPublish()" in mqtt
+    assert "esp_mqtt_client_" not in mqtt
+    assert "MQTT_TASK_STACK_BYTES" not in mqtt
+    assert "MQTT_OUTBOX_BYTES" not in mqtt
 
-    # MQTT is an optional main-loop service and never owns station recovery.
+    # MQTT is an optional task-free main-loop service and never owns station recovery.
     assert "mqtt_service::begin()" in main
     assert main.index("adsb::service();") < main.index("mqtt_service::service();")
     assert main.index("mqtt_service::service();") < main.index("ota_update::service();")
@@ -62,23 +67,25 @@ def test_product_56_mqtt_is_optional_bounded_and_isolated() -> None:
     for token in forbidden:
         assert token not in mqtt
 
-    # Commands are queued by the event callback and applied from service context.
+    # Commands are queued by the MQTT callback and applied from service context.
     assert "pendingCommands |= command" in mqtt
     assert "COMMAND_DISPLAY_ON" in mqtt and "COMMAND_DISPLAY_OFF" in mqtt
     assert "radar_control::setManualRangeMiles(20.0f)" in mqtt
     assert "radar_control::setManualRangeMiles(40.0f)" in mqtt
     assert "radar_control::setManualRangeMiles(80.0f)" in mqtt
     assert "adsb::requestRefresh();" in mqtt
-    assert 'payloadEquals(event, "PRESS")' in mqtt
-    assert mqtt.index("client = newClient;") < mqtt.index(
-        "esp_mqtt_client_start(newClient)"
-    )
+    assert 'payloadEquals(payload, payloadLength, "PRESS")' in mqtt
+    assert "mqttClient->setCallback(mqttMessageHandler)" in mqtt
+    assert "if (fetchActive) return;" in mqtt
+    assert "if (app_state::fetchInProgress()) return;" in mqtt
+    assert "Publish at most one retained state message per service interval" in mqtt
     assert "app_state::setRadarRangeMiles(rangeMiles)" in radar_control
     assert "radar::clearAirportFocus();" in radar_control
     assert "toggle_backlight(backlightState);" in display_power
 
     # Home Assistant discovery is stable, bounded, and includes no remote OTA action.
     assert "DISCOVERY_COUNT = 13" in mqtt
+    assert mqtt.count('writer.key("options");') == 1
     assert '"homeassistant/status"' in mqtt
     assert "COMMAND_REDISCOVER" in mqtt
     for entity_id in (

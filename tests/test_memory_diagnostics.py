@@ -16,7 +16,7 @@ def test_product_56_r1_tracks_contiguous_internal_memory() -> None:
     state = read("src/app_state.cpp")
     ui = read("src/ui.cpp")
 
-    assert "7IN-20260801-PRODUCT56-R2-MQTT-MEMORY" in build
+    assert "7IN-20260801-PRODUCT56-R3-LIGHTWEIGHT-MQTT" in build
     assert "minimumLargestInternalBlock" in header
     assert "heap_caps_get_largest_free_block" in state
     assert "MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT" in state
@@ -68,10 +68,12 @@ def test_mqtt_memory_checkpoints_cover_lifecycle() -> None:
     ):
         assert f'logMemoryStage("{stage}")' in mqtt
 
-    # Product 56 R2 recovers contiguous internal RAM for the preferred native TLS path.
-    assert "MQTT_BUFFER_BYTES = 1024" in mqtt
-    assert "MQTT_TASK_STACK_BYTES = 4096" in mqtt
-    assert "mqttConfig.task.stack_size = MQTT_TASK_STACK_BYTES" in mqtt
-    assert "mqttConfig.buffer.size = MQTT_BUFFER_BYTES" in mqtt
-    assert "mqttConfig.buffer.out_size = MQTT_BUFFER_BYTES" in mqtt
-    assert "mqttConfig.outbox.limit = MQTT_OUTBOX_BYTES" in mqtt
+    # Product 56 R3 removes the native MQTT task/outbox and streams payloads
+    # through a small packet buffer between ADS-B fetches.
+    assert "MQTT_PACKET_BUFFER_BYTES = 384" in mqtt
+    assert "MQTT_WRITE_CHUNK_BYTES = 512" in mqtt
+    assert "new (std::nothrow) PubSubClient" in mqtt
+    assert "beginPublish(topic" in mqtt
+    assert "if (fetchActive) return;" in mqtt
+    assert "MQTT_TASK_STACK_BYTES" not in mqtt
+    assert "MQTT_OUTBOX_BYTES" not in mqtt

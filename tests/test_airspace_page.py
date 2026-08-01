@@ -23,7 +23,7 @@ def main() -> None:
         encoding="utf-8"
     )
 
-    require(build, "7IN-20260801-PRODUCT56-R2-MQTT-MEMORY",
+    require(build, "7IN-20260801-PRODUCT56-R3-LIGHTWEIGHT-MQTT",
             "Product 56 build marker")
 
     # CURRENT RANGE is an intentionally green, clickable card with no helper copy.

@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260801-PRODUCT56-R2-MQTT-MEMORY
+7IN-20260801-PRODUCT56-R3-LIGHTWEIGHT-MQTT
 ```
 
 Current intended repository branch:
@@ -38,20 +38,21 @@ tag:
 product-15-hardened
 ```
 
-Product 56 R2 is the current host-verified candidate. It adds optional native MQTT
-integration for Home Assistant, a dependency-free dashboard view, physical-display
-backlight control, shared 20/40/80-mile range control, bounded aircraft telemetry, and
-read-only system diagnostics. MQTT is disabled by default and creates no client task,
-broker traffic, aircraft snapshot buffer, or JSON buffer until it is configured and
-enabled from the System page. Product 56 R1 hardware diagnostics confirmed that the
-original 6 KB MQTT task stack and two 2 KB MQTT buffers reduced the largest contiguous
-internal block enough for the preferred native ADS-B TLS handshake to fail in the
-SHA/AES allocation stage, while the verified fallback still succeeded. R2 reduces only
-the MQTT task stack to 4 KB and the native MQTT input/output buffers to 1 KB each;
-transport behavior, the 16 KB bounded outbox, telemetry limits, ADS-B logic, OTA,
-Product 54, and Product 55 behavior remain intact. R2 remains a candidate until
-PlatformIO compile/link, native ADS-B TLS with MQTT enabled, MQTT discovery/control,
-OTA regression, and soak testing are confirmed.
+Product 56 R3 is the current host-verified candidate. It retains the optional Home
+Assistant device, dashboard, display/range/refresh controls, bounded aircraft telemetry,
+and diagnostics introduced by Product 56. MQTT remains disabled by default and creates
+no client, broker traffic, aircraft snapshot buffer, or JSON buffer until configured
+and enabled from the System page.
+
+Product 56 R1 and R2 hardware logs proved that the native ESP-MQTT task, socket state,
+and persistent allocations fragmented internal RAM enough that later preferred ADS-B
+TLS handshakes failed even when total free heap remained above 50 KB. R3 replaces only
+that optional MQTT transport with task-free PubSubClient 2.8, streams retained payloads
+from the PSRAM JSON buffer through a 384-byte MQTT packet buffer, publishes at most one
+state message per service interval, and pauses MQTT socket work while an ADS-B fetch is
+active. ADS-B HTTPS, TLS verification, deadlines, recovery, 15-second cadence, OTA,
+display behavior, and Product 55 interaction behavior are unchanged. PlatformIO
+compile/link and hardware validation remain user-side.
 
 ## Features
 
@@ -174,16 +175,21 @@ Tracked state:
 - MQTT is disabled by default and its enabled state is stored independently in NVS.
 - Disabled mode creates no MQTT client task, makes no broker connection attempts, and
   allocates no aircraft snapshot or JSON buffer.
-- When enabled, the native ESP-MQTT client publishes Home Assistant discovery,
-  retained availability, bounded state topics, a tracked-aircraft snapshot, the five
-  nearest aircraft, and the Product 55 Airspace highlights.
+- When enabled, a task-free PubSubClient 2.8 connection publishes Home Assistant
+  discovery, retained availability, bounded state topics, a tracked-aircraft snapshot,
+  the five nearest aircraft, and the Product 55 Airspace highlights.
 - Home Assistant can switch the physical LCD backlight, select the shared 20/40/80-mile
   radar range, and queue the existing non-overlapping ADS-B refresh command.
 - MQTT does not own Wi-Fi, reconnect the station, recycle the radio, alter ADS-B
   recovery, or trigger a restart. Broker failure is nonfatal to the radar.
-- The MQTT client uses a bounded 16 KB outbox and allocates one capacity-sized
-  aircraft snapshot buffer and one bounded JSON buffer in PSRAM only while enabled
-  and configured.
+- MQTT uses a 384-byte internal packet buffer and streams larger retained payloads
+  directly from the bounded PSRAM JSON workspace. It has no separate MQTT task or
+  persistent outbox.
+- MQTT connect, loop, discovery, and state publication are skipped while the ADS-B
+  HTTPS task reports a fetch in progress. State publication is limited to one message
+  per 250 ms service interval.
+- The service allocates one capacity-sized aircraft snapshot buffer and one bounded
+  JSON buffer in PSRAM only while enabled and configured.
 - `home-assistant/aircraft-radar-view.yaml` provides a ready-to-paste dashboard view
   using only standard Home Assistant cards.
 
@@ -420,7 +426,7 @@ Before calling a Product release complete:
 15. Confirm wrong-code, wrong-extension, mismatched-build, truncated-package, and
     SHA-mismatch failures leave the current firmware selected and release the ADS-B
     maintenance hold.
-16. With MQTT disabled, confirm no broker attempts, MQTT task, or MQTT aircraft
+16. With MQTT disabled, confirm no broker attempts, MQTT client, or MQTT aircraft
     buffer are reported and normal Product 55 behavior is unchanged.
 17. Enable MQTT and confirm Home Assistant discovery, availability, display power,
     shared range control, refresh, tracked/nearest telemetry, and dashboard rendering.

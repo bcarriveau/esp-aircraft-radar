@@ -3,11 +3,13 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_heap_caps.h>
-#include <mqtt_client.h>
+#include <PubSubClient.h>
+#include <new>
 
 #include <algorithm>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "adsb_network.h"
@@ -36,11 +38,12 @@ namespace {
 
 constexpr uint32_t SERVICE_INTERVAL_MS = 250;
 constexpr uint32_t HEARTBEAT_INTERVAL_MS = 60000;
-constexpr uint32_t START_RETRY_MS = 60000;
-constexpr uint32_t STOP_GRACE_MS = 500;
-constexpr uint16_t MQTT_BUFFER_BYTES = 1024;
-constexpr uint16_t MQTT_TASK_STACK_BYTES = 4096;
-constexpr uint32_t MQTT_OUTBOX_BYTES = 16U * 1024U;
+constexpr uint32_t MQTT_STARTUP_DELAY_MS = 5000;
+constexpr uint32_t MQTT_RECONNECT_MS = 30000;
+constexpr uint16_t MQTT_PACKET_BUFFER_BYTES = 384;
+constexpr uint16_t MQTT_KEEPALIVE_SECONDS = 60;
+constexpr uint16_t MQTT_SOCKET_TIMEOUT_SECONDS = 2;
+constexpr size_t MQTT_WRITE_CHUNK_BYTES = 512;
 constexpr uint16_t STATE_BUFFER_BYTES = 4096;
 constexpr uint8_t NEAREST_COUNT = 5;
 constexpr uint8_t DISCOVERY_COUNT = 13;
@@ -253,7 +256,8 @@ class JsonWriter {
 };
 
 portMUX_TYPE stateMux = portMUX_INITIALIZER_UNLOCKED;
-esp_mqtt_client_handle_t client = nullptr;
+WiFiClient* networkClient = nullptr;
+PubSubClient* mqttClient = nullptr;
 aircraft::Target* targetBuffer = nullptr;
 char* jsonBuffer = nullptr;
 State currentState = State::INACTIVE;
@@ -263,9 +267,8 @@ bool clientConnected = false;
 bool maintenanceRequested = false;
 bool maintenanceActive = false;
 bool stopRequested = false;
-bool offlineQueued = false;
 bool availabilityPublished = false;
-uint32_t stopAfterMs = 0;
+uint32_t earliestStartMs = 0;
 uint32_t nextStartAttemptMs = 0;
 uint32_t lastServiceMs = 0;
 uint32_t lastHeartbeatMs = 0;
@@ -288,6 +291,8 @@ char airspaceTopic[128]{};
 char displayCommandTopic[128]{};
 char rangeCommandTopic[128]{};
 char refreshCommandTopic[128]{};
+char brokerHost[96]{};
+uint16_t brokerPort = 1883;
 char statusMessage[128] = "MQTT disabled";
 
 void setState(State state, const char* message) {
@@ -318,102 +323,90 @@ uint32_t takeCommands() {
   return commands;
 }
 
-bool payloadEquals(const esp_mqtt_event_handle_t event, const char* expected) {
-  if (!event || !expected || event->current_data_offset != 0 ||
-      event->data_len != event->total_data_len) {
+bool payloadEquals(const uint8_t* payload, unsigned int payloadLength,
+                   const char* expected) {
+  if (!payload || !expected) return false;
+  const size_t expectedLength = strlen(expected);
+  return expectedLength == payloadLength &&
+         memcmp(payload, expected, expectedLength) == 0;
+}
+
+bool topicEquals(const char* topic, const char* expected) {
+  return topic && expected && strcmp(topic, expected) == 0;
+}
+
+void mqttMessageHandler(char* topic, uint8_t* payload,
+                        unsigned int payloadLength) {
+  if (topicEquals(topic, displayCommandTopic)) {
+    if (payloadEquals(payload, payloadLength, "ON")) {
+      queueCommand(COMMAND_DISPLAY_ON);
+    } else if (payloadEquals(payload, payloadLength, "OFF")) {
+      queueCommand(COMMAND_DISPLAY_OFF);
+    }
+  } else if (topicEquals(topic, rangeCommandTopic)) {
+    if (payloadEquals(payload, payloadLength, "20")) {
+      queueCommand(COMMAND_RANGE_20);
+    } else if (payloadEquals(payload, payloadLength, "40")) {
+      queueCommand(COMMAND_RANGE_40);
+    } else if (payloadEquals(payload, payloadLength, "80")) {
+      queueCommand(COMMAND_RANGE_80);
+    }
+  } else if (topicEquals(topic, refreshCommandTopic) &&
+             payloadEquals(payload, payloadLength, "PRESS")) {
+    queueCommand(COMMAND_REFRESH);
+  } else if (topicEquals(topic, "homeassistant/status") &&
+             payloadEquals(payload, payloadLength, "online")) {
+    queueCommand(COMMAND_REDISCOVER);
+  }
+}
+
+bool parseBrokerUri() {
+  brokerHost[0] = 0;
+  brokerPort = 1883;
+
+  constexpr const char* PREFIX = "mqtt://";
+  constexpr size_t PREFIX_LENGTH = 7;
+  if (strncmp(MQTT_BROKER_URI, PREFIX, PREFIX_LENGTH) != 0) return false;
+
+  const char* authority = MQTT_BROKER_URI + PREFIX_LENGTH;
+  if (!authority[0]) return false;
+
+  const char* slash = strchr(authority, '/');
+  const size_t authorityLength =
+      slash ? static_cast<size_t>(slash - authority) : strlen(authority);
+  if (authorityLength == 0 || authorityLength >= sizeof(brokerHost)) {
     return false;
   }
-  const size_t length = strlen(expected);
-  return length == static_cast<size_t>(event->data_len) &&
-         memcmp(event->data, expected, length) == 0;
-}
+  if (slash && slash[1] != 0) return false;
 
-bool topicEquals(const esp_mqtt_event_handle_t event, const char* expected) {
-  if (!event || !expected || !event->topic || event->topic_len < 0) return false;
-  const size_t length = strlen(expected);
-  return length == static_cast<size_t>(event->topic_len) &&
-         memcmp(event->topic, expected, length) == 0;
-}
-
-void mqttEventHandler(void*, esp_event_base_t, int32_t eventId,
-                      void* eventData) {
-  auto* event = static_cast<esp_mqtt_event_handle_t>(eventData);
-  if (!event) return;
-  bool currentClient = false;
-  portENTER_CRITICAL(&stateMux);
-  currentClient = event->client == client;
-  portEXIT_CRITICAL(&stateMux);
-  if (!currentClient) return;
-
-  switch (eventId) {
-    case MQTT_EVENT_CONNECTED: {
-      logMemoryStage("broker-connected");
-      bool active = false;
-      portENTER_CRITICAL(&stateMux);
-      clientConnected = true;
-      active = desiredEnabled && !maintenanceRequested;
-      if (active) {
-        pendingCommands |= COMMAND_REDISCOVER;
-        currentState = State::CONNECTED;
-        snprintf(statusMessage, sizeof(statusMessage),
-                 "Connected to MQTT broker");
-      }
-      portEXIT_CRITICAL(&stateMux);
-      if (active) {
-        esp_mqtt_client_subscribe(event->client, displayCommandTopic, 0);
-        esp_mqtt_client_subscribe(event->client, rangeCommandTopic, 0);
-        esp_mqtt_client_subscribe(event->client, refreshCommandTopic, 0);
-        esp_mqtt_client_subscribe(event->client, "homeassistant/status", 0);
-      }
-      break;
-    }
-
-    case MQTT_EVENT_DISCONNECTED:
-      portENTER_CRITICAL(&stateMux);
-      clientConnected = false;
-      if (!maintenanceRequested && desiredEnabled) {
-        currentState = State::CONNECTING;
-        snprintf(statusMessage, sizeof(statusMessage),
-                 "Waiting for MQTT broker");
-      }
-      portEXIT_CRITICAL(&stateMux);
-      break;
-
-    case MQTT_EVENT_DATA:
-      if (topicEquals(event, displayCommandTopic)) {
-        if (payloadEquals(event, "ON")) queueCommand(COMMAND_DISPLAY_ON);
-        else if (payloadEquals(event, "OFF")) queueCommand(COMMAND_DISPLAY_OFF);
-      } else if (topicEquals(event, rangeCommandTopic)) {
-        if (payloadEquals(event, "20")) queueCommand(COMMAND_RANGE_20);
-        else if (payloadEquals(event, "40")) queueCommand(COMMAND_RANGE_40);
-        else if (payloadEquals(event, "80")) queueCommand(COMMAND_RANGE_80);
-      } else if (topicEquals(event, refreshCommandTopic) &&
-                 payloadEquals(event, "PRESS")) {
-        queueCommand(COMMAND_REFRESH);
-      } else if (topicEquals(event, "homeassistant/status") &&
-                 payloadEquals(event, "online")) {
-        queueCommand(COMMAND_REDISCOVER);
-      }
-      break;
-
-    case MQTT_EVENT_ERROR:
-      portENTER_CRITICAL(&stateMux);
-      if (!maintenanceRequested && desiredEnabled) {
-        currentState = State::ERROR;
-        snprintf(statusMessage, sizeof(statusMessage),
-                 "MQTT transport error; retrying");
-      }
-      portEXIT_CRITICAL(&stateMux);
-      break;
-
-    default:
-      break;
+  const char* colon = nullptr;
+  for (size_t index = 0; index < authorityLength; ++index) {
+    if (authority[index] == ':') colon = authority + index;
   }
-}
 
-bool brokerConfigured() {
-  return MQTT_BROKER_URI[0] != 0 &&
-         strncmp(MQTT_BROKER_URI, "mqtt://", 7) == 0;
+  size_t hostLength = authorityLength;
+  if (colon) {
+    hostLength = static_cast<size_t>(colon - authority);
+    if (hostLength == 0 || colon + 1 >= authority + authorityLength) {
+      return false;
+    }
+    char portText[8]{};
+    const size_t portLength =
+        static_cast<size_t>((authority + authorityLength) - (colon + 1));
+    if (portLength == 0 || portLength >= sizeof(portText)) return false;
+    memcpy(portText, colon + 1, portLength);
+    char* end = nullptr;
+    const unsigned long parsedPort = strtoul(portText, &end, 10);
+    if (!end || *end != 0 || parsedPort == 0 || parsedPort > 65535UL) {
+      return false;
+    }
+    brokerPort = static_cast<uint16_t>(parsedPort);
+  }
+
+  if (hostLength == 0 || hostLength >= sizeof(brokerHost)) return false;
+  memcpy(brokerHost, authority, hostLength);
+  brokerHost[hostLength] = 0;
+  return true;
 }
 
 void initializeIdentity() {
@@ -448,19 +441,30 @@ void resetObservedState() {
   discoveryIndex = 0;
 }
 
-void destroyClient() {
-  logMemoryStage("destroy-begin");
-  esp_mqtt_client_handle_t localClient = nullptr;
+void markClientDisconnected(const char* message) {
   portENTER_CRITICAL(&stateMux);
-  localClient = client;
-  client = nullptr;
   clientConnected = false;
   portEXIT_CRITICAL(&stateMux);
-
-  if (localClient) {
-    esp_mqtt_client_stop(localClient);
-    esp_mqtt_client_destroy(localClient);
+  if (desiredEnabled && !maintenanceRequested) {
+    setState(State::CONNECTING,
+             message ? message : "Waiting for MQTT broker");
   }
+}
+
+void destroyClient() {
+  logMemoryStage("destroy-begin");
+
+  if (mqttClient) {
+    if (mqttClient->connected()) mqttClient->disconnect();
+    delete mqttClient;
+    mqttClient = nullptr;
+  }
+  if (networkClient) {
+    networkClient->stop();
+    delete networkClient;
+    networkClient = nullptr;
+  }
+
   if (targetBuffer) {
     free(targetBuffer);
     targetBuffer = nullptr;
@@ -469,37 +473,56 @@ void destroyClient() {
     free(jsonBuffer);
     jsonBuffer = nullptr;
   }
+
   portENTER_CRITICAL(&stateMux);
+  clientConnected = false;
   pendingCommands = 0;
   portEXIT_CRITICAL(&stateMux);
-  offlineQueued = false;
   availabilityPublished = false;
-  stopAfterMs = 0;
   stopRequested = false;
   logMemoryStage("destroy-complete");
 }
 
-bool enqueueMessage(const char* topic, const char* payload, size_t length,
+bool publishMessage(const char* topic, const char* payload, size_t length,
                     bool retain) {
-  esp_mqtt_client_handle_t localClient = nullptr;
-  bool connected = false;
-  portENTER_CRITICAL(&stateMux);
-  localClient = client;
-  connected = clientConnected;
-  portEXIT_CRITICAL(&stateMux);
-  if (!localClient || !connected || !topic || !payload || length == 0) {
+  if (!mqttClient || !clientConnected || !mqttClient->connected() ||
+      !topic || !payload || length == 0) {
     return false;
   }
-  return esp_mqtt_client_enqueue(localClient, topic, payload,
-                                 static_cast<int>(length), 0, retain, true) >= 0;
+  if (!mqttClient->beginPublish(topic, static_cast<unsigned int>(length),
+                                retain)) {
+    markClientDisconnected("MQTT publish start failed");
+    return false;
+  }
+
+  size_t offset = 0;
+  while (offset < length) {
+    const size_t chunk =
+        std::min(MQTT_WRITE_CHUNK_BYTES, length - offset);
+    const size_t written = mqttClient->write(
+        reinterpret_cast<const uint8_t*>(payload + offset), chunk);
+    if (written != chunk) {
+      networkClient->stop();
+      markClientDisconnected("MQTT publish write failed");
+      return false;
+    }
+    offset += written;
+  }
+
+  if (mqttClient->endPublish() != 1) {
+    networkClient->stop();
+    markClientDisconnected("MQTT publish finish failed");
+    return false;
+  }
+  return true;
 }
 
-bool enqueueText(const char* topic, const char* payload, bool retain) {
-  return enqueueMessage(topic, payload, strlen(payload), retain);
+bool publishText(const char* topic, const char* payload, bool retain) {
+  return publishMessage(topic, payload, strlen(payload), retain);
 }
 
 void requestStop() {
-  if (!client) {
+  if (!mqttClient && !networkClient && !targetBuffer && !jsonBuffer) {
     destroyClient();
     return;
   }
@@ -507,25 +530,14 @@ void requestStop() {
   setState(State::STOPPING, "Stopping MQTT service");
 }
 
-void serviceStop(uint32_t now) {
-  if (!client) {
-    destroyClient();
-    return;
+void serviceStop() {
+  // OTA and a manual disable wait for an active ADS-B transaction to finish,
+  // so MQTT never performs socket work during the HTTPS/TLS memory peak.
+  if (app_state::fetchInProgress()) return;
+
+  if (mqttClient && clientConnected && mqttClient->connected()) {
+    publishText(availabilityTopic, "offline", true);
   }
-  bool connected = false;
-  portENTER_CRITICAL(&stateMux);
-  connected = clientConnected;
-  portEXIT_CRITICAL(&stateMux);
-  if (!offlineQueued && connected) {
-    if (enqueueText(availabilityTopic, "offline", true)) {
-      offlineQueued = true;
-      stopAfterMs = now + STOP_GRACE_MS;
-      return;
-    }
-    if (stopAfterMs == 0) stopAfterMs = now + STOP_GRACE_MS;
-    if (static_cast<int32_t>(now - stopAfterMs) < 0) return;
-  }
-  if (offlineQueued && static_cast<int32_t>(now - stopAfterMs) < 0) return;
   destroyClient();
 }
 
@@ -553,72 +565,81 @@ bool startClient() {
   }
   logMemoryStage("psram-ready");
 
-  esp_mqtt_client_config_t mqttConfig{};
-  mqttConfig.broker.address.uri = MQTT_BROKER_URI;
-  mqttConfig.credentials.client_id = clientId;
-  if (MQTT_USERNAME[0]) mqttConfig.credentials.username = MQTT_USERNAME;
-  if (MQTT_PASSWORD[0]) {
-    mqttConfig.credentials.authentication.password = MQTT_PASSWORD;
+  networkClient = new (std::nothrow) WiFiClient();
+  if (!networkClient) {
+    destroyClient();
+    setState(State::ERROR, "MQTT network client allocation failed");
+    return false;
   }
-  mqttConfig.session.keepalive = 60;
-  mqttConfig.session.last_will.topic = availabilityTopic;
-  mqttConfig.session.last_will.msg = "offline";
-  mqttConfig.session.last_will.msg_len = 7;
-  mqttConfig.session.last_will.qos = 0;
-  mqttConfig.session.last_will.retain = true;
-  mqttConfig.network.timeout_ms = 10000;
-  mqttConfig.network.reconnect_timeout_ms = 30000;
-  mqttConfig.task.stack_size = MQTT_TASK_STACK_BYTES;
-  mqttConfig.buffer.size = MQTT_BUFFER_BYTES;
-  mqttConfig.buffer.out_size = MQTT_BUFFER_BYTES;
-  mqttConfig.outbox.limit = MQTT_OUTBOX_BYTES;
 
-  setState(State::STARTING, "Starting MQTT client");
-  esp_mqtt_client_handle_t newClient = esp_mqtt_client_init(&mqttConfig);
-  if (!newClient) {
-    free(targetBuffer);
-    targetBuffer = nullptr;
-    free(jsonBuffer);
-    jsonBuffer = nullptr;
-    setState(State::ERROR, "MQTT client initialization failed");
+  mqttClient = new (std::nothrow) PubSubClient(*networkClient);
+  if (!mqttClient) {
+    destroyClient();
+    setState(State::ERROR, "MQTT client allocation failed");
     return false;
   }
+
+  networkClient->setTimeout(1000);
+  mqttClient->setServer(brokerHost, brokerPort);
+  mqttClient->setCallback(mqttMessageHandler);
+  mqttClient->setKeepAlive(MQTT_KEEPALIVE_SECONDS);
+  mqttClient->setSocketTimeout(MQTT_SOCKET_TIMEOUT_SECONDS);
+  if (!mqttClient->setBufferSize(MQTT_PACKET_BUFFER_BYTES)) {
+    destroyClient();
+    setState(State::ERROR, "MQTT packet buffer allocation failed");
+    return false;
+  }
+
   logMemoryStage("client-init");
-  portENTER_CRITICAL(&stateMux);
-  client = newClient;
-  clientConnected = false;
-  portEXIT_CRITICAL(&stateMux);
-  if (esp_mqtt_client_register_event(
-          newClient, static_cast<esp_mqtt_event_id_t>(ESP_EVENT_ANY_ID),
-          mqttEventHandler, nullptr) != ESP_OK) {
-    portENTER_CRITICAL(&stateMux);
-    if (client == newClient) client = nullptr;
-    portEXIT_CRITICAL(&stateMux);
-    esp_mqtt_client_destroy(newClient);
-    free(targetBuffer);
-    targetBuffer = nullptr;
-    free(jsonBuffer);
-    jsonBuffer = nullptr;
-    setState(State::ERROR, "MQTT event registration failed");
-    return false;
-  }
   resetObservedState();
   setState(State::CONNECTING, "Connecting to MQTT broker");
-  if (esp_mqtt_client_start(newClient) != ESP_OK) {
-    portENTER_CRITICAL(&stateMux);
-    if (client == newClient) client = nullptr;
-    clientConnected = false;
-    portEXIT_CRITICAL(&stateMux);
-    esp_mqtt_client_destroy(newClient);
-    free(targetBuffer);
-    targetBuffer = nullptr;
-    free(jsonBuffer);
-    jsonBuffer = nullptr;
-    setState(State::ERROR, "MQTT client start failed");
+  Serial.printf("MQTT lightweight client ready: %s\n", deviceId);
+  logMemoryStage("client-started");
+  return true;
+}
+
+bool connectClient() {
+  if (!mqttClient || WiFi.status() != WL_CONNECTED ||
+      app_state::fetchInProgress()) {
     return false;
   }
-  Serial.printf("MQTT client started: %s\n", deviceId);
-  logMemoryStage("client-started");
+
+  setState(State::CONNECTING, "Connecting to MQTT broker");
+  bool connected = false;
+  if (MQTT_USERNAME[0]) {
+    connected = mqttClient->connect(
+        clientId, MQTT_USERNAME, MQTT_PASSWORD, availabilityTopic, 0, true,
+        "offline", true);
+  } else {
+    connected = mqttClient->connect(
+        clientId, availabilityTopic, 0, true, "offline");
+  }
+
+  if (!connected) {
+    char message[96];
+    snprintf(message, sizeof(message), "MQTT connect failed (%d); retrying",
+             mqttClient->state());
+    markClientDisconnected(message);
+    return false;
+  }
+
+  const bool subscriptionsOk =
+      mqttClient->subscribe(displayCommandTopic, 0) &&
+      mqttClient->subscribe(rangeCommandTopic, 0) &&
+      mqttClient->subscribe(refreshCommandTopic, 0) &&
+      mqttClient->subscribe("homeassistant/status", 0);
+  if (!subscriptionsOk) {
+    mqttClient->disconnect();
+    markClientDisconnected("MQTT subscribe failed; retrying");
+    return false;
+  }
+
+  portENTER_CRITICAL(&stateMux);
+  clientConnected = true;
+  pendingCommands |= COMMAND_REDISCOVER;
+  portEXIT_CRITICAL(&stateMux);
+  setState(State::CONNECTED, "Connected to MQTT broker");
+  logMemoryStage("broker-connected");
   return true;
 }
 
@@ -834,7 +855,7 @@ bool publishDiscovery(uint8_t index) {
   char topic[160];
   snprintf(topic, sizeof(topic), "homeassistant/%s/%s_%s/config", component,
            deviceId, object);
-  return enqueueMessage(topic, writer.c_str(), writer.size(), true);
+  return publishMessage(topic, writer.c_str(), writer.size(), true);
 }
 
 const char* dataStatusName(const app_state::Snapshot& snapshot,
@@ -942,7 +963,7 @@ bool publishStatus(const app_state::Snapshot& snapshot,
   writer.key("mqtt_status"); writer.value(stateName(mqttState));
   writer.endObject();
   return writer.valid() &&
-         enqueueMessage(statusTopic, writer.c_str(), writer.size(), true);
+         publishMessage(statusTopic, writer.c_str(), writer.size(), true);
 }
 
 bool publishTraffic(const app_state::Snapshot& snapshot) {
@@ -962,7 +983,7 @@ bool publishTraffic(const app_state::Snapshot& snapshot) {
   writer.endArray();
   writer.endObject();
   return writer.valid() &&
-         enqueueMessage(trafficTopic, writer.c_str(), writer.size(), true);
+         publishMessage(trafficTopic, writer.c_str(), writer.size(), true);
 }
 
 bool publishTracked(const app_state::Snapshot& snapshot) {
@@ -982,7 +1003,7 @@ bool publishTracked(const app_state::Snapshot& snapshot) {
   else writer.nullValue();
   writer.endObject();
   return writer.valid() &&
-         enqueueMessage(trackedTopic, writer.c_str(), writer.size(), true);
+         publishMessage(trackedTopic, writer.c_str(), writer.size(), true);
 }
 
 uint8_t categoryIndex(const aircraft::Target& target) {
@@ -1042,7 +1063,7 @@ bool publishAirspace(const app_state::Snapshot& snapshot) {
   writer.endObject();
   writer.endObject();
   return writer.valid() &&
-         enqueueMessage(airspaceTopic, writer.c_str(), writer.size(), true);
+         publishMessage(airspaceTopic, writer.c_str(), writer.size(), true);
 }
 
 void observeChanges(uint32_t now) {
@@ -1091,22 +1112,27 @@ void publishPending(uint32_t now) {
   app_state::Diagnostics diagnostics;
   app_state::copyDiagnostics(diagnostics);
 
+  // Publish at most one retained state message per service interval.
+  // This avoids a burst of socket writes immediately before an ADS-B cycle.
   if ((pendingPublishMask & PUBLISH_STATUS) &&
       publishStatus(snapshot, diagnostics, now)) {
     pendingPublishMask &= static_cast<uint8_t>(~PUBLISH_STATUS);
+    return;
   }
   if ((pendingPublishMask & PUBLISH_TRAFFIC) && publishTraffic(snapshot)) {
     pendingPublishMask &= static_cast<uint8_t>(~PUBLISH_TRAFFIC);
+    return;
   }
   if ((pendingPublishMask & PUBLISH_TRACKED) && publishTracked(snapshot)) {
     pendingPublishMask &= static_cast<uint8_t>(~PUBLISH_TRACKED);
+    return;
   }
   if ((pendingPublishMask & PUBLISH_AIRSPACE) && publishAirspace(snapshot)) {
     pendingPublishMask &= static_cast<uint8_t>(~PUBLISH_AIRSPACE);
   }
 }
 
-void processCommands() {
+bool processCommands() {
   const uint32_t commands = takeCommands();
   if (commands & COMMAND_DISPLAY_ON) display_power::setEnabled(true);
   if (commands & COMMAND_DISPLAY_OFF) display_power::setEnabled(false);
@@ -1119,6 +1145,7 @@ void processCommands() {
     discoveryIndex = 0;
     pendingPublishMask |= PUBLISH_ALL;
   }
+  return (commands & (COMMAND_RANGE_MASK | COMMAND_REFRESH)) != 0;
 }
 
 }  // namespace
@@ -1140,19 +1167,22 @@ const char* stateName(State state) {
 
 bool begin() {
   initializeIdentity();
-  configured = brokerConfigured();
+  configured = parseBrokerUri();
   desiredEnabled = settings::mqttEnabled();
   maintenanceRequested = false;
   maintenanceActive = false;
+  earliestStartMs = millis() + MQTT_STARTUP_DELAY_MS;
+  nextStartAttemptMs = 0;
   if (!desiredEnabled) {
     setState(State::INACTIVE, "MQTT disabled; no task or buffer allocated");
   } else if (!configured) {
     setState(State::NOT_CONFIGURED,
              "Add MQTT_BROKER_URI to private include/config.h");
   } else {
-    setState(State::WAITING_FOR_WIFI, "Waiting for Wi-Fi");
+    setState(State::WAITING_FOR_WIFI, "Waiting for first ADS-B cycle");
   }
-  Serial.printf("MQTT: %s, configured=%s\n", desiredEnabled ? "enabled" : "disabled",
+  Serial.printf("MQTT: %s, configured=%s\n",
+                desiredEnabled ? "enabled" : "disabled",
                 configured ? "yes" : "no");
   return true;
 }
@@ -1163,6 +1193,7 @@ bool setEnabled(bool enabledValue) {
   desiredEnabled = enabledValue;
   pendingCommands = 0;
   portEXIT_CRITICAL(&stateMux);
+  earliestStartMs = millis();
   nextStartAttemptMs = 0;
   return true;
 }
@@ -1203,7 +1234,7 @@ void service() {
   portENTER_CRITICAL(&stateMux);
   localMaintenanceRequested = maintenanceRequested;
   localDesiredEnabled = desiredEnabled;
-  localClientPresent = client != nullptr;
+  localClientPresent = mqttClient != nullptr || networkClient != nullptr;
   localBufferPresent = targetBuffer != nullptr || jsonBuffer != nullptr;
   portEXIT_CRITICAL(&stateMux);
 
@@ -1217,17 +1248,18 @@ void service() {
   if (now - lastServiceMs < SERVICE_INTERVAL_MS) return;
   lastServiceMs = now;
 
+  bool fetchRequestedByCommand = false;
   if (localMaintenanceRequested || !localDesiredEnabled) {
     takeCommands();
   } else {
-    processCommands();
+    fetchRequestedByCommand = processCommands();
   }
 
   if (localMaintenanceRequested) {
-    if (client || targetBuffer || jsonBuffer) {
+    if (mqttClient || networkClient || targetBuffer || jsonBuffer) {
       if (!stopRequested) requestStop();
-      serviceStop(now);
-      if (client || targetBuffer || jsonBuffer) return;
+      serviceStop();
+      if (mqttClient || networkClient || targetBuffer || jsonBuffer) return;
     }
     portENTER_CRITICAL(&stateMux);
     maintenanceActive = true;
@@ -1241,49 +1273,90 @@ void service() {
   portEXIT_CRITICAL(&stateMux);
 
   if (!localDesiredEnabled) {
-    if (client || targetBuffer || jsonBuffer) {
+    if (mqttClient || networkClient || targetBuffer || jsonBuffer) {
       if (!stopRequested) requestStop();
-      serviceStop(now);
-      if (client || targetBuffer || jsonBuffer) return;
+      serviceStop();
+      if (mqttClient || networkClient || targetBuffer || jsonBuffer) return;
     }
     setState(State::INACTIVE, "MQTT disabled; no task or buffer allocated");
     return;
   }
 
   if (!configured) {
-    if (client || targetBuffer || jsonBuffer) destroyClient();
+    if (mqttClient || networkClient || targetBuffer || jsonBuffer) {
+      destroyClient();
+    }
     setState(State::NOT_CONFIGURED,
              "Add MQTT_BROKER_URI to private include/config.h");
     return;
   }
 
-  if (!client) {
-    if (WiFi.status() != WL_CONNECTED) {
-      setState(State::WAITING_FOR_WIFI, "Waiting for Wi-Fi");
+  if (fetchRequestedByCommand) return;
+
+  if (WiFi.status() != WL_CONNECTED) {
+    if (networkClient) networkClient->stop();
+    markClientDisconnected("Waiting for Wi-Fi");
+    setState(State::WAITING_FOR_WIFI, "Waiting for Wi-Fi");
+    return;
+  }
+
+  const bool fetchActive = app_state::fetchInProgress();
+
+  if (!mqttClient) {
+    if (fetchActive ||
+        static_cast<int32_t>(now - earliestStartMs) < 0) {
+      setState(State::WAITING_FOR_WIFI, "Waiting for ADS-B idle window");
       return;
     }
-    if (nextStartAttemptMs && static_cast<int32_t>(now - nextStartAttemptMs) < 0) {
+    if (nextStartAttemptMs &&
+        static_cast<int32_t>(now - nextStartAttemptMs) < 0) {
       return;
     }
     if (!startClient()) {
-      nextStartAttemptMs = now + START_RETRY_MS;
+      nextStartAttemptMs = now + MQTT_RECONNECT_MS;
       return;
     }
     nextStartAttemptMs = 0;
   }
 
   if (stopRequested) {
-    serviceStop(now);
+    serviceStop();
     return;
   }
 
-  bool connected = false;
-  portENTER_CRITICAL(&stateMux);
-  connected = clientConnected;
-  portEXIT_CRITICAL(&stateMux);
-  if (!connected) return;
+  // No MQTT socket work is permitted during an ADS-B HTTPS transaction.
+  // The broker keepalive is 60 seconds, while a normal fetch completes in a
+  // few seconds, so pausing loop/publish work here is safe and deterministic.
+  if (fetchActive) return;
+
+  if (!mqttClient->connected()) {
+    portENTER_CRITICAL(&stateMux);
+    clientConnected = false;
+    portEXIT_CRITICAL(&stateMux);
+    if (nextStartAttemptMs &&
+        static_cast<int32_t>(now - nextStartAttemptMs) < 0) {
+      return;
+    }
+    if (!connectClient()) {
+      nextStartAttemptMs = now + MQTT_RECONNECT_MS;
+      return;
+    }
+    nextStartAttemptMs = 0;
+  }
+
+  if (!mqttClient->loop() || !mqttClient->connected()) {
+    if (networkClient) networkClient->stop();
+    markClientDisconnected("MQTT connection lost; retrying");
+    nextStartAttemptMs = now + MQTT_RECONNECT_MS;
+    return;
+  }
+
+  // A callback may have queued a range change or refresh during loop().
+  // Give the core-0 ADS-B task the next scheduling window before any publish.
+  if (processCommands()) return;
+
   if (!availabilityPublished) {
-    if (enqueueText(availabilityTopic, "online", true)) {
+    if (publishText(availabilityTopic, "online", true)) {
       availabilityPublished = true;
     }
     return;
@@ -1309,7 +1382,7 @@ void copyStatus(Status& status) {
   status.state = currentState;
   status.configured = configured;
   status.enabled = desiredEnabled;
-  status.clientRunning = client != nullptr;
+  status.clientRunning = mqttClient != nullptr;
   status.connected = clientConnected;
   status.maintenanceActive = maintenanceActive;
   memcpy(status.deviceId, deviceId, sizeof(status.deviceId));
