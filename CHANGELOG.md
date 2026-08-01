@@ -10,31 +10,70 @@ available.
 
 This consolidated file replaces the earlier split changelog that stopped after
 Product 42. It contains the continuous confirmed history from the current Product
-53R6 source back through Product 15, the first hardened version-controlled baseline.
+53R6R1 source back through Product 15, the first hardened version-controlled baseline.
 Earlier Product history is intentionally omitted where the repository does not
 provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 53R6
-- **Current build marker:** `7IN-20260731-PRODUCT53R6-AIRPORT-TOUCH`
+- **Current source:** Product 53R6R1
+- **Current build marker:** `7IN-20260731-PRODUCT53R6R1-AIRPORT-TAP-FIX`
 - **Current branch:** `main`
-- **Product 53R6 source baseline:** Product 53R5 airport-eye source derived from [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
+- **Product 53R6R1 source baseline:** Exact Product 53R6 local source physically tested on the Waveshare display
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 53R6 is host-verified and requires PlatformIO compile/link, firmware upload,
-physical review of airport-directory touch safety and Airport Profile focus behavior,
-normal radar interaction checks, and soak testing before being called a fully verified
-hardware release.
+Product 53R6R1 is host-verified and requires PlatformIO compile/link, firmware upload,
+physical confirmation of airport-directory row selection and LABEL editing, normal
+scroll-safety checks, and soak testing before being called a fully verified hardware
+release.
+
+## Product 53R6R1 - 2026-07-31
+
+**Build:** `7IN-20260731-PRODUCT53R6R1-AIRPORT-TAP-FIX`  
+**Status:** Host-verified focused airport-table event hotfix
+
+### Fixed
+
+- Corrected Product 53R6 airport row actions that never completed on hardware. LVGL
+  8.3 clears a table's selected row and column during `LV_EVENT_RELEASED`, before the
+  later `LV_EVENT_CLICKED` callback used by Product 53R6; that callback therefore saw
+  `LV_TABLE_CELL_NONE` for every deliberate tap.
+- Processed the already-filtered table `LV_EVENT_VALUE_CHANGED` while the selected cell
+  is still valid. The independent 10-pixel movement limit, 900 ms duration limit,
+  `LV_EVENT_SCROLL_BEGIN`, and `LV_EVENT_PRESS_LOST` cancellation gates remain active,
+  so scrolling still cannot open Airport Profile or change `AUTO / SHOW / HIDE`.
+- Restored deliberate Airport Profile opening while locked and deliberate LABEL cycling
+  while `DONE` indicates edit mode.
+- Added the missing dismissal path for temporary `SHOW ON RADAR` airport focus. Any
+  deliberate tap on the radar canvas now clears the temporary airport highlight before
+  normal aircraft hit testing, matching the existing empty-radar aircraft-selection
+  behavior without changing saved airport preferences or manual aircraft tracking.
+
+### Preserved
+
+- Product 53R6 page layout, `EDIT / DONE` control, open-eye indicators,
+  `SHOW ON RADAR`, automatic range choice, temporary airport focus, 64-row directory,
+  saved override format, and all radar rendering behavior.
+- ADS-B networking, HTTPS paths, Wi-Fi/TLS recovery, aircraft selection/tracking,
+  display timing, DMA, OPI PSRAM, and the 20-scanline bounce buffer are unchanged.
+
+### Pending verification
+
+- PlatformIO compile/link and flash/RAM report.
+- Upload and confirmation of the Product 53R6R1 build marker.
+- Physical confirmation that deliberate row taps and LABEL edits work while ordinary
+  scrolling still produces no airport action.
+- Physical confirmation that `SHOW ON RADAR` focus clears from an empty-radar tap and
+  from an aircraft-contact tap while normal aircraft selection/tracking remains intact.
 
 ## Product 53R6 - 2026-07-31
 
 **Build:** `7IN-20260731-PRODUCT53R6-AIRPORT-TOUCH`  
-**Status:** Host-verified focused airport interaction candidate
+**Status:** Hardware-tested; superseded by Product 53R6R1 after row taps were found nonfunctional
 
 ### Changed
 
@@ -62,13 +101,11 @@ hardware release.
   HTTPS, 15-second cadence, stale rejection, Wi-Fi/TLS recovery, panel timing, DMA,
   OPI PSRAM, and the 20-scanline bounce buffer are unchanged.
 
-### Pending verification
+### Hardware result
 
-- PlatformIO compile/link and flash/RAM report.
-- Upload and confirmation of the Product 53R6 build marker.
-- Physical confirmation that scrolling never opens airport profiles or changes label
-  modes, `EDIT / DONE` locks correctly, and `SHOW ON RADAR` chooses the expected range
-  and clears its amber focus as designed.
+- Product 53R6 loaded and displayed the revised Airports directory, edit control, and
+  eye indicators, but deliberate row and LABEL-cell taps performed no action. The
+  confirmed LVGL table event-timing defect is corrected by Product 53R6R1.
 
 ## Product 53R5 - 2026-07-29
 

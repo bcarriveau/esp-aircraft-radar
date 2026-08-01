@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static integration checks for Product 53R6 airport touch safety."""
+"""Static integration checks for the amended Product 53R6R1 airport hotfix."""
 
 from pathlib import Path
 import re
@@ -91,8 +91,8 @@ def main() -> None:
     ui = (ROOT / "src" / "ui.cpp").read_text(encoding="utf-8")
     main_cpp = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
 
-    require(build, "7IN-20260731-PRODUCT53R6-AIRPORT-TOUCH",
-            "Product 53R6 marker")
+    require(build, "7IN-20260731-PRODUCT53R6R1-AIRPORT-TAP-FIX",
+            "Product 53R6R1 marker")
     require(ui, '{"RADAR", "TRACKS", "AIRSPACE", "AIRPORTS", "SYSTEM"}',
             "five-tab navigation")
     require(ui, "AIRPORTS // NEARBY", "airport directory title")
@@ -162,19 +162,24 @@ def main() -> None:
     require(ui, "AIRPORT_LABEL_EYE_ALPHA", "eye alpha asset draw")
     require(ui, "SHOW %u  HIDE %u", "manual override summary")
 
-    # Table actions occur only after a no-scroll click with bounded pointer travel.
+    # LVGL 8.3 clears the table's selected row/column during RELEASED before
+    # CLICKED is sent. Handle its no-scroll VALUE_CHANGED event while the selected
+    # cell is still valid, but retain the independent movement/time/scroll gates.
     require(ui, "AIRPORT_TABLE_TAP_MOVE_LIMIT = 10", "tap movement threshold")
     require(ui, "AIRPORT_TABLE_TAP_MAX_MS = 900", "tap duration threshold")
     require(ui, "LV_EVENT_SCROLL_BEGIN", "scroll cancels airport tap")
     require(ui, "LV_EVENT_PRESS_LOST", "lost press cancels airport tap")
-    require(ui, "LV_EVENT_CLICKED", "click-after-no-scroll airport action")
-    require(ui, "lv_indev_get_scroll_obj(input) == nullptr",
-            "active scrolling rejection")
+    require(ui, "if (code != LV_EVENT_VALUE_CHANGED) return;",
+            "selected-cell action before LVGL clears it")
     table_registration = ui[ui.index(
         "airportDirectoryTable = lv_table_create"):ui.index(
         "airportOptionsView = lv_obj_create")]
-    assert "LV_EVENT_VALUE_CHANGED" not in table_registration, (
-        "airport table must not act on selection changes while scrolling")
+    require(table_registration, "LV_EVENT_VALUE_CHANGED",
+            "gated table value-change callback")
+    assert "LV_EVENT_CLICKED" not in table_registration, (
+        "airport table must not wait until LVGL has cleared the selected cell")
+    assert "lv_indev_get_scroll_obj(input) == nullptr" not in ui, (
+        "redundant late scroll-object check must not reject valid taps")
 
     # The renderer publishes the exact stable identifiers drawn in its latest
     # completed airport-label pass. The UI only shows eyes for a matching,
@@ -231,6 +236,14 @@ def main() -> None:
     require(ui, "app_state::setRadarRangeMiles(focusRange)",
             "automatic 20/40/80 focus range")
     require(ui, "radar::clearAirportFocus();", "focus cleanup")
+    radar_event = ui[ui.index("void radarCanvasEvent("):
+                     ui.index("void detailBackEvent(")]
+    require(radar_event, "radar::clearAirportFocus();",
+            "radar-canvas airport-focus dismissal")
+    assert radar_event.index("radar::clearAirportFocus();") < \
+        radar_event.index("radar::hitTest("), (
+            "airport focus must clear before aircraft hit testing so both empty "
+            "and aircraft-contact taps dismiss it")
     require(renderer, "AirportIdent airportFocusIdent", "bounded focus state")
     require(renderer, "airportFocusExpiresAt", "focus timeout state")
     require(renderer, "focused ? rgb(255, 190, 70)",
@@ -282,7 +295,7 @@ def main() -> None:
         "lv_obj_set_pos(deviceNetworkCard, 286, 58);",
         "lv_obj_set_size(maintenanceCard, 734, 58);",
         "lv_obj_set_pos(maintenanceCard, 8, 281);",
-        'SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT53R6-AIRPORT-TOUCH"',
+        'SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT53R6R1-TAP-FIX"',
     ):
         require(ui, needle, "preserved System layout")
 
@@ -301,7 +314,7 @@ def main() -> None:
     require(renderer_h, "bool airportLabelCount(", "label-count API")
     require(main_cpp, "airport_data::initialize(settings::homeLatitude()",
             "optional airport initialization")
-    print("Product 53R6 airport touch-safety integration checks passed")
+    print("Product 53R6R1 airport interaction hotfix checks passed")
 
 
 if __name__ == "__main__":

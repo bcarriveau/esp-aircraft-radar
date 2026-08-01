@@ -27,7 +27,7 @@ constexpr uint8_t AIRSPACE_CATEGORY_COUNT = 6;
 constexpr uint8_t AIRSPACE_METRIC_COUNT = 4;
 constexpr uint8_t AIRPORT_CATEGORY_COUNT = airport_data::CATEGORY_COUNT;
 constexpr uint8_t AIRPORT_RANGE_COUNT = airport_data::RANGE_COUNT;
-constexpr const char* SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT53R6-AIRPORT-TOUCH";
+constexpr const char* SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT53R6R1-TAP-FIX";
 constexpr uint8_t AIRPORT_CONFIG_MODE_COUNT = 2;
 constexpr uint16_t AIRPORT_DIRECTORY_CAPACITY = 64;
 constexpr int AIRPORT_TABLE_TAP_MOVE_LIMIT = 10;
@@ -807,7 +807,7 @@ void airportDirectoryTableEvent(lv_event_t* event) {
     return;
   }
 
-  if (code != LV_EVENT_CLICKED) return;
+  if (code != LV_EVENT_VALUE_CHANGED) return;
   bool accepted = airportTablePressActive && !airportTablePressMoved &&
       millis() - airportTablePressStartedMs <= AIRPORT_TABLE_TAP_MAX_MS;
   lv_indev_t* input = lv_indev_get_act();
@@ -817,8 +817,7 @@ void airportDirectoryTableEvent(lv_event_t* event) {
     accepted = abs(point.x - airportTablePressPoint.x) <=
                    AIRPORT_TABLE_TAP_MOVE_LIMIT &&
                abs(point.y - airportTablePressPoint.y) <=
-                   AIRPORT_TABLE_TAP_MOVE_LIMIT &&
-               lv_indev_get_scroll_obj(input) == nullptr;
+                   AIRPORT_TABLE_TAP_MOVE_LIMIT;
   }
   airportTablePressActive = false;
   airportTablePressMoved = false;
@@ -1493,6 +1492,12 @@ void radarCanvasEvent(lv_event_t*) {
   lv_obj_get_coords(radarCanvas, &canvasArea);
   const int canvasX = point.x - canvasArea.x1;
   const int canvasY = point.y - canvasArea.y1;
+
+  // Any deliberate radar-canvas tap dismisses a temporary Airport Profile
+  // focus before normal aircraft hit testing. Range controls are separate LVGL
+  // objects and already clear focus through rangeEvent().
+  radar::clearAirportFocus();
+
   radar::HitResult hit;
   const bool tracking = app_state::hasManualTracking();
   if (!radar::hitTest(canvasX, canvasY, hit)) {
@@ -2456,7 +2461,7 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_add_event_cb(airportDirectoryTable, airportDirectoryTableEvent,
                       LV_EVENT_PRESS_LOST, nullptr);
   lv_obj_add_event_cb(airportDirectoryTable, airportDirectoryTableEvent,
-                      LV_EVENT_CLICKED, nullptr);
+                      LV_EVENT_VALUE_CHANGED, nullptr);
   lv_obj_add_event_cb(airportDirectoryTable, airportDirectoryTableDrawEvent,
                       LV_EVENT_DRAW_PART_BEGIN, nullptr);
   lv_obj_add_event_cb(airportDirectoryTable,
