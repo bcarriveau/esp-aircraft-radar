@@ -26,21 +26,23 @@ provide authoritative evidence.
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 54 is host-verified and requires PlatformIO compile/link, initial USB upload,
-a successful browser update, deliberate rejection-path checks, normal radar operation,
-and soak testing before being called a fully verified hardware release.
+Product 54 now compiles successfully under the pinned PlatformIO and
+Arduino-ESP32 3.0.7 environment. The user confirmed the corrected build completed
+successfully after the OTA enum and mbedTLS compatibility fixes. Initial USB
+installation, browser OTA validation, deliberate rejection-path checks, normal radar
+operation, confirmation of the project-local release copy, and soak testing remain
+pending unless separately confirmed on hardware.
 
 ## Product 54 - 2026-08-01
 
 **Build:** `7IN-20260801-PRODUCT54-LOCAL-WEB-OTA`  
-**Status:** Host-verified local browser OTA candidate
+**Status:** PlatformIO compile/link confirmed; hardware OTA validation pending
 
 ### Added
 
 - Added a dedicated System-page firmware overlay that temporarily enables the local
   update server for five minutes, displays the numeric-IP and mDNS addresses, generates
-  a six-digit access code, shows preparation/write state, and leaves live upload
-  progress to the browser while the radar display remains intentionally static.
+  a six-digit access code, shows preparation/write state, and reports progress.
 - Added a synchronous Arduino `WebServer` endpoint on core 1. It is not listening during
   normal operation and requires the temporary access code for preparation, status,
   cancellation, and upload requests.
@@ -48,27 +50,51 @@ and soak testing before being called a fully verified hardware release.
   normal `firmware.bin`. The 512-byte package header identifies Bill's Waveshare
   ESP32-S3 7-inch radar, carries the Product build marker, declares the firmware size,
   and contains the firmware SHA-256 digest.
+- Added a project-local copy step that writes only the upload-ready package to
+  `release/firmware.radarota`. Raw `firmware.bin`, bootloader, partition, ELF, and
+  other build outputs remain in the external PlatformIO workspace.
 - Added native ESP-IDF OTA streaming into the inactive application slot. Upload data is
   written incrementally without a firmware-sized heap or PSRAM allocation.
-- Added exact package-length, hardware identity, declared-build-ID-in-payload, ESP
-  application magic, ESP32-S3 chip ID, firmware SHA-256, `esp_ota_end()`, and
-  boot-partition validation gates.
+- Added exact package-length, hardware identity, ESP application magic, ESP32-S3 chip
+  ID, embedded Product build ID, firmware SHA-256, `esp_ota_end()`, and boot-partition
+  validation gates.
 - Added a core-0 ADS-B maintenance handshake. The browser cannot upload until the
   network task has finished any active request and acknowledged the hold; failed,
   cancelled, disconnected, or expired preparation releases the hold and resumes
   polling.
-- Added focused host tests for package layout, exact length, SHA-256 corruption,
-  multiline build-marker parsing, missing embedded build identity, wrong-chip
-  rejection, truncated-image rejection, and integration invariants.
+- Added focused host tests for package layout, SHA-256, multiline build-marker parsing,
+  wrong-chip rejection, truncated-image rejection, and the project-local release copy.
 
 ### Changed
 
 - Removed the independently maintained short build string from `ui.cpp`; the firmware
-  overlay now joins the fatal screen in using `BUILD_ID` as the single Product identity
-  source.
+  overlay and fatal screen now use `BUILD_ID` as the single Product identity source.
 - Added `scripts/build_radar_ota.py` as a PlatformIO post-build action while preserving
   `default_16MB.csv`, the 16 MB flash configuration, Arduino-ESP32 3.0.7
   high-performance libraries, OPI PSRAM, and all existing dependencies.
+- Documented `release/firmware.radarota` as the convenient project-local upload
+  artifact. USB flashing continues to use the workspace `firmware.bin`.
+
+### Fixed
+
+- Renamed the internal OTA state token from `DISABLED` to `INACTIVE` because
+  Arduino-ESP32 defines `DISABLED` as a GPIO macro. The user-facing state text remains
+  `DISABLED`.
+- Replaced the unavailable `mbedtls_sha256_*_ret()` calls with the
+  `mbedtls_sha256_starts()`, `mbedtls_sha256_update()`, and
+  `mbedtls_sha256_finish()` API provided by the pinned Arduino-ESP32 3.0.7 framework.
+- Reset the OTA status result with C++ value initialization rather than byte-clearing a
+  non-trivial object.
+
+### Build result
+
+- The initial Product 54 source reached the OTA translation units but failed because
+  of the Arduino `DISABLED` macro collision and incompatible mbedTLS SHA function
+  names.
+- After the focused two-file compatibility correction, the user confirmed that the
+  pinned PlatformIO build completed successfully.
+- The ESP Panel custom-board-version and LVGL enum-operation messages remain existing
+  third-party warnings and were not Product 54 build failures.
 
 ### Preserved
 
@@ -86,13 +112,15 @@ and soak testing before being called a fully verified hardware release.
 
 ### Pending verification
 
-- PlatformIO compile/link and flash/RAM report.
-- USB installation and confirmation of the Product 54 build marker.
-- Confirmation that `firmware.radarota` is generated beside `firmware.bin` and is
-  exactly 512 bytes larger.
-- Successful browser upload, validation, restart, and confirmation of the new build.
-- Wrong access code, wrong extension, mismatched declared build, truncated package,
-  altered SHA-256, interrupted upload, Wi-Fi loss, and five-minute timeout tests.
+- USB installation and confirmation of the Product 54 build marker on the display.
+- Successful browser upload, validation, restart, and confirmation of the installed
+  build.
+- Confirmation that the workspace `firmware.radarota` is exactly 512 bytes larger than
+  `firmware.bin`.
+- Confirmation that `release/firmware.radarota` is created after a successful build and
+  is byte-for-byte identical to the workspace package.
+- Wrong access code, wrong extension, truncated package, altered SHA-256, interrupted
+  upload, Wi-Fi loss, and five-minute timeout tests.
 - Confirmation that ADS-B completes an active request before hold, does not start a new
   request during upload, resumes after failure/cancellation, and returns to normal
   15-second operation after restart.

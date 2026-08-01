@@ -163,7 +163,8 @@ Tracked state:
 - Each arming generates a temporary six-digit access code and displays both the
   numeric-IP update address and `bills-aircraft-radar.local/update` when mDNS starts.
 - PlatformIO automatically creates `firmware.radarota` beside `firmware.bin` after a
-  successful build. USB flashing continues to use `firmware.bin`; browser updates use
+  successful build and copies the same package to `release/firmware.radarota` in the
+  project folder. USB flashing continues to use `firmware.bin`; browser updates use
   only `firmware.radarota`.
 - The package identifies the exact Waveshare ESP32-S3 7-inch hardware, carries the
   Product build marker, declares the firmware length, and includes the firmware
@@ -209,6 +210,7 @@ without a dedicated display-stability investigation.
 assets/                 Aircraft artwork and display assets
 tools/                  Generated-data utilities, including airport CSV conversion
 scripts/                PlatformIO post-build OTA package generation
+release/                Latest generated OTA package after a successful build
 include/                Shared interfaces and hardware configuration
 src/                    Application, networking, state, radar, UI, and OTA sources
 platformio.ini          Pinned PlatformIO environment, workspace, and checks
@@ -282,14 +284,18 @@ Google Drive project directory:
 This avoids Drive File Stream locking or removing `.pio` files while SCons is
 building.
 
-A successful build also creates:
+A successful build creates the OTA package in the PlatformIO workspace and copies an
+identical upload-ready package into the project folder:
 
 ```text
 ~/.platformio/workspaces/bills_aircraft_radar/build/waveshare-s3-touch-lcd-7/firmware.radarota
+<project>/release/firmware.radarota
 ```
 
-Use `firmware.bin` for USB upload and `firmware.radarota` only on the radar's
-local browser update page.
+Use `firmware.bin` for USB upload and `release/firmware.radarota` for the radar's
+local browser update page or as a GitHub Release asset. Attaching the package to a
+GitHub Release avoids adding a new multi-megabyte binary revision to normal source
+commit history.
 
 ### 5. Static inspection
 
@@ -308,7 +314,7 @@ library packages. This avoids false syntax failures in package headers such as
 
 Product 54 must first be installed by USB. For later updates:
 
-1. Build the new source and locate `firmware.radarota` beside `firmware.bin`.
+1. Build the new source and locate `release/firmware.radarota` in the project folder.
 2. On the radar, open **System**, tap **Firmware / OTA**, and enable the five-minute
    update window.
 3. From another device on the same network, open the displayed address.
@@ -360,8 +366,8 @@ Before calling a Product release complete:
 10. Change range during an active request and confirm stale-response rejection.
 11. Check display stability during HTTPS traffic.
 12. Check heap and PSRAM stability.
-13. Confirm `firmware.radarota` is generated and is 512 bytes larger than
-    `firmware.bin`.
+13. Confirm both generated `firmware.radarota` files are identical and each is 512
+    bytes larger than `firmware.bin`.
 14. Test a successful local browser update and confirm the new build marker after
     restart.
 15. Confirm wrong-code, wrong-extension, mismatched-build, truncated-package, and

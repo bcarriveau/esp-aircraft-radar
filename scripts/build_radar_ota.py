@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import re
+import shutil
 import struct
 from pathlib import Path
 
@@ -15,6 +16,7 @@ HEADER_SIZE = 512
 ESP_IMAGE_MAGIC = 0xE9
 ESP32_S3_CHIP_ID = 9
 HEADER_STRUCT = struct.Struct("<16sHH32s96sI32s328s")
+PROJECT_PACKAGE_PATH = Path("release") / "firmware.radarota"
 
 
 def _fixed(value: bytes, size: int, field: str) -> bytes:
@@ -104,6 +106,13 @@ def write_package(firmware_path: Path, build_info_path: Path,
     return len(package), hashlib.sha256(package).hexdigest()
 
 
+def copy_project_package(package_path: Path, project_dir: Path) -> Path:
+    destination = project_dir / PROJECT_PACKAGE_PATH
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(package_path, destination)
+    return destination
+
+
 def _platformio_post_action(source, target, env) -> None:
     firmware_path = Path(target[0].get_abspath())
     project_dir = Path(env.subst("$PROJECT_DIR"))
@@ -111,10 +120,12 @@ def _platformio_post_action(source, target, env) -> None:
     package_size, package_sha = write_package(
         firmware_path, project_dir / "include" / "build_info.h", output_path
     )
+    project_output_path = copy_project_package(output_path, project_dir)
     print(
         f"Radar OTA package: {output_path} "
         f"({package_size} bytes, SHA256 {package_sha})"
     )
+    print(f"Project OTA copy: {project_output_path}")
 
 
 def main() -> int:

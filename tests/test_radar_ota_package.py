@@ -104,6 +104,20 @@ class RadarOtaPackageTests(unittest.TestCase):
             self.assertEqual(size, MODULE.HEADER_SIZE + len(firmware))
             self.assertEqual(digest, hashlib.sha256(output.read_bytes()).hexdigest())
 
+    def test_copies_package_into_project_release_folder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "workspace" / "firmware.radarota"
+            package.parent.mkdir()
+            package.write_bytes(b"test-radar-ota-package")
+
+            copied = MODULE.copy_project_package(package, root / "project")
+
+            self.assertEqual(
+                copied, root / "project" / "release" / "firmware.radarota"
+            )
+            self.assertEqual(copied.read_bytes(), package.read_bytes())
+
 
 class RadarOtaIntegrationTests(unittest.TestCase):
     def test_product_54_integration_is_bounded_and_isolated(self):
@@ -115,6 +129,8 @@ class RadarOtaIntegrationTests(unittest.TestCase):
         main_source = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
 
         self.assertIn("extra_scripts = post:scripts/build_radar_ota.py", platformio)
+        package_script = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('Path("release") / "firmware.radarota"', package_script)
         self.assertIn("board_build.partitions = default_16MB.csv", platformio)
         self.assertIn("platformio/framework-arduinoespressif32-libs@", platformio)
         self.assertIn("7IN-20260801-PRODUCT54-LOCAL-WEB-OTA", build_info)
