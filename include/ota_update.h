@@ -8,7 +8,7 @@ constexpr uint32_t ENABLE_WINDOW_MS = 5UL * 60UL * 1000UL;
 
 enum class State : uint8_t {
   UNAVAILABLE = 0,
-  DISABLED,
+  INACTIVE,
   ARMED,
   PREPARING,
   READY,

@@ -275,7 +275,7 @@ bool validatePackageHeader() {
   }
   otaHandleActive = true;
   mbedtls_sha256_init(&shaContext);
-  if (mbedtls_sha256_starts_ret(&shaContext, 0) != 0) {
+  if (mbedtls_sha256_starts(&shaContext, 0) != 0) {
     failUpload("SHA-256 initialization failed", 500);
     return false;
   }
@@ -326,7 +326,7 @@ bool processPayload(const uint8_t* data, size_t length) {
     return false;
   }
   observeBuildIdentity(data, length);
-  if (mbedtls_sha256_update_ret(&shaContext, data, length) != 0) {
+  if (mbedtls_sha256_update(&shaContext, data, length) != 0) {
     failUpload("SHA-256 update failed", 500);
     return false;
   }
@@ -387,7 +387,7 @@ void finishUpload(size_t totalPackageBytes) {
   }
 
   uint8_t actualSha256[32]{};
-  if (mbedtls_sha256_finish_ret(&shaContext, actualSha256) != 0) {
+  if (mbedtls_sha256_finish(&shaContext, actualSha256) != 0) {
     failUpload("SHA-256 finalization failed", 500);
     return;
   }
@@ -507,7 +507,7 @@ void handleCancel() {
     return;
   }
   releaseMaintenanceHold();
-  currentState = State::DISABLED;
+  currentState = State::INACTIVE;
   armedUntilMs = 0;
   prepareDeadlineMs = 0;
   accessCode[0] = 0;
@@ -557,7 +557,7 @@ void stopServer() {
 const char* stateName(State state) {
   switch (state) {
     case State::UNAVAILABLE: return "UNAVAILABLE";
-    case State::DISABLED: return "DISABLED";
+    case State::INACTIVE: return "DISABLED";
     case State::ARMED: return "ARMED";
     case State::PREPARING: return "PREPARING";
     case State::READY: return "READY";
@@ -577,7 +577,7 @@ bool begin() {
     Serial.println("OTA unavailable: no usable inactive OTA partition");
     return false;
   }
-  currentState = State::DISABLED;
+  currentState = State::INACTIVE;
   setMessage("Local OTA is disabled");
   Serial.printf("OTA ready: inactive partition %s, %lu bytes\n",
                 updatePartition->label,
@@ -625,7 +625,7 @@ void disable() {
   armedUntilMs = 0;
   prepareDeadlineMs = 0;
   accessCode[0] = 0;
-  currentState = updatePartition ? State::DISABLED : State::UNAVAILABLE;
+  currentState = updatePartition ? State::INACTIVE : State::UNAVAILABLE;
   setMessage(updatePartition ? "Local OTA is disabled"
                              : "OTA service unavailable");
   Serial.println("OTA disabled");
@@ -676,7 +676,7 @@ void service() {
 }
 
 void copyStatus(Status& status) {
-  memset(&status, 0, sizeof(status));
+  status = Status{};
   status.state = currentState;
   status.available = updatePartition != nullptr;
   status.serverRunning = serverRunning;
@@ -687,7 +687,7 @@ void copyStatus(Status& status) {
       ? static_cast<uint8_t>(std::min<uint32_t>(
             100U, (payloadWritten * 100U) / packageHeader.firmwareSize))
       : 0;
-  if (armedUntilMs && currentState != State::DISABLED &&
+  if (armedUntilMs && currentState != State::INACTIVE &&
       currentState != State::UNAVAILABLE) {
     const int32_t remaining = static_cast<int32_t>(armedUntilMs - millis());
     status.secondsRemaining = remaining > 0
