@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260801-PRODUCT54-LOCAL-WEB-OTA
+7IN-20260801-PRODUCT55-AIRSPACE
 ```
 
 Current source branch:
@@ -38,13 +38,13 @@ tag:
 product-15-hardened
 ```
 
-Product 54 is the current host-verified candidate. It adds a temporarily armed
-local browser updater that accepts only generated `.radarota` packages, streams the
-firmware into the inactive OTA slot, coordinates an exclusive maintenance hold with
-the core-0 ADS-B task, and changes the boot partition only after full ESP image and
-SHA-256 validation. Product 54 remains a candidate until PlatformIO compile/link,
-USB installation, one successful browser update, failure-path checks, normal radar
-interaction checks, and soak testing are confirmed.
+Product 55 is the current host-verified candidate. It makes the green Airspace
+**CURRENT RANGE** card cycle the shared 20/40/80-mile radar range, replaces the
+redundant dominant-category highlight with highest airborne, and turns all four live
+traffic highlights into stable-ICAO shortcuts back to the selected aircraft on Radar.
+The Product 54 guarded local browser updater remains intact. Product 55 remains a
+candidate until PlatformIO compile/link, installation, Airspace interaction checks,
+normal radar and OTA regression checks, and soak testing are confirmed.
 
 ## Features
 
@@ -52,7 +52,8 @@ interaction checks, and soak testing are confirmed.
 
 - Displays all retained aircraft as radar contacts.
 - Provides 20, 40, and 80 mile radar ranges.
-- Uses the compact radar selector as the only range control.
+- Shares the same range state between the compact Radar selector and the green
+  Airspace `CURRENT RANGE` card.
 - Draws configured airport runway/heliport symbols beneath aircraft contacts.
 - Supports independent airport symbol and label filters at 20, 40, and 80 miles.
 - Shows themed contact tags at the 20-mile range.
@@ -101,8 +102,9 @@ Tracked state:
 ### Additional pages
 
 - **Tracks:** Aircraft table with details and explicit return-to-Tracks behavior.
-- **Airspace:** Live totals, range metrics, aircraft-category cards, and traffic
-  highlights.
+- **Airspace:** Live totals, a green 20/40/80-mile range toggle, aircraft-category
+  cards, and tappable nearest, fastest, lowest-airborne, and highest-airborne
+  shortcuts that select the aircraft on Radar by stable ICAO hex.
 - **Airports:** Nearby-airport awareness plus per-category 20/40/80-mile symbol
   and label controls.
 - **System:** Separate status, device/network, and maintenance cards for build,
@@ -413,6 +415,8 @@ physically confirmed.
 - **Product 54:** Temporarily armed local browser OTA with generated hardware-bound
   packages, streamed inactive-slot writes, SHA-256 and ESP image validation, and an
   acknowledged core-0 ADS-B maintenance hold.
+- **Product 55:** Shared Airspace range toggle and stable-ICAO live-highlight
+  shortcuts, with highest airborne replacing the redundant dominant-category entry.
 
 Detailed Product-by-Product history is maintained in `CHANGELOG.md`. Unconfirmed
 older history is not guessed.

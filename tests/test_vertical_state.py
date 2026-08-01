@@ -259,7 +259,7 @@ def integration_checks() -> None:
     assert "updateVerticalStateDisplay" in renderer
     assert "radarView.verticalStateLabel, primaryTarget" in renderer
     assert "radarView.verticalStateLabel, nullptr" in renderer
-    assert "7IN-20260801-PRODUCT54-LOCAL-WEB-OTA" in build
+    assert "7IN-20260801-PRODUCT55-AIRSPACE" in build
     assert "HTTPClient::GET()" not in renderer
     assert "setInsecure()" not in renderer
 

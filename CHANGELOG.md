@@ -10,28 +10,59 @@ available.
 
 This consolidated file replaces the earlier split changelog that stopped after
 Product 42. It contains the continuous confirmed history from the current Product
-54 source back through Product 15, the first hardened version-controlled baseline.
+55 source back through Product 15, the first hardened version-controlled baseline.
 Earlier Product history is intentionally omitted where the repository does not
 provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 54
-- **Current build marker:** `7IN-20260801-PRODUCT54-LOCAL-WEB-OTA`
+- **Current source:** Product 55
+- **Current build marker:** `7IN-20260801-PRODUCT55-AIRSPACE`
 - **Current branch:** `main`
-- **Product 54 source baseline:** Product 53R6R1 local source physically tested on the Waveshare display
+- **Product 55 source baseline:** Product 54 uploaded source with its OTA build
+  fixes and project-local package copy
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 54 now compiles successfully under the pinned PlatformIO and
-Arduino-ESP32 3.0.7 environment. The user confirmed the corrected build completed
-successfully after the OTA enum and mbedTLS compatibility fixes. Initial USB
-installation, browser OTA validation, deliberate rejection-path checks, normal radar
-operation, confirmation of the project-local release copy, and soak testing remain
-pending unless separately confirmed on hardware.
+Product 55 has passed the available focused host source tests. PlatformIO
+compile/link, installation, physical Airspace range and aircraft-shortcut checks,
+normal Radar and OTA regression checks, and soak testing remain user-side. Product 54
+was previously confirmed to compile successfully under the pinned PlatformIO and
+Arduino-ESP32 3.0.7 environment after its OTA enum and mbedTLS compatibility fixes.
+
+## Product 55 - 2026-08-01
+
+**Build:** `7IN-20260801-PRODUCT55-AIRSPACE`  
+**Status:** Focused host source validation complete; PlatformIO and hardware
+validation pending
+
+### Changed
+
+- Made the green Airspace **CURRENT RANGE** metric card cycle the shared radar range
+  through 20, 40, and 80 miles without adding instructional text to the card.
+- Routed the Radar selector and Airspace range card through one manual range helper so
+  both preserve range generation, Radar-control synchronization, airport-focus clearing,
+  immediate visible-page refresh, and the normal ADS-B refresh request.
+- Replaced the redundant dominant-category live highlight with **HIGHEST AIRBORNE**
+  while retaining the existing six aircraft-category count and percentage cards.
+- Replaced the single wrapped live-highlights label with four bounded rows for nearest,
+  fastest, lowest airborne, and highest airborne aircraft.
+- Made each populated highlight resolve its stored stable ICAO hex against a fresh
+  visible snapshot before selecting that aircraft and returning to Radar.
+- Preserved active manual tracking as authoritative; Airspace shortcuts cannot replace
+  a tracked aircraft or alter STOP TRACK, outward auto-zoom, networking, target capacity,
+  airport rendering, display timing, DMA, or PSRAM behavior.
+
+### Validation
+
+- Added focused source checks for the cyclic shared range path, green clickable card,
+  highest-airborne calculation, four independent rows, stable ICAO storage, fresh lookup,
+  tracking guard, and Radar navigation.
+- Updated active-build integration assertions while retaining Product 54 strings used as
+  historical synthetic OTA-package test fixtures.
 
 ## Product 54 - 2026-08-01
 
