@@ -259,7 +259,7 @@ def integration_checks() -> None:
     assert "updateVerticalStateDisplay" in renderer
     assert "radarView.verticalStateLabel, primaryTarget" in renderer
     assert "radarView.verticalStateLabel, nullptr" in renderer
-    assert "7IN-20260726-PRODUCT47-VERTICAL-STATE-BITMAPS" in build
+    assert "7IN-20260731-PRODUCT53R6-AIRPORT-TOUCH" in build
     assert "HTTPClient::GET()" not in renderer
     assert "setInsecure()" not in renderer
 

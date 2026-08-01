@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static integration checks for Product 53R5 airport visibility eyes."""
+"""Static integration checks for Product 53R6 airport touch safety."""
 
 from pathlib import Path
 import re
@@ -91,8 +91,8 @@ def main() -> None:
     ui = (ROOT / "src" / "ui.cpp").read_text(encoding="utf-8")
     main_cpp = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
 
-    require(build, "7IN-20260729-PRODUCT53R5-AIRPORT-EYE",
-            "Product 53R5 marker")
+    require(build, "7IN-20260731-PRODUCT53R6-AIRPORT-TOUCH",
+            "Product 53R6 marker")
     require(ui, '{"RADAR", "TRACKS", "AIRSPACE", "AIRPORTS", "SYSTEM"}',
             "five-tab navigation")
     require(ui, "AIRPORTS // NEARBY", "airport directory title")
@@ -103,8 +103,10 @@ def main() -> None:
     require(ui, "AIRPORT_DIRECTORY_CAPACITY = 64", "bounded 64-row directory")
     require(ui, "airportDirectoryTable = lv_table_create",
             "airport directory table")
-    require(ui, '"ID", "AIRPORT", "TYPE", "DIST", "RUNWAY", "LABEL"',
-            "airport column order with label control")
+    require(ui, '"ID", "AIRPORT", "TYPE", "DIST", "RUNWAY"',
+            "preserved airport data columns")
+    require(ui, 'makeLabel(airportTableHeader, "LABEL"',
+            "label header beside edit lock")
     require(ui, "LV_TABLE_CELL_CTRL_TEXT_CROP",
             "single-line airport table cells")
     require(ui,
@@ -142,8 +144,12 @@ def main() -> None:
     require(settings_cpp, "clearAirportOverrideCache();",
             "Reset Defaults clears manual overrides")
 
-    # LABEL cells cycle AUTO -> SHOW -> HIDE -> AUTO; other cells retain profile.
-    require(ui, "if (column != 5)", "profile action outside LABEL column")
+    # LABEL editing is explicitly unlocked; ordinary taps open Airport Profile.
+    require(ui, "airportLabelEditMode", "directory edit-lock state")
+    require(ui, 'airportLabelEditMode ? "DONE" : "EDIT"',
+            "EDIT/DONE lock control")
+    require(ui, "if (column != 5 || !airportLabelEditMode)",
+            "locked LABEL cells open profile without changing preference")
     require(ui, "AirportLabelMode::SHOW", "SHOW cycle state")
     require(ui, "AirportLabelMode::HIDE", "HIDE cycle state")
     require(ui, "AirportLabelMode::AUTO", "AUTO cycle state")
@@ -155,6 +161,20 @@ def main() -> None:
     require(ui, "airportDirectoryLabelVisible", "per-row visible state")
     require(ui, "AIRPORT_LABEL_EYE_ALPHA", "eye alpha asset draw")
     require(ui, "SHOW %u  HIDE %u", "manual override summary")
+
+    # Table actions occur only after a no-scroll click with bounded pointer travel.
+    require(ui, "AIRPORT_TABLE_TAP_MOVE_LIMIT = 10", "tap movement threshold")
+    require(ui, "AIRPORT_TABLE_TAP_MAX_MS = 900", "tap duration threshold")
+    require(ui, "LV_EVENT_SCROLL_BEGIN", "scroll cancels airport tap")
+    require(ui, "LV_EVENT_PRESS_LOST", "lost press cancels airport tap")
+    require(ui, "LV_EVENT_CLICKED", "click-after-no-scroll airport action")
+    require(ui, "lv_indev_get_scroll_obj(input) == nullptr",
+            "active scrolling rejection")
+    table_registration = ui[ui.index(
+        "airportDirectoryTable = lv_table_create"):ui.index(
+        "airportOptionsView = lv_obj_create")]
+    assert "LV_EVENT_VALUE_CHANGED" not in table_registration, (
+        "airport table must not act on selection changes while scrolling")
 
     # The renderer publishes the exact stable identifiers drawn in its latest
     # completed airport-label pass. The UI only shows eyes for a matching,
@@ -195,18 +215,46 @@ def main() -> None:
             "all-category nearby directory")
     assert "bearingDegrees" not in directory, "bearing column remains profile-only"
 
-    # Renderer placement order: manual SHOW first, then category-priority AUTO.
+    # Airport Profile can temporarily focus one stable identifier on Radar.
+    require(renderer_h, "void focusAirport(const char* ident",
+            "temporary airport-focus API")
+    require(renderer_h, "void clearAirportFocus();",
+            "airport-focus clear API")
+    require(ui, 'setLabelTextIfChanged(airportDetailShowLabel, "SHOW ON RADAR")',
+            "Airport Profile radar action")
+    require(ui, "distanceMiles <= 18.0f", "20-mile focus margin")
+    require(ui, "distanceMiles <= 36.0f", "40-mile focus margin")
+    require(ui, "AIRPORT_FOCUS_DURATION_MS = 15000",
+            "bounded focus duration")
+    require(ui, "radar::focusAirport(airportDetailAirport.ident",
+            "stable identifier focus request")
+    require(ui, "app_state::setRadarRangeMiles(focusRange)",
+            "automatic 20/40/80 focus range")
+    require(ui, "radar::clearAirportFocus();", "focus cleanup")
+    require(renderer, "AirportIdent airportFocusIdent", "bounded focus state")
+    require(renderer, "airportFocusExpiresAt", "focus timeout state")
+    require(renderer, "focused ? rgb(255, 190, 70)",
+            "amber focused airport symbol")
+    require(renderer, "drawAirportLabel(airport, placement, true)",
+            "amber focused airport label")
+    focus_pos = renderer.index("// A temporary Airport Profile focus")
+    show_pos = renderer.index("// Manual SHOW entries are placed next")
+    auto_pos = renderer.index("// AUTO entries retain deterministic")
+    assert focus_pos < show_pos < auto_pos, (
+        "focused airport must be placed before SHOW and AUTO labels")
+
+    # Renderer placement order: temporary focus, manual SHOW, then AUTO.
     require(renderer, "hasManualShow", "manual SHOW frame inclusion")
     require(renderer, "airport_data::CATEGORY_MASK_ALL",
             "manual categories copied into bounded frame")
     draw_labels = renderer[renderer.index("void drawAirportLabels("):
                            renderer.index("uint8_t radarContactHeadingIndex")]
-    show_pos = draw_labels.index("AirportLabelMode::SHOW")
+    manual_show_pos = draw_labels.index("AirportLabelMode::SHOW")
     auto_loop_pos = draw_labels.index(
         "for (uint8_t category = 0; category < airport_data::CATEGORY_COUNT")
-    assert show_pos < auto_loop_pos, "SHOW entries must be attempted first"
+    assert manual_show_pos < auto_loop_pos, "SHOW entries must precede AUTO"
     require(draw_labels, "AirportLabelMode::AUTO", "AUTO-only category pass")
-    require(draw_labels, "++airportLabelStatsCount", "actual labels-drawn count")
+    require(renderer, "++airportLabelStatsCount", "actual labels-drawn count")
     assert "maximumLabels" not in renderer, "small range quotas must remain removed"
 
     # Defaults remain major/public on, private/heliport off.
@@ -225,6 +273,8 @@ def main() -> None:
     require(ui, 'lv_label_set_text(airportBackLabel, "BACK TO AIRPORTS")',
             "airport options back action")
     require(ui, "AIRPORTS // AIRPORT PROFILE", "airport detail title")
+    require(ui, "lv_obj_set_pos(airportDetailShowButton, 558, 46);",
+            "focused profile action below Back")
     for needle in (
         "lv_obj_set_size(systemStatusCard, 270, 215);",
         "lv_obj_set_pos(systemStatusCard, 8, 58);",
@@ -232,7 +282,7 @@ def main() -> None:
         "lv_obj_set_pos(deviceNetworkCard, 286, 58);",
         "lv_obj_set_size(maintenanceCard, 734, 58);",
         "lv_obj_set_pos(maintenanceCard, 8, 281);",
-        'SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT53R5-AIRPORT-EYE"',
+        'SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT53R6-AIRPORT-TOUCH"',
     ):
         require(ui, needle, "preserved System layout")
 
@@ -251,7 +301,7 @@ def main() -> None:
     require(renderer_h, "bool airportLabelCount(", "label-count API")
     require(main_cpp, "airport_data::initialize(settings::homeLatitude()",
             "optional airport initialization")
-    print("Product 53R5 airport visibility-eye integration checks passed")
+    print("Product 53R6 airport touch-safety integration checks passed")
 
 
 if __name__ == "__main__":

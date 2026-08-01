@@ -158,6 +158,8 @@ uint8_t airportFrameLabelMask = 0;
 LabelBox* airportLabelBoxes = nullptr;
 using AirportIdent = char[8];
 AirportIdent* airportVisibleLabelIdents = nullptr;
+AirportIdent airportFocusIdent{};
+uint32_t airportFocusExpiresAt = 0;
 bool airportLabelStatsValid = false;
 uint8_t airportLabelStatsRangeIndex = 0;
 uint8_t airportLabelStatsMask = 0;
@@ -165,6 +167,34 @@ uint16_t airportLabelStatsCount = 0;
 ContactFrame contactFrame;
 uint8_t renderedHitCount = 0;
 bool renderedTwentyMileRange = false;
+
+bool airportFocusActive() {
+  if (!airportFocusIdent[0]) return false;
+  if (static_cast<int32_t>(millis() - airportFocusExpiresAt) >= 0) {
+    airportFocusIdent[0] = 0;
+    airportFocusExpiresAt = 0;
+    return false;
+  }
+  return true;
+}
+
+bool airportIsFocused(const airport_data::NearbyAirport& airport) {
+  return airportFocusActive() &&
+      strncmp(airportFocusIdent, airport.ident, sizeof(AirportIdent)) == 0;
+}
+
+void recordVisibleAirportLabel(const airport_data::NearbyAirport& airport,
+                               const LabelBox& placement) {
+  if (airportLabelStatsCount >= airport_data::MAX_NEARBY_AIRPORTS) return;
+  airportLabelBoxes[airportLabelStatsCount] = placement;
+  if (airportVisibleLabelIdents) {
+    strncpy(airportVisibleLabelIdents[airportLabelStatsCount],
+            airport.ident, sizeof(AirportIdent) - 1);
+    airportVisibleLabelIdents[airportLabelStatsCount]
+                             [sizeof(AirportIdent) - 1] = 0;
+  }
+  ++airportLabelStatsCount;
+}
 
 bool drawPlacedTag(int dotX, int dotY, const char* const* lines,
                    const lv_color_t* lineColors, uint8_t lineCount,
@@ -320,6 +350,21 @@ bool allocateWorkingBuffers() {
 }
 
 void configure(const View& view) { radarView = view; }
+
+void focusAirport(const char* ident, uint32_t durationMs) {
+  if (!ident || !ident[0] || durationMs == 0) {
+    clearAirportFocus();
+    return;
+  }
+  strncpy(airportFocusIdent, ident, sizeof(AirportIdent) - 1);
+  airportFocusIdent[sizeof(AirportIdent) - 1] = 0;
+  airportFocusExpiresAt = millis() + durationMs;
+}
+
+void clearAirportFocus() {
+  airportFocusIdent[0] = 0;
+  airportFocusExpiresAt = 0;
+}
 
 bool airportLabelCount(uint8_t rangeIndex, uint8_t labelMask,
                        uint16_t& count) {
@@ -535,7 +580,9 @@ void prepareAirportFrame(float rangeMiles) {
   airportFrameCount = 0;
   airportFrameSymbolMask = 0;
   airportFrameLabelMask = 0;
-  if (!airportWork || !settings::airportsEnabled() || !airport_data::ready()) {
+  const bool hasFocus = airportFocusActive();
+  if (!airportWork || !airport_data::ready() ||
+      (!settings::airportsEnabled() && !hasFocus)) {
     return;
   }
   const uint8_t range = airport_data::rangeIndex(rangeMiles);
@@ -544,7 +591,7 @@ void prepareAirportFrame(float rangeMiles) {
   const uint8_t unionMask = airportFrameSymbolMask | airportFrameLabelMask;
   const bool hasManualShow = settings::airportLabelOverrideCount(
       settings::AirportLabelMode::SHOW) > 0;
-  if (unionMask == 0 && !hasManualShow) return;
+  if (unionMask == 0 && !hasManualShow && !hasFocus) return;
   airportFrameCount = airport_data::copyNearby(
       airportWork, airport_data::MAX_NEARBY_AIRPORTS, rangeMiles,
       airport_data::CATEGORY_MASK_ALL);
@@ -553,19 +600,26 @@ void prepareAirportFrame(float rangeMiles) {
 void drawAirportSymbols(float rangeMiles) {
   for (uint16_t index = 0; index < airportFrameCount; ++index) {
     const airport_data::NearbyAirport& airport = airportWork[index];
-    if ((airportFrameSymbolMask & airport_data::categoryBit(airport.category)) == 0) {
+    const bool focused = airportIsFocused(airport);
+    if (!focused &&
+        (airportFrameSymbolMask & airport_data::categoryBit(airport.category)) == 0) {
       continue;
     }
     int x = 0;
     int y = 0;
     if (!airportScreenPosition(airport, rangeMiles, x, y)) continue;
     if (x >= RANGE_CONTROL_X1 - 7 && y >= RANGE_CONTROL_Y1 - 7) continue;
-    const lv_color_t color = airportColor(airport.category);
+    const lv_color_t color = focused
+        ? rgb(255, 190, 70) : airportColor(airport.category);
 
     if (airport.category == airport_data::Category::HELIPORT) {
       drawLine(x - 3, y - 3, x - 3, y + 3, color);
       drawLine(x + 3, y - 3, x + 3, y + 3, color);
       drawLine(x - 3, y, x + 3, y, color);
+      if (focused) {
+        drawCircle(x, y, 6, color);
+        drawCircle(x, y, 9, color);
+      }
       continue;
     }
 
@@ -581,6 +635,10 @@ void drawAirportSymbols(float rangeMiles) {
       drawCircle(x, y, 2, color);
     } else {
       putPixel(x, y, color);
+    }
+    if (focused) {
+      drawCircle(x, y, 6, color);
+      drawCircle(x, y, 9, color);
     }
   }
 }
@@ -700,25 +758,29 @@ bool placeAirportLabel(const airport_data::NearbyAirport& airport,
 }
 
 void drawAirportLabel(const airport_data::NearbyAirport& airport,
-                      const LabelBox& placement) {
+                      const LabelBox& placement, bool focused = false) {
   const int labelWidth = placement.x2 - placement.x1;
   const int labelHeight = placement.y2 - placement.y1;
 
   lv_draw_rect_dsc_t rectangle;
   lv_draw_rect_dsc_init(&rectangle);
-  rectangle.bg_opa = static_cast<lv_opa_t>(96);
-  rectangle.bg_color = rgb(3, 12, 17);
-  rectangle.border_opa = static_cast<lv_opa_t>(115);
-  rectangle.border_color = airportColor(airport.category);
+  rectangle.bg_opa = focused ? static_cast<lv_opa_t>(155)
+                             : static_cast<lv_opa_t>(96);
+  rectangle.bg_color = focused ? rgb(34, 23, 7) : rgb(3, 12, 17);
+  rectangle.border_opa = focused ? LV_OPA_COVER
+                                 : static_cast<lv_opa_t>(115);
+  rectangle.border_color = focused ? rgb(255, 190, 70)
+                                   : airportColor(airport.category);
   rectangle.border_width = 1;
-  rectangle.radius = 1;
+  rectangle.radius = focused ? 2 : 1;
   lv_canvas_draw_rect(radarView.canvas, placement.x1, placement.y1,
                       labelWidth, labelHeight, &rectangle);
 
   lv_draw_label_dsc_t label;
   lv_draw_label_dsc_init(&label);
   label.font = &lv_font_montserrat_12;
-  label.color = airportLabelColor(airport.category);
+  label.color = focused ? rgb(255, 225, 135)
+                        : airportLabelColor(airport.category);
   lv_canvas_draw_text(radarView.canvas, placement.x1 + 4, placement.y1 + 2,
                       labelWidth - 8, &label, airport.ident);
 }
@@ -730,17 +792,36 @@ void drawAirportLabels(float rangeMiles) {
   airportLabelStatsValid = true;
   const bool hasManualShow = settings::airportLabelOverrideCount(
       settings::AirportLabelMode::SHOW) > 0;
+  const bool hasFocus = airportFocusActive();
   if (!airportWork || !airportLabelBoxes ||
-      (airportFrameLabelMask == 0 && !hasManualShow)) {
+      (airportFrameLabelMask == 0 && !hasManualShow && !hasFocus)) {
     return;
   }
 
-  // Manual SHOW entries are placed first, nearest first, so they can displace
+  // A temporary Airport Profile focus is placed first and can override HIDE,
+  // disabled categories, and the global airport-overlay switch without changing
+  // any saved setting. It still obeys the fixed bounds and reserved UI areas.
+  if (hasFocus) {
+    for (uint16_t index = 0; index < airportFrameCount; ++index) {
+      const airport_data::NearbyAirport& airport = airportWork[index];
+      if (!airportIsFocused(airport)) continue;
+      LabelBox placement{};
+      if (placeAirportLabel(airport, rangeMiles, airportLabelBoxes,
+                            airportLabelStatsCount, placement)) {
+        drawAirportLabel(airport, placement, true);
+        recordVisibleAirportLabel(airport, placement);
+      }
+      break;
+    }
+  }
+
+  // Manual SHOW entries are placed next, nearest first, so they can displace
   // automatic labels without changing the fixed collision rules.
   for (uint16_t index = 0; index < airportFrameCount; ++index) {
     const airport_data::NearbyAirport& airport = airportWork[index];
-    if (settings::airportLabelMode(airport.ident) !=
-        settings::AirportLabelMode::SHOW) {
+    if (airportIsFocused(airport) ||
+        settings::airportLabelMode(airport.ident) !=
+            settings::AirportLabelMode::SHOW) {
       continue;
     }
     LabelBox placement{};
@@ -749,26 +830,20 @@ void drawAirportLabels(float rangeMiles) {
       continue;
     }
     drawAirportLabel(airport, placement);
-    airportLabelBoxes[airportLabelStatsCount] = placement;
-    if (airportVisibleLabelIdents) {
-      strncpy(airportVisibleLabelIdents[airportLabelStatsCount],
-              airport.ident, sizeof(AirportIdent) - 1);
-      airportVisibleLabelIdents[airportLabelStatsCount]
-                               [sizeof(AirportIdent) - 1] = 0;
-    }
-    ++airportLabelStatsCount;
+    recordVisibleAirportLabel(airport, placement);
   }
 
   // AUTO entries retain deterministic major/public/private/heliport priority,
   // with distance ordering supplied by the bounded nearby cache. HIDE entries
-  // are never attempted and SHOW entries are not drawn a second time.
+  // are never attempted and SHOW/focused entries are not drawn a second time.
   for (uint8_t category = 0; category < airport_data::CATEGORY_COUNT;
        ++category) {
     const uint8_t categoryMask = static_cast<uint8_t>(1U << category);
     if ((airportFrameLabelMask & categoryMask) == 0) continue;
     for (uint16_t index = 0; index < airportFrameCount; ++index) {
       const airport_data::NearbyAirport& airport = airportWork[index];
-      if (static_cast<uint8_t>(airport.category) != category ||
+      if (airportIsFocused(airport) ||
+          static_cast<uint8_t>(airport.category) != category ||
           settings::airportLabelMode(airport.ident) !=
               settings::AirportLabelMode::AUTO) {
         continue;
@@ -779,14 +854,7 @@ void drawAirportLabels(float rangeMiles) {
         continue;
       }
       drawAirportLabel(airport, placement);
-      airportLabelBoxes[airportLabelStatsCount] = placement;
-      if (airportVisibleLabelIdents) {
-        strncpy(airportVisibleLabelIdents[airportLabelStatsCount],
-                airport.ident, sizeof(AirportIdent) - 1);
-        airportVisibleLabelIdents[airportLabelStatsCount]
-                                 [sizeof(AirportIdent) - 1] = 0;
-      }
-      ++airportLabelStatsCount;
+      recordVisibleAirportLabel(airport, placement);
     }
   }
 }

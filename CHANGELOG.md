@@ -10,25 +10,65 @@ available.
 
 This consolidated file replaces the earlier split changelog that stopped after
 Product 42. It contains the continuous confirmed history from the current Product
-53R5 source back through Product 15, the first hardened version-controlled baseline.
+53R6 source back through Product 15, the first hardened version-controlled baseline.
 Earlier Product history is intentionally omitted where the repository does not
 provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 53R5
-- **Current build marker:** `7IN-20260729-PRODUCT53R5-AIRPORT-EYE`
+- **Current source:** Product 53R6
+- **Current build marker:** `7IN-20260731-PRODUCT53R6-AIRPORT-TOUCH`
 - **Current branch:** `main`
-- **Product 53R5 source baseline:** Product 53R4 airport-control source derived from [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
+- **Product 53R6 source baseline:** Product 53R5 airport-eye source derived from [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 53R5 is host-verified and requires PlatformIO compile/link, firmware upload,
-physical review of the airport visibility-eye indicators, normal radar interaction
-checks, and soak testing before being called a fully verified hardware release.
+Product 53R6 is host-verified and requires PlatformIO compile/link, firmware upload,
+physical review of airport-directory touch safety and Airport Profile focus behavior,
+normal radar interaction checks, and soak testing before being called a fully verified
+hardware release.
+
+## Product 53R6 - 2026-07-31
+
+**Build:** `7IN-20260731-PRODUCT53R6-AIRPORT-TOUCH`  
+**Status:** Host-verified focused airport interaction candidate
+
+### Changed
+
+- Added a compact `EDIT / DONE` control beside the existing `LABEL` header. Airport
+  label preferences are locked by default, remain visible while locked, and can only
+  cycle through `AUTO / SHOW / HIDE` while edit mode is explicitly active.
+- Replaced table actions on selection changes with a bounded click-after-no-scroll
+  path. Pointer movement, table scrolling, lost presses, and overlong presses cancel
+  the action before an Airport Profile can open or a label preference can change.
+- Added `SHOW ON RADAR` below `BACK TO AIRPORTS` in Airport Profile. It selects the
+  smallest useful 20/40/80-mile range with an edge margin, switches to Radar, and
+  temporarily highlights the chosen stable airport identifier in amber for 15 seconds.
+- Temporary airport focus is processed before manual `SHOW` and automatic labels. It
+  can display a focused airport even when its category, label, symbol, or global
+  overlay setting is disabled, without modifying any saved setting.
+- Manual range changes, leaving Radar, selecting another airport, or timeout clear the
+  temporary focus. Aircraft selection, tracking, ICAO hit testing, and drawing priority
+  remain unchanged.
+
+### Preserved
+
+- Product 53R5 directory columns, row spacing, open-eye indicators, 64-row bound,
+  Airport Profile data, Display Settings, System layout, and NVS override storage.
+- Airport labels remain fixed beneath aircraft. ADS-B networking, native/fallback
+  HTTPS, 15-second cadence, stale rejection, Wi-Fi/TLS recovery, panel timing, DMA,
+  OPI PSRAM, and the 20-scanline bounce buffer are unchanged.
+
+### Pending verification
+
+- PlatformIO compile/link and flash/RAM report.
+- Upload and confirmation of the Product 53R6 build marker.
+- Physical confirmation that scrolling never opens airport profiles or changes label
+  modes, `EDIT / DONE` locks correctly, and `SHOW ON RADAR` chooses the expected range
+  and clears its amber focus as designed.
 
 ## Product 53R5 - 2026-07-29
 

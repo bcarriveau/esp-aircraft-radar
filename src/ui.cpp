@@ -27,9 +27,12 @@ constexpr uint8_t AIRSPACE_CATEGORY_COUNT = 6;
 constexpr uint8_t AIRSPACE_METRIC_COUNT = 4;
 constexpr uint8_t AIRPORT_CATEGORY_COUNT = airport_data::CATEGORY_COUNT;
 constexpr uint8_t AIRPORT_RANGE_COUNT = airport_data::RANGE_COUNT;
-constexpr const char* SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT53R5-AIRPORT-EYE";
+constexpr const char* SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT53R6-AIRPORT-TOUCH";
 constexpr uint8_t AIRPORT_CONFIG_MODE_COUNT = 2;
 constexpr uint16_t AIRPORT_DIRECTORY_CAPACITY = 64;
+constexpr int AIRPORT_TABLE_TAP_MOVE_LIMIT = 10;
+constexpr uint32_t AIRPORT_TABLE_TAP_MAX_MS = 900;
+constexpr uint32_t AIRPORT_FOCUS_DURATION_MS = 15000;
 static_assert(AIRPORT_RANGE_COUNT == settings::AIRPORT_RANGE_COUNT,
               "Airport range settings must stay synchronized");
 constexpr uint8_t RANGE_OPTION_COUNT = 3;
@@ -139,8 +142,12 @@ lv_obj_t* airportDetailView = nullptr;
 lv_obj_t* airportDirectorySummaryLabel = nullptr;
 lv_obj_t* airportDirectoryTable = nullptr;
 lv_obj_t* airportOptionsButton = nullptr;
+lv_obj_t* airportLabelEditButton = nullptr;
+lv_obj_t* airportLabelEditLabel = nullptr;
 lv_obj_t* airportBackButton = nullptr;
 lv_obj_t* airportDetailBackButton = nullptr;
+lv_obj_t* airportDetailShowButton = nullptr;
+lv_obj_t* airportDetailShowLabel = nullptr;
 lv_obj_t* airportDetailIdentLabel = nullptr;
 lv_obj_t* airportDetailNameLabel = nullptr;
 lv_obj_t* airportDetailLeftLabel = nullptr;
@@ -185,6 +192,11 @@ uint16_t airportDirectoryCount = 0;
 airport_data::NearbyAirport airportDetailAirport{};
 bool airportDetailValid = false;
 bool airportDirectoryUpdating = false;
+bool airportLabelEditMode = false;
+bool airportTablePressActive = false;
+bool airportTablePressMoved = false;
+lv_point_t airportTablePressPoint{};
+uint32_t airportTablePressStartedMs = 0;
 
 enum class AirportView : uint8_t {
   DIRECTORY,
@@ -400,6 +412,69 @@ void setAirportStatus(const char* text, lv_color_t color) {
   lv_obj_set_style_text_color(airportStatusLabel, color, 0);
 }
 
+void selectPage(uint8_t page);
+void syncRangeControls(float rangeMiles);
+
+void syncAirportLabelEditControl() {
+  if (!airportLabelEditButton || !airportLabelEditLabel) return;
+  lv_obj_set_style_bg_color(
+      airportLabelEditButton,
+      airportLabelEditMode ? rgb(118, 75, 18) : rgb(20, 68, 82), 0);
+  lv_obj_set_style_border_color(
+      airportLabelEditButton,
+      airportLabelEditMode ? rgb(255, 195, 80) : rgb(35, 105, 108), 0);
+  lv_obj_set_style_border_width(airportLabelEditButton,
+                                airportLabelEditMode ? 1 : 0, 0);
+  setLabelTextIfChanged(airportLabelEditLabel,
+                        airportLabelEditMode ? "DONE" : "EDIT");
+  lv_obj_set_style_text_color(
+      airportLabelEditLabel,
+      airportLabelEditMode ? rgb(255, 232, 160) : rgb(160, 220, 230), 0);
+  lv_obj_center(airportLabelEditLabel);
+}
+
+void setAirportLabelEditMode(bool enabled) {
+  airportLabelEditMode = enabled;
+  airportTablePressActive = false;
+  airportTablePressMoved = false;
+  syncAirportLabelEditControl();
+}
+
+float airportFocusRangeMiles(float distanceMiles) {
+  if (!isfinite(distanceMiles) || distanceMiles < 0.0f ||
+      distanceMiles > 80.0f) {
+    return 0.0f;
+  }
+  if (distanceMiles <= 18.0f) return 20.0f;
+  if (distanceMiles <= 36.0f) return 40.0f;
+  return 80.0f;
+}
+
+void syncAirportDetailShowButton() {
+  if (!airportDetailShowButton || !airportDetailShowLabel) return;
+  const float focusRange = airportDetailValid
+      ? airportFocusRangeMiles(airportDetailAirport.distanceMiles) : 0.0f;
+  const bool available = focusRange > 0.0f;
+  if (available) {
+    lv_obj_clear_state(airportDetailShowButton, LV_STATE_DISABLED);
+    lv_obj_set_style_bg_color(airportDetailShowButton, rgb(118, 75, 18), 0);
+    lv_obj_set_style_border_color(airportDetailShowButton,
+                                  rgb(255, 195, 80), 0);
+    lv_obj_set_style_border_width(airportDetailShowButton, 1, 0);
+    setLabelTextIfChanged(airportDetailShowLabel, "SHOW ON RADAR");
+    lv_obj_set_style_text_color(airportDetailShowLabel,
+                                rgb(255, 232, 160), 0);
+  } else {
+    lv_obj_add_state(airportDetailShowButton, LV_STATE_DISABLED);
+    lv_obj_set_style_bg_color(airportDetailShowButton, rgb(45, 52, 58), 0);
+    lv_obj_set_style_border_width(airportDetailShowButton, 0, 0);
+    setLabelTextIfChanged(airportDetailShowLabel, "OUTSIDE 80 MI");
+    lv_obj_set_style_text_color(airportDetailShowLabel,
+                                rgb(130, 145, 150), 0);
+  }
+  lv_obj_center(airportDetailShowLabel);
+}
+
 void loadAirportOptions() {
   pendingAirportEnabled = settings::airportsEnabled();
   for (uint8_t range = 0; range < AIRPORT_RANGE_COUNT; ++range) {
@@ -592,6 +667,7 @@ void updateAirportDirectory() {
 }
 
 void showAirportDirectory() {
+  setAirportLabelEditMode(false);
   airportView = AirportView::DIRECTORY;
   airportOptionsDirty = false;
   airportDetailValid = false;
@@ -603,6 +679,7 @@ void showAirportDirectory() {
 }
 
 void showAirportOptions() {
+  setAirportLabelEditMode(false);
   airportView = AirportView::OPTIONS;
   airportOptionsLoaded = false;
   airportOptionsDirty = false;
@@ -616,6 +693,7 @@ void showAirportOptions() {
 }
 
 void showAirportDetail(const airport_data::NearbyAirport& airport) {
+  setAirportLabelEditMode(false);
   airportDetailAirport = airport;
   airportDetailValid = true;
   airportView = AirportView::DETAIL;
@@ -660,15 +738,17 @@ void showAirportDetail(const airport_data::NearbyAirport& airport) {
            "LONGEST RUNWAY\n%s\n\nRUNWAY HEADING\n%s\n\nELEVATION\n%s",
            runwayLength, runwayHeading, elevation);
   setLabelTextIfChanged(airportDetailRightLabel, right);
+  syncAirportDetailShowButton();
 }
 
-void airportDirectoryTableEvent(lv_event_t*) {
+void handleAirportDirectoryTap() {
   if (airportDirectoryUpdating) return;
   uint16_t row = 0;
   uint16_t column = 0;
   lv_table_get_selected_cell(airportDirectoryTable, &row, &column);
   if (row == LV_TABLE_CELL_NONE || row >= airportDirectoryCount) return;
-  if (column != 5) {
+
+  if (column != 5 || !airportLabelEditMode) {
     showAirportDetail(airportDirectoryEntries[row]);
     return;
   }
@@ -692,6 +772,57 @@ void airportDirectoryTableEvent(lv_event_t*) {
                               rgb(180, 210, 215), 0);
   radar::invalidateAirportLabelCount();
   updateAirportDirectory();
+}
+
+void airportDirectoryTableEvent(lv_event_t* event) {
+  const lv_event_code_t code = lv_event_get_code(event);
+  if (code == LV_EVENT_PRESSED) {
+    airportTablePressActive = true;
+    airportTablePressMoved = false;
+    airportTablePressStartedMs = millis();
+    lv_indev_t* input = lv_indev_get_act();
+    if (input) {
+      lv_indev_get_point(input, &airportTablePressPoint);
+    } else {
+      airportTablePressPoint = {0, 0};
+    }
+    return;
+  }
+
+  if (code == LV_EVENT_PRESSING && airportTablePressActive) {
+    lv_indev_t* input = lv_indev_get_act();
+    if (!input) return;
+    lv_point_t point{};
+    lv_indev_get_point(input, &point);
+    if (abs(point.x - airportTablePressPoint.x) > AIRPORT_TABLE_TAP_MOVE_LIMIT ||
+        abs(point.y - airportTablePressPoint.y) > AIRPORT_TABLE_TAP_MOVE_LIMIT) {
+      airportTablePressMoved = true;
+    }
+    return;
+  }
+
+  if (code == LV_EVENT_SCROLL_BEGIN || code == LV_EVENT_PRESS_LOST) {
+    airportTablePressMoved = true;
+    airportTablePressActive = false;
+    return;
+  }
+
+  if (code != LV_EVENT_CLICKED) return;
+  bool accepted = airportTablePressActive && !airportTablePressMoved &&
+      millis() - airportTablePressStartedMs <= AIRPORT_TABLE_TAP_MAX_MS;
+  lv_indev_t* input = lv_indev_get_act();
+  if (accepted && input) {
+    lv_point_t point{};
+    lv_indev_get_point(input, &point);
+    accepted = abs(point.x - airportTablePressPoint.x) <=
+                   AIRPORT_TABLE_TAP_MOVE_LIMIT &&
+               abs(point.y - airportTablePressPoint.y) <=
+                   AIRPORT_TABLE_TAP_MOVE_LIMIT &&
+               lv_indev_get_scroll_obj(input) == nullptr;
+  }
+  airportTablePressActive = false;
+  airportTablePressMoved = false;
+  if (accepted) handleAirportDirectoryTap();
 }
 
 void airportDirectoryTableDrawEvent(lv_event_t* event) {
@@ -763,6 +894,31 @@ void airportDirectoryTableEyeDrawEvent(lv_event_t* event) {
   image.opa = LV_OPA_COVER;
   lv_draw_img_decoded(part->draw_ctx, &image, &eyeArea,
                       AIRPORT_LABEL_EYE_ALPHA, LV_IMG_CF_ALPHA_8BIT);
+}
+
+void airportLabelEditEvent(lv_event_t*) {
+  setAirportLabelEditMode(!airportLabelEditMode);
+}
+
+void airportDetailShowOnRadarEvent(lv_event_t*) {
+  if (!airportDetailValid) return;
+  const float focusRange = airportFocusRangeMiles(
+      airportDetailAirport.distanceMiles);
+  if (focusRange <= 0.0f) return;
+
+  radar::focusAirport(airportDetailAirport.ident,
+                      AIRPORT_FOCUS_DURATION_MS);
+  const bool rangeChanged = app_state::setRadarRangeMiles(focusRange);
+  syncRangeControls(app_state::radarRangeMiles());
+  if (rangeChanged) {
+    Serial.printf("Airport %s focused; radar range set to %.0f miles\n",
+                  airportDetailAirport.ident, focusRange);
+    adsb::requestRefresh();
+  } else {
+    Serial.printf("Airport %s focused on %.0f-mile radar\n",
+                  airportDetailAirport.ident, focusRange);
+  }
+  selectPage(0);
 }
 
 void airportDetailBackEvent(lv_event_t*) {
@@ -999,6 +1155,13 @@ void updatePageContent();
 void showTargetDetails(const aircraft::Target& target, DetailOrigin origin);
 
 void selectPage(uint8_t page) {
+  const uint8_t nextPage = page < PAGE_COUNT ? page : 0;
+  if (currentPage == 0 && nextPage != 0) {
+    radar::clearAirportFocus();
+  }
+  if (currentPage == 3 && nextPage != 3) {
+    setAirportLabelEditMode(false);
+  }
   if (detailTargetValid) {
     if (detailOrigin == DetailOrigin::RADAR && selectedHex[0]) {
       selectedAtMs = millis();
@@ -1006,7 +1169,7 @@ void selectPage(uint8_t page) {
     detailTargetValid = false;
     if (detailPanel) lv_obj_add_flag(detailPanel, LV_OBJ_FLAG_HIDDEN);
   }
-  currentPage = page < PAGE_COUNT ? page : 0;
+  currentPage = nextPage;
   if (currentPage == 1) {
     lastTracksVersion = UINT32_MAX;
     lastTracksRangeGeneration = UINT32_MAX;
@@ -1016,6 +1179,7 @@ void selectPage(uint8_t page) {
     lastAirspaceRangeGeneration = UINT32_MAX;
   }
   if (currentPage == 3) {
+    setAirportLabelEditMode(false);
     airportView = AirportView::DIRECTORY;
     airportOptionsDirty = false;
   }
@@ -1147,6 +1311,7 @@ void syncRangeControls(float rangeMiles) {
 }
 
 void rangeEvent(lv_event_t* event) {
+  radar::clearAirportFocus();
   int index = (int)(intptr_t)lv_event_get_user_data(event);
   index = constrain(index, 0, RANGE_OPTION_COUNT - 1);
   if (!app_state::setRadarRangeMiles(RADAR_RANGES[index])) return;
@@ -1200,6 +1365,7 @@ void showTargetDetails(const aircraft::Target& target,
                        DetailOrigin origin) {
   detailOrigin = origin;
   if (origin == DetailOrigin::RADAR) {
+    radar::clearAirportFocus();
     for (lv_obj_t* panel : radarPanels) setVisible(panel, false);
     setVisible(pagePanel, true);
     setTracksVisible(false);
@@ -1558,6 +1724,7 @@ void renderAirportsPage() {
     setVisible(airportOptionsView, false);
     setVisible(airportDetailView, true);
     setLabelTextIfChanged(pageTitle, "AIRPORTS // AIRPORT PROFILE");
+    syncAirportDetailShowButton();
   } else {
     setVisible(airportDirectoryView, true);
     setVisible(airportOptionsView, false);
@@ -2236,14 +2403,27 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_style_pad_all(airportTableHeader, 0, 0);
   lv_obj_clear_flag(airportTableHeader, LV_OBJ_FLAG_SCROLLABLE);
   const char* airportHeaders[] = {
-    "ID", "AIRPORT", "TYPE", "DIST", "RUNWAY", "LABEL"
+    "ID", "AIRPORT", "TYPE", "DIST", "RUNWAY"
   };
-  const int airportHeaderX[] = {6, 68, 372, 452, 524, 628};
-  for (uint8_t column = 0; column < 6; ++column) {
+  const int airportHeaderX[] = {6, 68, 372, 452, 524};
+  for (uint8_t column = 0; column < 5; ++column) {
     makeLabel(airportTableHeader, airportHeaders[column],
               &lv_font_montserrat_12, rgb(110, 220, 255),
               airportHeaderX[column], 5);
   }
+  makeLabel(airportTableHeader, "LABEL", &lv_font_montserrat_12,
+            rgb(110, 220, 255), 624, 5);
+  airportLabelEditButton = lv_btn_create(airportTableHeader);
+  lv_obj_set_size(airportLabelEditButton, 52, 22);
+  lv_obj_set_pos(airportLabelEditButton, 682, 2);
+  lv_obj_set_style_radius(airportLabelEditButton, 4, 0);
+  lv_obj_set_style_shadow_width(airportLabelEditButton, 0, 0);
+  lv_obj_add_event_cb(airportLabelEditButton, airportLabelEditEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  airportLabelEditLabel = lv_label_create(airportLabelEditButton);
+  lv_obj_set_style_text_font(airportLabelEditLabel,
+                             &lv_font_montserrat_12, 0);
+  syncAirportLabelEditControl();
 
   airportDirectoryTable = lv_table_create(airportDirectoryView);
   lv_obj_set_size(airportDirectoryTable, 742, 200);
@@ -2268,7 +2448,15 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_style_pad_hor(airportDirectoryTable, 6, LV_PART_ITEMS);
   lv_obj_set_style_pad_ver(airportDirectoryTable, 7, LV_PART_ITEMS);
   lv_obj_add_event_cb(airportDirectoryTable, airportDirectoryTableEvent,
-                      LV_EVENT_VALUE_CHANGED, nullptr);
+                      LV_EVENT_PRESSED, nullptr);
+  lv_obj_add_event_cb(airportDirectoryTable, airportDirectoryTableEvent,
+                      LV_EVENT_PRESSING, nullptr);
+  lv_obj_add_event_cb(airportDirectoryTable, airportDirectoryTableEvent,
+                      LV_EVENT_SCROLL_BEGIN, nullptr);
+  lv_obj_add_event_cb(airportDirectoryTable, airportDirectoryTableEvent,
+                      LV_EVENT_PRESS_LOST, nullptr);
+  lv_obj_add_event_cb(airportDirectoryTable, airportDirectoryTableEvent,
+                      LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(airportDirectoryTable, airportDirectoryTableDrawEvent,
                       LV_EVENT_DRAW_PART_BEGIN, nullptr);
   lv_obj_add_event_cb(airportDirectoryTable,
@@ -2440,9 +2628,22 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_style_text_font(airportDetailBackLabel, &lv_font_montserrat_12, 0);
   lv_obj_center(airportDetailBackLabel);
 
+  airportDetailShowButton = lv_btn_create(airportDetailCard);
+  lv_obj_set_size(airportDetailShowButton, 166, 30);
+  lv_obj_set_pos(airportDetailShowButton, 558, 46);
+  lv_obj_set_style_radius(airportDetailShowButton, 5, 0);
+  lv_obj_set_style_shadow_width(airportDetailShowButton, 0, 0);
+  lv_obj_add_event_cb(airportDetailShowButton,
+                      airportDetailShowOnRadarEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  airportDetailShowLabel = lv_label_create(airportDetailShowButton);
+  lv_obj_set_style_text_font(airportDetailShowLabel,
+                             &lv_font_montserrat_12, 0);
+  syncAirportDetailShowButton();
+
   lv_obj_t* airportDetailDivider = lv_obj_create(airportDetailCard);
-  lv_obj_set_size(airportDetailDivider, 1, 184);
-  lv_obj_set_pos(airportDetailDivider, 356, 76);
+  lv_obj_set_size(airportDetailDivider, 1, 176);
+  lv_obj_set_pos(airportDetailDivider, 356, 84);
   lv_obj_set_style_bg_color(airportDetailDivider, rgb(35, 76, 87), 0);
   lv_obj_set_style_bg_opa(airportDetailDivider, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(airportDetailDivider, 0, 0);
@@ -2450,12 +2651,12 @@ void buildPageShell(lv_obj_t* root) {
 
   airportDetailLeftLabel = makeLabel(
       airportDetailCard, "", &lv_font_montserrat_14,
-      rgb(225, 235, 240), 14, 78);
+      rgb(225, 235, 240), 14, 88);
   lv_obj_set_width(airportDetailLeftLabel, 320);
   lv_label_set_long_mode(airportDetailLeftLabel, LV_LABEL_LONG_WRAP);
   airportDetailRightLabel = makeLabel(
       airportDetailCard, "", &lv_font_montserrat_14,
-      rgb(225, 235, 240), 380, 78);
+      rgb(225, 235, 240), 380, 88);
   lv_obj_set_width(airportDetailRightLabel, 330);
   lv_label_set_long_mode(airportDetailRightLabel, LV_LABEL_LONG_WRAP);
   setVisible(airportOptionsView, false);

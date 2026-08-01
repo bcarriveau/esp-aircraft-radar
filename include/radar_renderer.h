@@ -64,6 +64,8 @@ bool airportLabelCount(uint8_t rangeIndex, uint8_t labelMask,
 bool airportLabelVisible(uint8_t rangeIndex, uint8_t labelMask,
                          const char* ident, bool& visible);
 void invalidateAirportLabelCount();
+void focusAirport(const char* ident, uint32_t durationMs);
+void clearAirportFocus();
 
 void drawAircraftPreview(lv_obj_t* canvas, lv_color_t* buffer,
                          const aircraft::Target& target);
