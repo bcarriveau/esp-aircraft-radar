@@ -46,7 +46,7 @@ constexpr uint16_t MQTT_SOCKET_TIMEOUT_SECONDS = 2;
 constexpr size_t MQTT_WRITE_CHUNK_BYTES = 512;
 constexpr uint16_t STATE_BUFFER_BYTES = 4096;
 constexpr uint8_t NEAREST_COUNT = 5;
-constexpr uint8_t DISCOVERY_COUNT = 13;
+constexpr uint8_t DISCOVERY_COUNT = 12;
 constexpr uint32_t COMMAND_DISPLAY_ON = 1U << 0;
 constexpr uint32_t COMMAND_DISPLAY_OFF = 1U << 1;
 constexpr uint32_t COMMAND_RANGE_20 = 1U << 2;
@@ -268,6 +268,7 @@ bool maintenanceRequested = false;
 bool maintenanceActive = false;
 bool stopRequested = false;
 bool availabilityPublished = false;
+bool legacyUpdateAgeCleanupPending = true;
 uint32_t earliestStartMs = 0;
 uint32_t nextStartAttemptMs = 0;
 uint32_t lastServiceMs = 0;
@@ -439,6 +440,7 @@ void resetObservedState() {
   observedOtaState = ota_update::State::UNAVAILABLE;
   pendingPublishMask = PUBLISH_ALL;
   discoveryIndex = 0;
+  legacyUpdateAgeCleanupPending = true;
 }
 
 void markClientDisconnected(const char* message) {
@@ -479,6 +481,7 @@ void destroyClient() {
   pendingCommands = 0;
   portEXIT_CRITICAL(&stateMux);
   availabilityPublished = false;
+  legacyUpdateAgeCleanupPending = true;
   stopRequested = false;
   logMemoryStage("destroy-complete");
 }
@@ -519,6 +522,26 @@ bool publishMessage(const char* topic, const char* payload, size_t length,
 
 bool publishText(const char* topic, const char* payload, bool retain) {
   return publishMessage(topic, payload, strlen(payload), retain);
+}
+
+bool publishRetainedDelete(const char* topic) {
+  static const uint8_t EMPTY_PAYLOAD = 0;
+  if (!mqttClient || !clientConnected || !mqttClient->connected() || !topic) {
+    return false;
+  }
+  if (!mqttClient->publish(topic, &EMPTY_PAYLOAD, 0, true)) {
+    if (networkClient) networkClient->stop();
+    markClientDisconnected("MQTT retained cleanup failed");
+    return false;
+  }
+  return true;
+}
+
+bool clearLegacyUpdateAgeDiscovery() {
+  char topic[160];
+  snprintf(topic, sizeof(topic), "homeassistant/sensor/%s_update_age/config",
+           deviceId);
+  return publishRetainedDelete(topic);
 }
 
 void requestStop() {
@@ -756,18 +779,6 @@ bool publishDiscovery(uint8_t index) {
 
     case 5:
       component = "sensor";
-      object = "update_age";
-      writeDiscoveryCommon(writer, "Last Update Age", "update_age",
-                           "sensor.bills_aircraft_radar_last_update_age");
-      writer.key("state_topic"); writer.value(statusTopic);
-      writer.key("value_template"); writer.value("{{ value_json.update_age_s }}");
-      writer.key("unit_of_measurement"); writer.value("s");
-      writer.key("state_class"); writer.value("measurement");
-      writer.key("icon"); writer.value("mdi:timer-outline");
-      break;
-
-    case 6:
-      component = "sensor";
       object = "tracked";
       writeDiscoveryCommon(writer, "Tracked Aircraft", "tracked",
                            "sensor.bills_aircraft_radar_tracked_aircraft");
@@ -777,7 +788,7 @@ bool publishDiscovery(uint8_t index) {
       writer.key("icon"); writer.value("mdi:airplane-marker");
       break;
 
-    case 7:
+    case 6:
       component = "sensor";
       object = "nearest_traffic";
       writeDiscoveryCommon(writer, "Nearest Traffic", "nearest_traffic",
@@ -788,7 +799,7 @@ bool publishDiscovery(uint8_t index) {
       writer.key("icon"); writer.value("mdi:airplane-search");
       break;
 
-    case 8:
+    case 7:
       component = "sensor";
       object = "airspace_summary";
       writeDiscoveryCommon(writer, "Airspace Summary", "airspace_summary",
@@ -799,7 +810,7 @@ bool publishDiscovery(uint8_t index) {
       writer.key("icon"); writer.value("mdi:chart-donut");
       break;
 
-    case 9:
+    case 8:
       component = "sensor";
       object = "wifi_signal";
       writeDiscoveryCommon(writer, "Wi-Fi Signal", "wifi_signal",
@@ -812,7 +823,7 @@ bool publishDiscovery(uint8_t index) {
       writer.key("entity_category"); writer.value("diagnostic");
       break;
 
-    case 10:
+    case 9:
       component = "sensor";
       object = "build";
       writeDiscoveryCommon(writer, "Build", "build",
@@ -823,7 +834,7 @@ bool publishDiscovery(uint8_t index) {
       writer.key("icon"); writer.value("mdi:chip");
       break;
 
-    case 11:
+    case 10:
       component = "sensor";
       object = "ota_status";
       writeDiscoveryCommon(writer, "OTA Status", "ota_status",
@@ -834,7 +845,7 @@ bool publishDiscovery(uint8_t index) {
       writer.key("icon"); writer.value("mdi:update");
       break;
 
-    case 12:
+    case 11:
       component = "sensor";
       object = "mqtt_status";
       writeDiscoveryCommon(writer, "MQTT Status", "mqtt_status",
@@ -936,9 +947,6 @@ bool publishStatus(const app_state::Snapshot& snapshot,
   ota_update::Status otaStatus;
   ota_update::copyStatus(otaStatus);
   const bool wifiConnected = app_state::wifiStatus() == WL_CONNECTED;
-  const uint32_t ageSeconds = snapshot.lastUpdateMs
-      ? (now - snapshot.lastUpdateMs) / 1000U : 0;
-
   writer.beginObject();
   writer.key("display"); writer.value(display_power::enabled() ? "ON" : "OFF");
   writer.key("range_miles"); writer.value(static_cast<unsigned>(lroundf(snapshot.rangeMiles)));
@@ -946,7 +954,6 @@ bool publishStatus(const app_state::Snapshot& snapshot,
   writer.key("data_status");
   writer.value(dataStatusName(snapshot, diagnostics, wifiConnected,
                               app_state::fetchInProgress(), now));
-  writer.key("update_age_s"); writer.value(static_cast<unsigned long>(ageSeconds));
   writer.key("wifi_rssi"); writer.value(wifiConnected ? WiFi.RSSI() : 0);
   writer.key("failure_stage"); writer.value(app_state::failureStageName(diagnostics.lastFailureStage));
   writer.key("consecutive_failures"); writer.value(static_cast<unsigned>(diagnostics.consecutiveFailures));
@@ -1142,6 +1149,7 @@ bool processCommands() {
   if (commands & COMMAND_REFRESH) adsb::requestRefresh();
   if (commands & COMMAND_REDISCOVER) {
     availabilityPublished = false;
+    legacyUpdateAgeCleanupPending = true;
     discoveryIndex = 0;
     pendingPublishMask |= PUBLISH_ALL;
   }
@@ -1358,6 +1366,12 @@ void service() {
   if (!availabilityPublished) {
     if (publishText(availabilityTopic, "online", true)) {
       availabilityPublished = true;
+    }
+    return;
+  }
+  if (legacyUpdateAgeCleanupPending) {
+    if (clearLegacyUpdateAgeDiscovery()) {
+      legacyUpdateAgeCleanupPending = false;
     }
     return;
   }

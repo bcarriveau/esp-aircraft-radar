@@ -17,7 +17,7 @@ provide authoritative evidence.
 ## Current status
 
 - **Current source:** Product 56
-- **Current build marker:** `7IN-20260801-PRODUCT56-R3-LIGHTWEIGHT-MQTT`
+- **Current build marker:** `7IN-20260801-PRODUCT56-R4-HA-SYSTEM-UI`
 - **Current branch:** unavailable in the uploaded ZIP; source matches the Product 55
   repository baseline used for this focused update
 - **Product 56 source baseline:** Uploaded Product 55 source with build marker
@@ -28,12 +28,49 @@ provide authoritative evidence.
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 56 R3 has passed the available focused host source tests. PlatformIO
-compile/link, installation, Home Assistant discovery/control checks, physical display
-power and shared-range checks, normal Radar/OTA regression checks, and soak testing
-remain user-side. Product 54 was previously confirmed to compile successfully under
-the pinned PlatformIO and Arduino-ESP32 3.0.7 environment after its OTA enum and
-mbedTLS compatibility fixes.
+Product 56 R4 has passed the available focused host source tests. Product 56 R3 was
+compiled and exercised on the target hardware with MQTT online through repeated native
+ADS-B TLS cycles without allocation failures or fragmentation buildup. Product 56 R4
+PlatformIO compile/link and physical System-page validation remain user-side.
+
+## Product 56 R4 - 2026-08-01
+
+**Build:** `7IN-20260801-PRODUCT56-R4-HA-SYSTEM-UI`  
+**Status:** Focused host validation complete; PlatformIO and physical UI validation pending
+
+### Changed
+
+- Removed the separate Home Assistant **Last Update Age** discovery entity and the
+  `update_age_s` field from the MQTT status payload while retaining the internal age
+  calculation used by the combined LIVE/UPDATING/STALE/OFFLINE data status.
+- Added one retained-discovery cleanup publication for the legacy update-age entity so
+  existing Home Assistant installations remove it automatically after R4 connects.
+- Made the System status card taller and moved its firmware/OTA button to the bottom of
+  the expanded card, keeping all diagnostic lines visible without scrolling.
+- Reorganized maintenance actions into a compact two-row panel on the right: RETRY ADS-B
+  and RECONNECT WI-FI above HA MQTT and RESET DEFAULTS.
+- Changed RECONNECT WI-FI from green to the normal teal maintenance-action color.
+- Slightly compressed the Device & Network form vertically to preserve touch targets and
+  keep its temporary save/error status line visible above the two-row maintenance panel.
+
+### Preserved
+
+- Product 56 R3 lightweight MQTT transport, broker behavior, discovery controls, retained
+  availability, bounded PSRAM workspaces, ADS-B idle-window scheduling, and OTA hold
+  coordination are unchanged.
+- ADS-B HTTPS, native/fallback TLS behavior, deadlines, recovery, stale rejection,
+  last-good retention, 15-second cadence, target capacity, radar interaction, display
+  timing, DMA, bounce buffer, and OPI PSRAM configuration are unchanged.
+
+### Validation
+
+- All repository host tests passed, including focused assertions for 12 Home Assistant
+  discovery components, removal of the update-age state field, retained cleanup of the
+  legacy discovery topic, and the revised System-page geometry.
+- Supplied Home Assistant dashboard YAML parsed successfully and contains no reference to
+  the removed entity.
+- PlatformIO compile/link, upload, Home Assistant entity removal on a live broker, touch
+  behavior, and physical layout validation were not run here.
 
 ## Product 56 R3 - 2026-08-01
 

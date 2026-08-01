@@ -1,0 +1,131 @@
+title: Bill's Aircraft Radar
+views:
+  - title: Aircraft Radar
+    path: aircraft-radar
+    icon: mdi:radar
+    type: sections
+    max_columns: 4
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Bill's Aircraft Radar
+            icon: mdi:radar
+          - type: glance
+            title: Live Status
+            show_name: true
+            show_state: true
+            entities:
+              - entity: sensor.bills_aircraft_radar_data_status
+                name: ADS-B
+              - entity: sensor.bills_aircraft_radar_aircraft_count
+                name: Aircraft
+              - entity: select.bills_aircraft_radar_range
+                name: Range
+          - type: tile
+            entity: switch.bills_aircraft_radar_display
+            name: Display Backlight
+            icon: mdi:monitor
+            features:
+              - type: toggle
+          - type: tile
+            entity: select.bills_aircraft_radar_range
+            name: Radar Range
+            icon: mdi:radar
+            features:
+              - type: select-options
+          - type: button
+            entity: button.bills_aircraft_radar_refresh
+            name: Refresh ADS-B
+            icon: mdi:refresh
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.bills_aircraft_radar_refresh
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Tracked Aircraft
+            icon: mdi:airplane-marker
+          - type: markdown
+            content: |
+              {% set entity = 'sensor.bills_aircraft_radar_tracked_aircraft' %}
+              {% set plane = state_attr(entity, 'aircraft') %}
+              {% if is_state(entity, 'NONE') or plane is none %}
+              ## No aircraft tracked
+              Tracking is controlled from the radar display.
+              {% else %}
+              ## {{ states(entity) }}{% if plane.type %} · {{ plane.type }}{% endif %}
+              **{{ plane.distance_mi }} mi {{ plane.direction }}** · {{ plane.bearing_deg }}°  
+              **{{ plane.altitude_ft }} ft** · {{ plane.speed_mph }} mph  
+              {{ plane.vertical_state }}{% if plane.vertical_rate_fpm is not none %} · {{ plane.vertical_rate_fpm }} ft/min{% endif %}  
+              {% if plane.registration %}Registration: {{ plane.registration }}  
+              {% endif %}{% if plane.operator %}Operator: {{ plane.operator }}  
+              {% endif %}ICAO: `{{ plane.hex }}`
+              {% endif %}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Nearest Traffic
+            icon: mdi:airplane-search
+          - type: markdown
+            content: |
+              {% set traffic = state_attr('sensor.bills_aircraft_radar_nearest_traffic', 'nearest') or [] %}
+              {% if traffic | count == 0 %}
+              ## No visible aircraft
+              Waiting for current ADS-B traffic.
+              {% else %}
+              | # | Aircraft | Distance | Direction | Altitude | Speed |
+              |---:|:--|--:|:--:|--:|--:|
+              {% for plane in traffic %}
+              | {{ loop.index }} | **{{ plane.id }}** | {{ plane.distance_mi }} mi | {{ plane.direction }} | {{ plane.altitude_ft }} ft | {{ plane.speed_mph }} mph |
+              {% endfor %}
+              {% endif %}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Airspace Summary
+            icon: mdi:chart-donut
+          - type: markdown
+            content: |
+              {% set entity = 'sensor.bills_aircraft_radar_airspace_summary' %}
+              {% set nearest = state_attr(entity, 'nearest') %}
+              {% set fastest = state_attr(entity, 'fastest') %}
+              {% set lowest = state_attr(entity, 'lowest_airborne') %}
+              {% set highest = state_attr(entity, 'highest_airborne') %}
+              {% set categories = state_attr(entity, 'categories') or {} %}
+              **Nearest:** {{ nearest.id if nearest else '--' }}{% if nearest %} · {{ nearest.distance_mi }} mi{% endif %}  
+              **Fastest:** {{ fastest.id if fastest else '--' }}{% if fastest %} · {{ fastest.speed_mph }} mph{% endif %}  
+              **Lowest airborne:** {{ lowest.id if lowest else '--' }}{% if lowest %} · {{ lowest.altitude_ft }} ft{% endif %}  
+              **Highest airborne:** {{ highest.id if highest else '--' }}{% if highest %} · {{ highest.altitude_ft }} ft{% endif %}
+
+              | Category | Count |
+              |:--|--:|
+              | Airliners | {{ categories.airliners | default(0) }} |
+              | Business jets | {{ categories.business_jets | default(0) }} |
+              | Turboprops | {{ categories.turboprops | default(0) }} |
+              | Piston | {{ categories.piston | default(0) }} |
+              | Helicopters | {{ categories.helicopters | default(0) }} |
+              | Military / other | {{ categories.military_other | default(0) }} |
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: System
+            icon: mdi:chip
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: sensor.bills_aircraft_radar_wifi_signal
+                name: Wi-Fi Signal
+              - entity: sensor.bills_aircraft_radar_mqtt_status
+                name: MQTT
+              - entity: sensor.bills_aircraft_radar_ota_status
+                name: OTA
+              - entity: sensor.bills_aircraft_radar_build
+                name: Firmware Build

@@ -23,7 +23,7 @@ def test_product_56_mqtt_is_optional_bounded_and_isolated() -> None:
     display_power = read("src/display_power.cpp")
     platformio = read("platformio.ini")
 
-    assert "7IN-20260801-PRODUCT56-R3-LIGHTWEIGHT-MQTT" in build
+    assert "7IN-20260801-PRODUCT56-R4-HA-SYSTEM-UI" in build
     assert "INACTIVE = 0" in mqtt_header
     assert "State::DISABLED" not in mqtt and "State::DISABLED" not in ui
     assert "#define MQTT_ENABLED_DEFAULT 0" in config
@@ -84,10 +84,14 @@ def test_product_56_mqtt_is_optional_bounded_and_isolated() -> None:
     assert "toggle_backlight(backlightState);" in display_power
 
     # Home Assistant discovery is stable, bounded, and includes no remote OTA action.
-    assert "DISCOVERY_COUNT = 13" in mqtt
+    assert "DISCOVERY_COUNT = 12" in mqtt
     assert mqtt.count('writer.key("options");') == 1
     assert '"homeassistant/status"' in mqtt
     assert "COMMAND_REDISCOVER" in mqtt
+    assert "sensor.bills_aircraft_radar_last_update_age" not in mqtt
+    assert 'writer.key("update_age_s")' not in mqtt
+    assert '"homeassistant/sensor/%s_update_age/config"' in mqtt
+    assert "publish(topic, &EMPTY_PAYLOAD, 0, true)" in mqtt
     for entity_id in (
         "switch.bills_aircraft_radar_display",
         "select.bills_aircraft_radar_range",
@@ -134,6 +138,7 @@ def test_dashboard_uses_only_builtin_cards_and_discovered_entities() -> None:
     assert "select.bills_aircraft_radar_range" in dashboard
     assert "switch.bills_aircraft_radar_display" in dashboard
     assert "button.bills_aircraft_radar_refresh" in dashboard
+    assert "sensor.bills_aircraft_radar_last_update_age" not in dashboard
     assert "perform_action: button.press" in dashboard
     assert dashboard.count("content: |") == 3
     assert "No HACS components or custom cards are required" in instructions

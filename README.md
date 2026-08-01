@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260801-PRODUCT56-R3-LIGHTWEIGHT-MQTT
+7IN-20260801-PRODUCT56-R4-HA-SYSTEM-UI
 ```
 
 Current intended repository branch:
@@ -38,21 +38,22 @@ tag:
 product-15-hardened
 ```
 
-Product 56 R3 is the current host-verified candidate. It retains the optional Home
-Assistant device, dashboard, display/range/refresh controls, bounded aircraft telemetry,
-and diagnostics introduced by Product 56. MQTT remains disabled by default and creates
-no client, broker traffic, aircraft snapshot buffer, or JSON buffer until configured
-and enabled from the System page.
+Product 56 R4 is the current host-verified candidate. It retains the optional Home
+Assistant device, display/range/refresh controls, bounded aircraft telemetry, and the
+lightweight MQTT transport proven stable in the Product 56 R3 hardware soak. MQTT remains
+disabled by default and creates no client, broker traffic, aircraft snapshot buffer, or
+JSON buffer until configured and enabled from the System page.
 
 Product 56 R1 and R2 hardware logs proved that the native ESP-MQTT task, socket state,
 and persistent allocations fragmented internal RAM enough that later preferred ADS-B
-TLS handshakes failed even when total free heap remained above 50 KB. R3 replaces only
-that optional MQTT transport with task-free PubSubClient 2.8, streams retained payloads
-from the PSRAM JSON buffer through a 384-byte MQTT packet buffer, publishes at most one
-state message per service interval, and pauses MQTT socket work while an ADS-B fetch is
-active. ADS-B HTTPS, TLS verification, deadlines, recovery, 15-second cadence, OTA,
-display behavior, and Product 55 interaction behavior are unchanged. PlatformIO
-compile/link and hardware validation remain user-side.
+TLS handshakes failed even when total free heap remained above 50 KB. R3 replaced only
+that optional transport with task-free PubSubClient 2.8 and then completed repeated
+native ADS-B TLS cycles without allocation failures or fragmentation buildup. R4 removes
+the redundant Home Assistant last-update-age entity and reorganizes the System page so
+the status card is taller and the four maintenance actions use a compact two-row layout.
+ADS-B HTTPS, TLS verification, deadlines, recovery, 15-second cadence, OTA, display
+framework, and Product 55 interaction behavior are unchanged. Product 56 R4 PlatformIO
+compile/link and physical UI validation remain user-side.
 
 ## Features
 
@@ -115,9 +116,9 @@ Tracked state:
   shortcuts that select the aircraft on Radar by stable ICAO hex.
 - **Airports:** Nearby-airport awareness plus per-category 20/40/80-mile symbol
   and label controls.
-- **System:** Separate status, device/network, and maintenance cards for build,
-  memory, connectivity, saved settings, retry/reconnect, reset controls, and a
-  dedicated local firmware-update overlay.
+- **System:** A tall status card plus compact device/network and two-row maintenance
+  cards for build, memory, connectivity, saved settings, retry/reconnect, Home Assistant,
+  reset controls, and a dedicated local firmware-update overlay.
 - **Home Assistant:** Optional MQTT discovery, backlight/range/refresh controls,
   bounded tracked/nearest/airspace telemetry, diagnostics, and a supplied dashboard
   view using built-in Home Assistant cards only.
