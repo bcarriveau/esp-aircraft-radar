@@ -2968,7 +2968,7 @@ void buildPageShell(lv_obj_t* root) {
 
   titleField = lv_textarea_create(deviceNetworkCard);
   lv_obj_set_size(titleField, 312, 28);
-  lv_obj_set_pos(titleField, 128, 25);
+  lv_obj_set_pos(titleField, 128, 24);
   lv_textarea_set_placeholder_text(titleField, "Display name");
   lv_obj_add_event_cb(titleField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
   lv_textarea_set_one_line(titleField, true);
@@ -2976,7 +2976,7 @@ void buildPageShell(lv_obj_t* root) {
 
   ssidField = lv_textarea_create(deviceNetworkCard);
   lv_obj_set_size(ssidField, 312, 28);
-  lv_obj_set_pos(ssidField, 128, 56);
+  lv_obj_set_pos(ssidField, 128, 55);
   lv_textarea_set_placeholder_text(ssidField, "Wi-Fi SSID");
   lv_obj_add_event_cb(ssidField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
   lv_textarea_set_one_line(ssidField, true);
@@ -2984,7 +2984,7 @@ void buildPageShell(lv_obj_t* root) {
 
   passwordField = lv_textarea_create(deviceNetworkCard);
   lv_obj_set_size(passwordField, 216, 28);
-  lv_obj_set_pos(passwordField, 128, 87);
+  lv_obj_set_pos(passwordField, 128, 86);
   lv_textarea_set_placeholder_text(passwordField, "Wi-Fi password");
   lv_obj_add_event_cb(passwordField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
   lv_textarea_set_one_line(passwordField, true);
@@ -2993,7 +2993,7 @@ void buildPageShell(lv_obj_t* root) {
 
   showPasswordButton = lv_btn_create(deviceNetworkCard);
   lv_obj_set_size(showPasswordButton, 88, 28);
-  lv_obj_set_pos(showPasswordButton, 352, 87);
+  lv_obj_set_pos(showPasswordButton, 352, 86);
   lv_obj_set_style_bg_color(showPasswordButton, rgb(20, 68, 82), 0);
   lv_obj_add_event_cb(showPasswordButton, showPasswordEvent,
                       LV_EVENT_CLICKED, nullptr);
@@ -3004,7 +3004,7 @@ void buildPageShell(lv_obj_t* root) {
 
   latitudeField = lv_textarea_create(deviceNetworkCard);
   lv_obj_set_size(latitudeField, 140, 28);
-  lv_obj_set_pos(latitudeField, 72, 118);
+  lv_obj_set_pos(latitudeField, 72, 120);
   lv_textarea_set_placeholder_text(latitudeField, "Latitude");
   lv_obj_add_event_cb(latitudeField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
   lv_textarea_set_one_line(latitudeField, true);
@@ -3012,26 +3012,26 @@ void buildPageShell(lv_obj_t* root) {
 
   longitudeField = lv_textarea_create(deviceNetworkCard);
   lv_obj_set_size(longitudeField, 140, 28);
-  lv_obj_set_pos(longitudeField, 300, 118);
+  lv_obj_set_pos(longitudeField, 300, 120);
   lv_textarea_set_placeholder_text(longitudeField, "Longitude");
   lv_obj_add_event_cb(longitudeField, settingsFieldEvent, LV_EVENT_FOCUSED, nullptr);
   lv_textarea_set_one_line(longitudeField, true);
   styleSettingsField(longitudeField);
 
   settingsFormLabels[0] = makeLabel(deviceNetworkCard, "DISPLAY NAME",
-      &lv_font_montserrat_12, rgb(110, 220, 255), 8, 31);
+      &lv_font_montserrat_12, rgb(110, 220, 255), 8, 30);
   settingsFormLabels[1] = makeLabel(deviceNetworkCard, "WI-FI SSID",
-      &lv_font_montserrat_12, rgb(110, 220, 255), 8, 62);
+      &lv_font_montserrat_12, rgb(110, 220, 255), 8, 61);
   settingsFormLabels[2] = makeLabel(deviceNetworkCard, "PASSWORD",
-      &lv_font_montserrat_12, rgb(110, 220, 255), 8, 93);
+      &lv_font_montserrat_12, rgb(110, 220, 255), 8, 92);
   settingsFormLabels[3] = makeLabel(deviceNetworkCard, "LAT",
-      &lv_font_montserrat_12, rgb(110, 220, 255), 8, 124);
+      &lv_font_montserrat_12, rgb(110, 220, 255), 8, 126);
   settingsFormLabels[4] = makeLabel(deviceNetworkCard, "LONGITUDE",
-      &lv_font_montserrat_12, rgb(110, 220, 255), 220, 124);
+      &lv_font_montserrat_12, rgb(110, 220, 255), 220, 126);
 
   saveSettingsButton = lv_btn_create(deviceNetworkCard);
   lv_obj_set_size(saveSettingsButton, 160, 27);
-  lv_obj_set_pos(saveSettingsButton, 128, 149);
+  lv_obj_set_pos(saveSettingsButton, 128, 153);
   lv_obj_set_style_bg_color(saveSettingsButton, rgb(24, 128, 84), 0);
   lv_obj_set_style_radius(saveSettingsButton, 5, 0);
   lv_obj_set_style_pad_hor(saveSettingsButton, 14, 0);
@@ -3045,7 +3045,7 @@ void buildPageShell(lv_obj_t* root) {
 
   settingsStatusLabel = makeLabel(
       deviceNetworkCard, "", &lv_font_montserrat_12,
-      rgb(120, 240, 155), 8, 181);
+      rgb(120, 240, 155), 8, 184);
   lv_obj_set_width(settingsStatusLabel, 432);
   lv_label_set_long_mode(settingsStatusLabel, LV_LABEL_LONG_CLIP);
 
@@ -3053,12 +3053,11 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_size(maintenanceCard, 456, 68);
   lv_obj_set_pos(maintenanceCard, 286, 271);
   styleDashboardCard(maintenanceCard);
-  makeLabel(maintenanceCard, "MAINTENANCE", &lv_font_montserrat_12,
-            rgb(100, 170, 180), 7, 0);
+  lv_obj_set_style_pad_all(maintenanceCard, 0, 0);
 
   retryButton = lv_btn_create(maintenanceCard);
-  lv_obj_set_size(retryButton, 205, 23);
-  lv_obj_set_pos(retryButton, 10, 15);
+  lv_obj_set_size(retryButton, 205, 24);
+  lv_obj_set_pos(retryButton, 10, 8);
   lv_obj_set_style_bg_color(retryButton, rgb(20, 68, 82), 0);
   lv_obj_set_style_radius(retryButton, 5, 0);
   lv_obj_add_event_cb(retryButton, retryEvent, LV_EVENT_CLICKED, nullptr);
@@ -3068,8 +3067,8 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_center(retryLabel);
 
   reconnectButton = lv_btn_create(maintenanceCard);
-  lv_obj_set_size(reconnectButton, 205, 23);
-  lv_obj_set_pos(reconnectButton, 231, 15);
+  lv_obj_set_size(reconnectButton, 205, 24);
+  lv_obj_set_pos(reconnectButton, 231, 8);
   lv_obj_set_style_bg_color(reconnectButton, rgb(20, 68, 82), 0);
   lv_obj_set_style_radius(reconnectButton, 5, 0);
   lv_obj_add_event_cb(reconnectButton, reconnectEvent,
@@ -3080,8 +3079,8 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_center(reconnectLabel);
 
   systemMqttButton = lv_btn_create(maintenanceCard);
-  lv_obj_set_size(systemMqttButton, 205, 23);
-  lv_obj_set_pos(systemMqttButton, 10, 40);
+  lv_obj_set_size(systemMqttButton, 205, 24);
+  lv_obj_set_pos(systemMqttButton, 10, 36);
   lv_obj_set_style_bg_color(systemMqttButton, rgb(20, 68, 82), 0);
   lv_obj_set_style_radius(systemMqttButton, 5, 0);
   lv_obj_add_event_cb(systemMqttButton, mqttOpenEvent,
@@ -3092,8 +3091,8 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_center(systemMqttLabel);
 
   resetSettingsButton = lv_btn_create(maintenanceCard);
-  lv_obj_set_size(resetSettingsButton, 205, 23);
-  lv_obj_set_pos(resetSettingsButton, 231, 40);
+  lv_obj_set_size(resetSettingsButton, 205, 24);
+  lv_obj_set_pos(resetSettingsButton, 231, 36);
   lv_obj_set_style_bg_color(resetSettingsButton, rgb(20, 68, 82), 0);
   lv_obj_set_style_radius(resetSettingsButton, 5, 0);
   lv_obj_add_event_cb(resetSettingsButton, resetSettingsEvent,

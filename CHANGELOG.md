@@ -16,11 +16,10 @@ provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 56
-- **Current build marker:** `7IN-20260801-PRODUCT56-R4-HA-SYSTEM-UI`
-- **Current branch:** unavailable in the uploaded ZIP; source matches the Product 55
-  repository baseline used for this focused update
-- **Product 56 source baseline:** Uploaded Product 55 source with build marker
+- **Current source:** Product 56 R5
+- **Current build marker:** `7IN-20260801-PRODUCT56-R5-SYSTEM-UI`
+- **Current branch:** unavailable in the supplied source tree
+- **Product 56 source baseline:** Product 55 source with build marker
   `7IN-20260801-PRODUCT55-AIRSPACE`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
@@ -28,54 +27,72 @@ provide authoritative evidence.
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 56 R4 has passed the available focused host source tests. Product 56 R3 was
-compiled and exercised on the target hardware with MQTT online through repeated native
-ADS-B TLS cycles without allocation failures or fragmentation buildup. Product 56 R4
-PlatformIO compile/link and physical System-page validation remain user-side.
+Product 56 R5 is the intended final Product 56 revision. The user confirmed a
+successful PlatformIO build and hardware upload of the lightweight MQTT implementation.
+An extended hardware log then showed repeated preferred native HTTPS/TLS ADS-B
+requests completing with MQTT connected, stable post-request internal-heap recovery,
+and no TLS allocation failures, fallback use, fetch failures, or Wi-Fi recovery.
+The final Home Assistant cleanup and System-page layout were subsequently reviewed
+on the physical 800x480 display. OTA transfer regression and a longer general soak
+remain separate user-side checks.
 
-## Product 56 R4 - 2026-08-01
+## Product 56 R5 - 2026-08-01
 
-**Build:** `7IN-20260801-PRODUCT56-R4-HA-SYSTEM-UI`  
-**Status:** Focused host validation complete; PlatformIO and physical UI validation pending
+**Build:** `7IN-20260801-PRODUCT56-R5-SYSTEM-UI`  
+**Status:** Hardware-tested; intended final Product 56 revision
 
-### Changed
+### Finalized
 
-- Removed the separate Home Assistant **Last Update Age** discovery entity and the
-  `update_age_s` field from the MQTT status payload while retaining the internal age
-  calculation used by the combined LIVE/UPDATING/STALE/OFFLINE data status.
-- Added one retained-discovery cleanup publication for the legacy update-age entity so
-  existing Home Assistant installations remove it automatically after R4 connects.
-- Made the System status card taller and moved its firmware/OTA button to the bottom of
-  the expanded card, keeping all diagnostic lines visible without scrolling.
-- Reorganized maintenance actions into a compact two-row panel on the right: RETRY ADS-B
-  and RECONNECT WI-FI above HA MQTT and RESET DEFAULTS.
-- Changed RECONNECT WI-FI from green to the normal teal maintenance-action color.
-- Slightly compressed the Device & Network form vertically to preserve touch targets and
-  keep its temporary save/error status line visible above the two-row maintenance panel.
+- Removed the Home Assistant **Last Update Age** sensor from MQTT discovery and
+  removed its raw `update_age_s` field from the published status payload.
+- Added one-time retained discovery cleanup for the legacy update-age topic so
+  Home Assistant can remove the obsolete entity after the radar reconnects.
+- Retained internal data-age calculation because the radar still uses it for the
+  useful `LIVE`, `UPDATING`, `STALE`, and `OFFLINE` data-status states.
+- Expanded the System Status card and kept the firmware/OTA button anchored at its
+  bottom so heap, largest-block, PSRAM, airport, and network diagnostics remain
+  visible without scrolling.
+- Reorganized the right side of the System page into a Device & Network card above
+  a two-row maintenance-control card.
+- Arranged maintenance controls as `RETRY ADS-B` and `RECONNECT WI-FI` on the first
+  row, with `HA MQTT` and `RESET DEFAULTS` on the second row.
+- Changed the reconnect control from success green to the normal teal action color.
+- Removed the redundant **MAINTENANCE** heading and used the recovered height for
+  consistent button padding.
+- Corrected the maintenance card's inherited internal padding so the lower buttons
+  no longer touch the card border.
+- Corrected Device & Network vertical spacing so the latitude and longitude fields
+  no longer visually overlap the password row or SHOW button, while preserving the
+  existing field and touch-target sizes.
+
+### Hardware validation
+
+- Product 56 R3 compiled and produced the normal firmware and radar OTA artifacts in
+  the user's pinned PlatformIO environment.
+- MQTT connected, Home Assistant discovery completed, and repeated 15-second ADS-B
+  updates continued through the preferred native HTTPS path.
+- The lightweight MQTT implementation held approximately 69 KB free internal heap
+  and a 51 KB largest internal block between ADS-B requests in the captured run.
+- Native TLS request low points remained repeatable and recovered after every request;
+  the fragmentation collapse seen in Product 56 R2 did not return.
+- Product 56 R4 and R5 System-page changes were loaded and reviewed on the
+  physical Waveshare display.
 
 ### Preserved
 
-- Product 56 R3 lightweight MQTT transport, broker behavior, discovery controls, retained
-  availability, bounded PSRAM workspaces, ADS-B idle-window scheduling, and OTA hold
-  coordination are unchanged.
-- ADS-B HTTPS, native/fallback TLS behavior, deadlines, recovery, stale rejection,
-  last-good retention, 15-second cadence, target capacity, radar interaction, display
-  timing, DMA, bounce buffer, and OPI PSRAM configuration are unchanged.
-
-### Validation
-
-- All repository host tests passed, including focused assertions for 12 Home Assistant
-  discovery components, removal of the update-age state field, retained cleanup of the
-  legacy discovery topic, and the revised System-page geometry.
-- Supplied Home Assistant dashboard YAML parsed successfully and contains no reference to
-  the removed entity.
-- PlatformIO compile/link, upload, Home Assistant entity removal on a live broker, touch
-  behavior, and physical layout validation were not run here.
+- Native ESP-IDF HTTPS remains the preferred ADS-B transport.
+- Verified fallback HTTPS, certificate and hostname verification, bounded parsing,
+  response limits, header/idle/total deadlines, request serialization, recovery,
+  stale rejection, last-good retention, and 15-second cadence are unchanged.
+- Core-0 ADS-B ownership, 200-target bounds, stable ICAO selection/tracking,
+  outward auto-zoom, MPH display, single-snapshot rendering, dirty/version LVGL
+  updates, airport behavior, OTA coordination, panel timing, DMA, OPI PSRAM, and
+  the 20-scanline RGB bounce buffer are unchanged.
 
 ## Product 56 R3 - 2026-08-01
 
 **Build:** `7IN-20260801-PRODUCT56-R3-LIGHTWEIGHT-MQTT`  
-**Status:** Focused host validation complete; PlatformIO and hardware validation pending
+**Status:** Hardware-tested; core MQTT memory correction retained by Product 56 R5
 
 ### Changed
 
@@ -94,14 +111,14 @@ PlatformIO compile/link and physical System-page validation remain user-side.
 - Delayed cold-boot MQTT startup for five seconds and until an ADS-B idle window,
   preventing MQTT startup from racing the first HTTPS request.
 - Corrected the duplicated Home Assistant range-discovery `options` key.
+- Added the pinned `knolleary/PubSubClient@2.8` PlatformIO dependency.
 
 ### Preserved
 
 - MQTT remains disabled by default and allocates no client or MQTT data buffers
   while disabled.
-- Home Assistant entity IDs, controls, telemetry topics, retained availability,
-  dashboard compatibility, NVS enable state, and OTA maintenance coordination
-  remain unchanged.
+- Home Assistant controls, telemetry topics, retained availability, dashboard
+  compatibility, NVS enable state, and OTA maintenance coordination remain intact.
 - Native ADS-B HTTPS remains preferred. Verified fallback, TLS verification,
   deadlines, failure classification, recovery, stale rejection, last-good
   retention, 15-second cadence, UI behavior, target capacity, panel timing,
@@ -109,17 +126,63 @@ PlatformIO compile/link and physical System-page validation remain user-side.
 
 ### Validation
 
-- All 16 repository host tests passed.
+- The user confirmed a successful PlatformIO build, firmware image generation, and
+  radar OTA package generation.
+- An extended hardware run completed repeated native ADS-B TLS requests with MQTT
+  connected and without the Product 56 R2 allocation failures or fragmentation
+  buildup.
+- All 16 focused repository host tests passed before hardware validation.
 - Complete `src/mqtt_service.cpp` passed a strict host C++17 syntax check against
   focused Arduino, Wi-Fi, heap-capability, and PubSubClient API stubs.
-- PlatformIO compile/link, upload, Home Assistant operation, native ADS-B TLS
-  margin, OTA behavior, and hardware soak testing were not run here.
+
+## Product 56 R2 - 2026-08-01
+
+**Build:** `7IN-20260801-PRODUCT56-R2-MQTT-MEMORY`  
+**Status:** Hardware-tested; superseded by Product 56 R3
+
+### Changed
+
+- Reduced the native ESP-MQTT task stack from 6,144 to 4,096 bytes.
+- Reduced native MQTT input and output buffers from 2,048 to 1,024 bytes each.
+- Retained the bounded native MQTT outbox and Product 56 Home Assistant behavior.
+
+### Hardware result
+
+- The first native ADS-B TLS request completed, but the largest internal block then
+  settled near 27 KB instead of returning to its pre-request level.
+- Later native TLS setup failed with memory-allocation errors, verified fallback TLS
+  also failed, and Wi-Fi recovery could not restore the contiguous block.
+- This confirmed that buffer trimming alone was insufficient and led directly to the
+  lightweight Product 56 R3 transport replacement.
+
+## Product 56 R1 - 2026-08-01
+
+**Build:** `7IN-20260801-PRODUCT56-R1-MEMORY`  
+**Status:** Diagnostic revision; superseded by Product 56 R2 and R3
+
+### Added
+
+- Added free internal heap, largest contiguous internal block, and PSRAM checkpoints
+  around ADS-B DNS, client initialization, TLS, headers, payload handling, transport
+  release, JSON parsing, and request completion.
+- Added MQTT startup, allocation, connection, discovery, and shutdown checkpoints.
+- Added current/minimum largest internal-block reporting to the System page.
+
+### Diagnostic result
+
+- Confirmed that the existing ADS-B HTTPS/TLS request temporarily consumed roughly
+  50 KB of internal heap even without MQTT.
+- Confirmed that native ESP-MQTT's persistent allocations and task stack reduced the
+  contiguous block enough for SHA/AES/TLS allocation failures during overlapping
+  ADS-B requests.
+- Verified that the hardened fallback path still completed while sufficient memory
+  remained, proving the failure was local memory pressure rather than DNS, broker,
+  certificate, or ADS-B server behavior.
 
 ## Product 56 - 2026-08-01
 
 **Build:** `7IN-20260801-PRODUCT56-HA-MQTT`  
-**Status:** Focused host source validation complete; PlatformIO and hardware/Home
-Assistant validation pending
+**Status:** Initial implementation; superseded by Product 56 R3 and finalized by R5
 
 ### Added
 
@@ -131,8 +194,8 @@ Assistant validation pending
 - Added bounded telemetry for aircraft count, data status and age, tracked aircraft,
   five nearest aircraft, Product 55 Airspace highlights and category totals, Wi-Fi
   RSSI, build identity, OTA state, and MQTT state.
-- Added a ready-to-paste `home-assistant/aircraft-radar-view.yaml` dashboard using
-  only built-in Home Assistant cards, plus installation and behavior notes.
+- Added ready-to-paste Home Assistant dashboard YAML using only built-in cards,
+  plus installation and behavior notes.
 - Added a System-page **HA MQTT** status/control overlay and a checked NVS setting for
   enabling or disabling the service at runtime.
 - Added a project-owned idempotent display-power wrapper around the Waveshare
@@ -145,7 +208,7 @@ Assistant validation pending
 - MQTT is disabled by default. Disabled mode creates no MQTT client task, performs no
   broker retries or JSON publication, and allocates no aircraft snapshot or JSON buffer.
 - Enabling MQTT allocates exactly one `MAX_TARGETS` snapshot buffer and one 4 KB JSON
-  workspace in PSRAM, plus a bounded 16 KB native MQTT outbox.
+  workspace in PSRAM.
 - MQTT never owns Wi-Fi setup or recovery, calls `WiFi.begin()`, recycles the radio,
   changes ADS-B deadlines/cadence, or requests a restart. Broker failure remains
   isolated from the radar and OTA service.
@@ -155,11 +218,11 @@ Assistant validation pending
 ### OTA coordination
 
 - Extended Product 54's exclusive maintenance preparation to MQTT. OTA now waits for
-  both the core-0 ADS-B task and the optional MQTT client to become idle before an
+  both the core-0 ADS-B task and the optional MQTT service to become idle before an
   upload can begin.
-- MQTT stops accepting publications, disconnects, destroys its task, and releases its
-  PSRAM snapshot and JSON buffers during the OTA hold. Cancellation, timeout, Wi-Fi loss, or
-  upload failure releases both maintenance holds.
+- MQTT stops accepting publications, disconnects, and releases its PSRAM snapshot and
+  JSON buffers during the OTA hold. Cancellation, timeout, Wi-Fi loss, or upload
+  failure releases both maintenance holds.
 - Updated the local update page and serial status text to describe all network services
   rather than only the ADS-B task.
 
@@ -175,27 +238,13 @@ Assistant validation pending
 - MQTT configuration values remain private in ignored `include/config.h`; only disabled
   placeholders are present in `include/config.example.h`.
 
-### Validation
+### Initial validation
 
-- All repository Python tests, including focused Product 56 MQTT/discovery/dashboard
-  assertions, passed.
-- Strict-warning host syntax checks passed for the new MQTT, display-power, shared-range,
-  settings, app-state, main, and OTA integration sources using focused host stubs.
-- The complete UI source passed host syntax checking with only the same pre-existing
-  Product 55 signed-comparison warning.
-- Compatibility stubs defined Arduino's `DISABLED` macro and confirmed the MQTT state
-  implementation does not reintroduce the Product 54 enum-name collision.
-- Runtime host harnesses generated and parsed all 13 discovery payloads and maximum-size
-  nearest/airspace state payloads; the largest measured state payload was 1,650 bytes
-  inside the bounded 4 KB JSON workspace.
-- The supplied Home Assistant dashboard parsed as a five-section YAML view and uses
-  an explicit `button.press` action for ADS-B refresh.
-- Static checks confirmed the MQTT source does not use `WiFi.begin()`, `WiFi.disconnect()`,
-  `setInsecure()`, blocking `HTTPClient::GET()`, or whole-response Arduino `String`
-  storage.
-- PlatformIO compile/link, firmware size, upload, hardware display/backlight checks,
-  broker discovery/control tests, OTA transfer regression, and soak testing were not
-  run here.
+- Repository Python tests, focused MQTT/discovery/dashboard assertions, strict-warning
+  host syntax checks, discovery-payload generation, dashboard YAML parsing, and static
+  forbidden-API checks passed.
+- PlatformIO and hardware validation were completed only after the Product 56 R3
+  transport correction.
 
 ## Product 55 - 2026-08-01
 

@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260801-PRODUCT56-R4-HA-SYSTEM-UI
+7IN-20260801-PRODUCT56-R5-SYSTEM-UI
 ```
 
 Current intended repository branch:
@@ -38,22 +38,28 @@ tag:
 product-15-hardened
 ```
 
-Product 56 R4 is the current host-verified candidate. It retains the optional Home
-Assistant device, display/range/refresh controls, bounded aircraft telemetry, and the
-lightweight MQTT transport proven stable in the Product 56 R3 hardware soak. MQTT remains
-disabled by default and creates no client, broker traffic, aircraft snapshot buffer, or
-JSON buffer until configured and enabled from the System page.
+Product 56 R5 is the intended final Product 56 revision. It adds an optional Home
+Assistant MQTT device, dashboard, display/range/refresh controls, bounded aircraft
+telemetry, diagnostics, and MQTT-aware OTA coordination. MQTT remains disabled by
+default and creates no client, broker traffic, aircraft snapshot buffer, or JSON
+buffer until configured and enabled from the System page.
 
 Product 56 R1 and R2 hardware logs proved that the native ESP-MQTT task, socket state,
 and persistent allocations fragmented internal RAM enough that later preferred ADS-B
-TLS handshakes failed even when total free heap remained above 50 KB. R3 replaced only
-that optional transport with task-free PubSubClient 2.8 and then completed repeated
-native ADS-B TLS cycles without allocation failures or fragmentation buildup. R4 removes
-the redundant Home Assistant last-update-age entity and reorganizes the System page so
-the status card is taller and the four maintenance actions use a compact two-row layout.
-ADS-B HTTPS, TLS verification, deadlines, recovery, 15-second cadence, OTA, display
-framework, and Product 55 interaction behavior are unchanged. Product 56 R4 PlatformIO
-compile/link and physical UI validation remain user-side.
+TLS handshakes failed even when total free heap remained above 50 KB. Product 56 R3
+replaced only that optional MQTT transport with task-free PubSubClient 2.8, streams
+retained payloads from the PSRAM JSON buffer through a 384-byte MQTT packet buffer,
+publishes at most one state message per service interval, and pauses MQTT socket work
+while an ADS-B fetch is active. Extended hardware logging then completed repeated
+preferred native HTTPS/TLS ADS-B cycles with MQTT connected, stable post-request heap
+recovery, and no fallback use, allocation failures, or Wi-Fi recovery.
+
+Product 56 R5 removes the redundant Home Assistant Last Update Age entity while
+retaining the internal LIVE/UPDATING/STALE/OFFLINE state logic, and finalizes the
+System Status, Device & Network, and maintenance-control layout for the physical
+800x480 display. ADS-B HTTPS, TLS verification, deadlines, recovery, 15-second
+cadence, stable-ICAO interaction, target bounds, OTA behavior, panel timing, DMA,
+OPI PSRAM, and the 20-scanline RGB bounce buffer remain unchanged.
 
 ## Features
 
@@ -116,9 +122,9 @@ Tracked state:
   shortcuts that select the aircraft on Radar by stable ICAO hex.
 - **Airports:** Nearby-airport awareness plus per-category 20/40/80-mile symbol
   and label controls.
-- **System:** A tall status card plus compact device/network and two-row maintenance
-  cards for build, memory, connectivity, saved settings, retry/reconnect, Home Assistant,
-  reset controls, and a dedicated local firmware-update overlay.
+- **System:** A tall status card for build, memory, connectivity, and airport
+  diagnostics; a separate Device & Network form; a two-row retry/reconnect/MQTT/reset
+  control card; and a dedicated local firmware-update overlay.
 - **Home Assistant:** Optional MQTT discovery, backlight/range/refresh controls,
   bounded tracked/nearest/airspace telemetry, diagnostics, and a supplied dashboard
   view using built-in Home Assistant cards only.
@@ -179,6 +185,11 @@ Tracked state:
 - When enabled, a task-free PubSubClient 2.8 connection publishes Home Assistant
   discovery, retained availability, bounded state topics, a tracked-aircraft snapshot,
   the five nearest aircraft, and the Product 55 Airspace highlights.
+- The raw Last Update Age sensor is intentionally not exposed. Home Assistant receives
+  the useful data-status state while the radar retains its internal age calculation for
+  `LIVE`, `UPDATING`, `STALE`, and `OFFLINE` classification.
+- Product 56 R5 clears the legacy retained update-age discovery topic once after MQTT
+  reconnects so an older Home Assistant entity can be removed automatically.
 - Home Assistant can switch the physical LCD backlight, select the shared 20/40/80-mile
   radar range, and queue the existing non-overlapping ADS-B refresh command.
 - MQTT does not own Wi-Fi, reconnect the station, recycle the radio, alter ADS-B
@@ -315,6 +326,7 @@ The project pins:
 - ESP32_IO_Expander 0.0.3
 - LVGL 8.3.11
 - ArduinoJson 7.3.1
+- PubSubClient 2.8
 
 Generated objects and downloaded project libraries are stored outside the
 Google Drive project directory:
@@ -430,17 +442,21 @@ Before calling a Product release complete:
 16. With MQTT disabled, confirm no broker attempts, MQTT client, or MQTT aircraft
     buffer are reported and normal Product 55 behavior is unchanged.
 17. Enable MQTT and confirm Home Assistant discovery, availability, display power,
-    shared range control, refresh, tracked/nearest telemetry, and dashboard rendering.
-18. Start OTA with MQTT connected and confirm OTA does not become ready until both
+    shared range control, refresh, tracked/nearest telemetry, dashboard rendering, and
+    absence of the removed Last Update Age entity after retained-topic cleanup.
+18. Confirm repeated preferred native HTTPS/TLS ADS-B cycles continue with MQTT
+    connected and that free heap and the largest internal block recover after each
+    request.
+19. Start OTA with MQTT connected and confirm OTA does not become ready until both
     ADS-B and MQTT maintenance holds are active; confirm cancellation resumes both.
-19. Complete an extended soak test.
+20. Complete an extended soak test.
 
 ## Screenshots
 
-Current Product 33 UI photographs have been used for physical layout review but
-are not yet committed under a documentation image directory. Add verified
-current-display photos under `docs/images/` after Product 34 behavior is
-physically confirmed.
+Current Product 56 R5 display photographs have been used for physical layout
+review but are not yet committed under a documentation image directory. Selected
+current-display photographs can be added under `docs/images/` when repository-facing
+screenshots are prepared.
 
 ## Major milestones
 
@@ -476,8 +492,10 @@ physically confirmed.
 - **Product 55:** Shared Airspace range toggle and stable-ICAO live-highlight
   shortcuts, with highest airborne replacing the redundant dominant-category entry.
 - **Product 56:** Optional Home Assistant MQTT discovery and controls, bounded
-  aircraft telemetry, dependency-free dashboard YAML, disabled-mode zero-allocation
-  behavior, and MQTT-aware OTA maintenance coordination.
+  aircraft telemetry, built-in-card dashboard YAML, disabled-mode zero-allocation
+  behavior, MQTT-aware OTA coordination, the lightweight PubSubClient transport that
+  preserves native ADS-B TLS memory, removal of the redundant update-age entity, and
+  the finalized System-page layout.
 
 Detailed Product-by-Product history is maintained in `CHANGELOG.md`. Unconfirmed
 older history is not guessed.
