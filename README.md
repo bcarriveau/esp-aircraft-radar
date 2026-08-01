@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260727-PRODUCT51-AIRPORT-UI
+7IN-20260801-PRODUCT54-LOCAL-WEB-OTA
 ```
 
 Current source branch:
@@ -38,10 +38,12 @@ tag:
 product-15-hardened
 ```
 
-Product 51 is the current host-verified candidate. It keeps the Product 50 offline
-airport-awareness overlay while making airport identifiers a stable background map
-layer and reorganizing the combined System settings page. Product 51 remains a
-candidate until PlatformIO compile/link, upload, physical UI review, normal aircraft
+Product 54 is the current host-verified candidate. It adds a temporarily armed
+local browser updater that accepts only generated `.radarota` packages, streams the
+firmware into the inactive OTA slot, coordinates an exclusive maintenance hold with
+the core-0 ADS-B task, and changes the boot partition only after full ESP image and
+SHA-256 validation. Product 54 remains a candidate until PlatformIO compile/link,
+USB installation, one successful browser update, failure-path checks, normal radar
 interaction checks, and soak testing are confirmed.
 
 ## Features
@@ -104,7 +106,8 @@ Tracked state:
 - **Airports:** Nearby-airport awareness plus per-category 20/40/80-mile symbol
   and label controls.
 - **System:** Separate status, device/network, and maintenance cards for build,
-  memory, connectivity, saved settings, retry/reconnect, and reset controls.
+  memory, connectivity, saved settings, retry/reconnect, reset controls, and a
+  dedicated local firmware-update overlay.
 
 ## Architecture and reliability
 
@@ -153,6 +156,29 @@ Tracked state:
 - Tracking is cleared atomically under the existing app-state mutex after three
   consecutive confirmed misses.
 
+### Local firmware updates
+
+- The local HTTP updater is disabled during normal operation and can be armed from
+  the System page for five minutes.
+- Each arming generates a temporary six-digit access code and displays both the
+  numeric-IP update address and `bills-aircraft-radar.local/update` when mDNS starts.
+- PlatformIO automatically creates `firmware.radarota` beside `firmware.bin` after a
+  successful build. USB flashing continues to use `firmware.bin`; browser updates use
+  only `firmware.radarota`.
+- The package identifies the exact Waveshare ESP32-S3 7-inch hardware, carries the
+  Product build marker, declares the firmware length, and includes the firmware
+  SHA-256 digest.
+- Upload data is streamed directly to the inactive OTA partition. No complete
+  firmware copy is allocated in heap or PSRAM.
+- The core-0 ADS-B task finishes any active request and acknowledges a maintenance
+  hold before the browser can upload. A failed or cancelled preparation releases the
+  hold and resumes normal polling.
+- The next boot partition is selected only after package checks, confirmation that
+  the declared Product build ID is embedded in the firmware, ESP32-S3 image validation,
+  exact-length validation, SHA-256 verification, and `esp_ota_end()` all succeed.
+- Product 54 does not claim signed-firmware authenticity or automatic first-boot
+  rollback; those remain separate reliability features.
+
 ### Target capacity
 
 - Storage is bounded at 200 retained targets.
@@ -182,8 +208,9 @@ without a dedicated display-stability investigation.
 ```text
 assets/                 Aircraft artwork and display assets
 tools/                  Generated-data utilities, including airport CSV conversion
+scripts/                PlatformIO post-build OTA package generation
 include/                Shared interfaces and hardware configuration
-src/                    Application, networking, state, radar, and UI sources
+src/                    Application, networking, state, radar, UI, and OTA sources
 platformio.ini          Pinned PlatformIO environment, workspace, and checks
 README.md               Current project documentation
 CHANGELOG.md            Confirmed Product history
@@ -255,6 +282,15 @@ Google Drive project directory:
 This avoids Drive File Stream locking or removing `.pio` files while SCons is
 building.
 
+A successful build also creates:
+
+```text
+~/.platformio/workspaces/bills_aircraft_radar/build/waveshare-s3-touch-lcd-7/firmware.radarota
+```
+
+Use `firmware.bin` for USB upload and `firmware.radarota` only on the radar's
+local browser update page.
+
 ### 5. Static inspection
 
 Run:
@@ -268,7 +304,20 @@ the application sources while skipping downloaded framework, toolchain, and
 library packages. This avoids false syntax failures in package headers such as
 `bits/c++config.h` and does not alter normal compilation, linking, or upload.
 
-### 6. Upload and monitor
+### 6. Local browser update
+
+Product 54 must first be installed by USB. For later updates:
+
+1. Build the new source and locate `firmware.radarota` beside `firmware.bin`.
+2. On the radar, open **System**, tap **Firmware / OTA**, and enable the five-minute
+   update window.
+3. From another device on the same network, open the displayed address.
+4. Enter the six-digit access code, select `firmware.radarota`, and start the update.
+5. Keep power connected until the browser reports verification and the radar restarts.
+
+A partial, rejected, or interrupted package is not selected as the next boot image.
+
+### 7. Upload and monitor
 
 ```bash
 pio run -e waveshare-s3-touch-lcd-7 -t upload
@@ -311,7 +360,14 @@ Before calling a Product release complete:
 10. Change range during an active request and confirm stale-response rejection.
 11. Check display stability during HTTPS traffic.
 12. Check heap and PSRAM stability.
-13. Complete an extended soak test.
+13. Confirm `firmware.radarota` is generated and is 512 bytes larger than
+    `firmware.bin`.
+14. Test a successful local browser update and confirm the new build marker after
+    restart.
+15. Confirm wrong-code, wrong-extension, mismatched-build, truncated-package, and
+    SHA-mismatch failures leave the current firmware selected and release the ADS-B
+    maintenance hold.
+16. Complete an extended soak test.
 
 ## Screenshots
 
@@ -348,6 +404,9 @@ physically confirmed.
   update grace period, temporary lost-signal messaging, and automatic return to
   idle mode. The accompanying PlatformIO update isolates generated files from
   Google Drive and skips third-party package headers during cppcheck.
+- **Product 54:** Temporarily armed local browser OTA with generated hardware-bound
+  packages, streamed inactive-slot writes, SHA-256 and ESP image validation, and an
+  acknowledged core-0 ADS-B maintenance hold.
 
 Detailed Product-by-Product history is maintained in `CHANGELOG.md`. Unconfirmed
 older history is not guessed.

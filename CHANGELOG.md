@@ -10,26 +10,94 @@ available.
 
 This consolidated file replaces the earlier split changelog that stopped after
 Product 42. It contains the continuous confirmed history from the current Product
-53R6R1 source back through Product 15, the first hardened version-controlled baseline.
+54 source back through Product 15, the first hardened version-controlled baseline.
 Earlier Product history is intentionally omitted where the repository does not
 provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 53R6R1
-- **Current build marker:** `7IN-20260731-PRODUCT53R6R1-AIRPORT-TAP-FIX`
+- **Current source:** Product 54
+- **Current build marker:** `7IN-20260801-PRODUCT54-LOCAL-WEB-OTA`
 - **Current branch:** `main`
-- **Product 53R6R1 source baseline:** Exact Product 53R6 local source physically tested on the Waveshare display
+- **Product 54 source baseline:** Product 53R6R1 local source physically tested on the Waveshare display
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 53R6R1 is host-verified and requires PlatformIO compile/link, firmware upload,
-physical confirmation of airport-directory row selection and LABEL editing, normal
-scroll-safety checks, and soak testing before being called a fully verified hardware
-release.
+Product 54 is host-verified and requires PlatformIO compile/link, initial USB upload,
+a successful browser update, deliberate rejection-path checks, normal radar operation,
+and soak testing before being called a fully verified hardware release.
+
+## Product 54 - 2026-08-01
+
+**Build:** `7IN-20260801-PRODUCT54-LOCAL-WEB-OTA`  
+**Status:** Host-verified local browser OTA candidate
+
+### Added
+
+- Added a dedicated System-page firmware overlay that temporarily enables the local
+  update server for five minutes, displays the numeric-IP and mDNS addresses, generates
+  a six-digit access code, shows preparation/write state, and leaves live upload
+  progress to the browser while the radar display remains intentionally static.
+- Added a synchronous Arduino `WebServer` endpoint on core 1. It is not listening during
+  normal operation and requires the temporary access code for preparation, status,
+  cancellation, and upload requests.
+- Added a PlatformIO post-build script that creates `firmware.radarota` beside the
+  normal `firmware.bin`. The 512-byte package header identifies Bill's Waveshare
+  ESP32-S3 7-inch radar, carries the Product build marker, declares the firmware size,
+  and contains the firmware SHA-256 digest.
+- Added native ESP-IDF OTA streaming into the inactive application slot. Upload data is
+  written incrementally without a firmware-sized heap or PSRAM allocation.
+- Added exact package-length, hardware identity, declared-build-ID-in-payload, ESP
+  application magic, ESP32-S3 chip ID, firmware SHA-256, `esp_ota_end()`, and
+  boot-partition validation gates.
+- Added a core-0 ADS-B maintenance handshake. The browser cannot upload until the
+  network task has finished any active request and acknowledged the hold; failed,
+  cancelled, disconnected, or expired preparation releases the hold and resumes
+  polling.
+- Added focused host tests for package layout, exact length, SHA-256 corruption,
+  multiline build-marker parsing, missing embedded build identity, wrong-chip
+  rejection, truncated-image rejection, and integration invariants.
+
+### Changed
+
+- Removed the independently maintained short build string from `ui.cpp`; the firmware
+  overlay now joins the fatal screen in using `BUILD_ID` as the single Product identity
+  source.
+- Added `scripts/build_radar_ota.py` as a PlatformIO post-build action while preserving
+  `default_16MB.csv`, the 16 MB flash configuration, Arduino-ESP32 3.0.7
+  high-performance libraries, OPI PSRAM, and all existing dependencies.
+
+### Preserved
+
+- Native HTTPS remains the preferred ADS-B transport. Fallback HTTPS, certificate and
+  hostname verification, bounded parsing, response-size limits, deadlines, failure
+  classification, Wi-Fi/TLS recovery, stale-response rejection, last-good retention,
+  and the true 15-second cadence are unchanged.
+- Aircraft capacity, stable ICAO selection/tracking, single-snapshot rendering,
+  dirty/version LVGL updates, 20/40/80 range behavior, outward auto-zoom, MPH display,
+  airport rendering, touch behavior, panel timing, DMA, OPI PSRAM, and the 20-scanline
+  RGB bounce buffer are unchanged.
+- `firmware.bin` remains the USB-upload artifact. The updater accepts only the generated
+  `.radarota` package and never writes the bootloader, partition table, NVS, or private
+  configuration.
+
+### Pending verification
+
+- PlatformIO compile/link and flash/RAM report.
+- USB installation and confirmation of the Product 54 build marker.
+- Confirmation that `firmware.radarota` is generated beside `firmware.bin` and is
+  exactly 512 bytes larger.
+- Successful browser upload, validation, restart, and confirmation of the new build.
+- Wrong access code, wrong extension, mismatched declared build, truncated package,
+  altered SHA-256, interrupted upload, Wi-Fi loss, and five-minute timeout tests.
+- Confirmation that ADS-B completes an active request before hold, does not start a new
+  request during upload, resumes after failure/cancellation, and returns to normal
+  15-second operation after restart.
+- Display, touch, selection/tracking, airport pages, heap/PSRAM stability, and extended
+  soak testing.
 
 ## Product 53R6R1 - 2026-07-31
 

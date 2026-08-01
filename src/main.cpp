@@ -6,6 +6,7 @@
 #include "aircraft_data.h"
 #include "airport_data.h"
 #include "build_info.h"
+#include "ota_update.h"
 #include "settings.h"
 #include "ui.h"
 
@@ -54,6 +55,10 @@ void setup() {
     return;
   }
 
+  if (!ota_update::begin()) {
+    Serial.println("WARNING: Local OTA update service is unavailable");
+  }
+
   startupComplete = true;
   Serial.println("Startup complete");
 }
@@ -66,6 +71,7 @@ void loop() {
 
   uint32_t now = millis();
   adsb::service();
+  ota_update::service();
   lvgl_port_lock(-1);
   ui::update(now);
   lvgl_port_unlock();

@@ -12,6 +12,7 @@
 #include "airport_data.h"
 #include "airport_status_bitmaps.h"
 #include "build_info.h"
+#include "ota_update.h"
 #include "config.h"
 #include "radar_renderer.h"
 #include "settings.h"
@@ -27,7 +28,6 @@ constexpr uint8_t AIRSPACE_CATEGORY_COUNT = 6;
 constexpr uint8_t AIRSPACE_METRIC_COUNT = 4;
 constexpr uint8_t AIRPORT_CATEGORY_COUNT = airport_data::CATEGORY_COUNT;
 constexpr uint8_t AIRPORT_RANGE_COUNT = airport_data::RANGE_COUNT;
-constexpr const char* SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT53R6R1-TAP-FIX";
 constexpr uint8_t AIRPORT_CONFIG_MODE_COUNT = 2;
 constexpr uint16_t AIRPORT_DIRECTORY_CAPACITY = 64;
 constexpr int AIRPORT_TABLE_TAP_MOVE_LIMIT = 10;
@@ -164,8 +164,19 @@ lv_obj_t* systemCreditPanel = nullptr;
 lv_obj_t* systemStatusCard = nullptr;
 lv_obj_t* systemStatusLabel = nullptr;
 lv_obj_t* systemBuildLabel = nullptr;
+lv_obj_t* systemFirmwareButton = nullptr;
 lv_obj_t* deviceNetworkCard = nullptr;
 lv_obj_t* maintenanceCard = nullptr;
+lv_obj_t* otaPanel = nullptr;
+lv_obj_t* otaStateLabel = nullptr;
+lv_obj_t* otaAddressLabel = nullptr;
+lv_obj_t* otaCodeLabel = nullptr;
+lv_obj_t* otaProgressBar = nullptr;
+lv_obj_t* otaProgressLabel = nullptr;
+lv_obj_t* otaMessageLabel = nullptr;
+lv_obj_t* otaEnableButton = nullptr;
+lv_obj_t* otaEnableLabel = nullptr;
+lv_obj_t* otaCloseButton = nullptr;
 lv_obj_t* detailPanel = nullptr;
 lv_obj_t* detailTitle = nullptr;
 lv_obj_t* detailBody = nullptr;
@@ -1151,10 +1162,15 @@ void resetSettingsEvent(lv_event_t*) {
 }
 
 void updatePageContent();
+void updateOtaPanel();
 void showTargetDetails(const aircraft::Target& target, DetailOrigin origin);
 
 void selectPage(uint8_t page) {
   const uint8_t nextPage = page < PAGE_COUNT ? page : 0;
+  if (otaPanel && !lv_obj_has_flag(otaPanel, LV_OBJ_FLAG_HIDDEN)) {
+    if (ota_update::busy()) return;
+    lv_obj_add_flag(otaPanel, LV_OBJ_FLAG_HIDDEN);
+  }
   if (currentPage == 0 && nextPage != 0) {
     radar::clearAirportFocus();
   }
@@ -1220,6 +1236,29 @@ void reconnectEvent(lv_event_t*) {
 void retryEvent(lv_event_t*) {
   adsb::requestRefresh();
   setSettingsStatus("ADSB refresh queued", rgb(120, 220, 255));
+}
+
+void otaOpenEvent(lv_event_t*) {
+  if (!otaPanel) return;
+  closeSettingsKeyboard();
+  updateOtaPanel();
+  lv_obj_move_foreground(otaPanel);
+  lv_obj_clear_flag(otaPanel, LV_OBJ_FLAG_HIDDEN);
+}
+
+void otaEnableEvent(lv_event_t*) {
+  ota_update::Status status;
+  ota_update::copyStatus(status);
+  if (ota_update::busy()) return;
+  if (status.serverRunning) ota_update::disable();
+  else ota_update::enable();
+  updateOtaPanel();
+}
+
+void otaCloseEvent(lv_event_t*) {
+  if (!otaPanel || ota_update::busy()) return;
+  lv_obj_add_flag(otaPanel, LV_OBJ_FLAG_HIDDEN);
+  updatePageContent();
 }
 
 void showPasswordEvent(lv_event_t*) {
@@ -1791,12 +1830,27 @@ void renderSystemPage() {
       airportStatus.ready ? "READY" : "OFF",
       (unsigned)airportStatus.cachedCount);
   setLabelTextIfChanged(systemStatusLabel, body);
-  setLabelTextIfChanged(systemBuildLabel, SYSTEM_BUILD_TEXT);
+  ota_update::Status otaStatus;
+  ota_update::copyStatus(otaStatus);
+  char firmwareText[64];
+  snprintf(firmwareText, sizeof(firmwareText), "FIRMWARE / OTA  %s  >",
+           ota_update::stateName(otaStatus.state));
+  setLabelTextIfChanged(systemBuildLabel, firmwareText);
+  if (systemFirmwareButton) {
+    lv_obj_set_style_bg_color(
+        systemFirmwareButton,
+        otaStatus.state == ota_update::State::ERROR
+            ? rgb(126, 48, 44)
+            : (otaStatus.serverRunning ? rgb(24, 128, 84)
+                                       : rgb(20, 68, 82)),
+        0);
+  }
   syncSettingsStorageState();
 }
 
 void updatePageContent() {
   if (!pagePanel || currentPage == 0) return;
+  if (otaPanel && !lv_obj_has_flag(otaPanel, LV_OBJ_FLAG_HIDDEN)) return;
   if (detailPanel && !lv_obj_has_flag(detailPanel, LV_OBJ_FLAG_HIDDEN)) return;
   switch (currentPage) {
     case 1: renderTracksPage(); break;
@@ -2679,11 +2733,18 @@ void buildPageShell(lv_obj_t* root) {
       rgb(225, 235, 240), 7, 27);
   lv_obj_set_width(systemStatusLabel, 250);
   lv_label_set_long_mode(systemStatusLabel, LV_LABEL_LONG_CLIP);
-  systemBuildLabel = makeLabel(
-      systemStatusCard, SYSTEM_BUILD_TEXT, &lv_font_montserrat_12,
-      rgb(76, 132, 140), 7, 188);
-  lv_obj_set_width(systemBuildLabel, 250);
-  lv_label_set_long_mode(systemBuildLabel, LV_LABEL_LONG_CLIP);
+  systemFirmwareButton = lv_btn_create(systemStatusCard);
+  lv_obj_set_size(systemFirmwareButton, 250, 27);
+  lv_obj_set_pos(systemFirmwareButton, 3, 179);
+  lv_obj_set_style_bg_color(systemFirmwareButton, rgb(20, 68, 82), 0);
+  lv_obj_set_style_radius(systemFirmwareButton, 5, 0);
+  lv_obj_set_style_pad_all(systemFirmwareButton, 0, 0);
+  lv_obj_add_event_cb(systemFirmwareButton, otaOpenEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  systemBuildLabel = lv_label_create(systemFirmwareButton);
+  lv_label_set_text(systemBuildLabel, "FIRMWARE / OTA  DISABLED  >");
+  lv_obj_set_style_text_font(systemBuildLabel, &lv_font_montserrat_12, 0);
+  lv_obj_center(systemBuildLabel);
 
   deviceNetworkCard = lv_obj_create(pagePanel);
   lv_obj_set_size(deviceNetworkCard, 456, 215);
@@ -2838,6 +2899,82 @@ void buildPageShell(lv_obj_t* root) {
   setSettingsFormVisible(false);
 }
 
+void buildOtaPanel() {
+  otaPanel = lv_obj_create(pagePanel);
+  lv_obj_set_size(otaPanel, 752, 337);
+  lv_obj_set_pos(otaPanel, 3, 3);
+  stylePanel(otaPanel);
+  lv_obj_set_style_bg_color(otaPanel, rgb(7, 16, 23), 0);
+  lv_obj_clear_flag(otaPanel, LV_OBJ_FLAG_SCROLLABLE);
+
+  makeLabel(otaPanel, "FIRMWARE UPDATE", &lv_font_montserrat_28,
+            rgb(63, 255, 155), 12, 7);
+  lv_obj_t* installed = makeLabel(
+      otaPanel, BUILD_ID, &lv_font_montserrat_12,
+      rgb(100, 170, 180), 12, 45);
+  lv_obj_set_width(installed, 710);
+  lv_label_set_long_mode(installed, LV_LABEL_LONG_CLIP);
+
+  otaStateLabel = makeLabel(otaPanel, "LOCAL OTA: DISABLED",
+                            &lv_font_montserrat_18,
+                            rgb(110, 220, 255), 12, 70);
+  otaAddressLabel = makeLabel(
+      otaPanel, "Enable local OTA to open the browser update page.",
+      &lv_font_montserrat_14, rgb(225, 235, 240), 12, 102);
+  lv_obj_set_width(otaAddressLabel, 710);
+  lv_label_set_long_mode(otaAddressLabel, LV_LABEL_LONG_WRAP);
+  otaCodeLabel = makeLabel(otaPanel, "ACCESS CODE  ------",
+                           &lv_font_montserrat_24,
+                           rgb(255, 214, 80), 12, 166);
+  otaProgressLabel = makeLabel(otaPanel, "0%  0 / 0 KB",
+                               &lv_font_montserrat_14,
+                               rgb(120, 240, 155), 500, 178);
+  lv_obj_set_width(otaProgressLabel, 220);
+  lv_obj_set_style_text_align(otaProgressLabel, LV_TEXT_ALIGN_RIGHT, 0);
+
+  otaProgressBar = lv_bar_create(otaPanel);
+  lv_obj_set_size(otaProgressBar, 710, 18);
+  lv_obj_set_pos(otaProgressBar, 12, 210);
+  lv_bar_set_range(otaProgressBar, 0, 100);
+  lv_bar_set_value(otaProgressBar, 0, LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(otaProgressBar, rgb(20, 38, 48), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(otaProgressBar, rgb(24, 128, 84),
+                            LV_PART_INDICATOR);
+
+  otaMessageLabel = makeLabel(
+      otaPanel, "Local OTA is disabled", &lv_font_montserrat_14,
+      rgb(180, 210, 215), 12, 238);
+  lv_obj_set_width(otaMessageLabel, 710);
+  lv_label_set_long_mode(otaMessageLabel, LV_LABEL_LONG_WRAP);
+
+  otaEnableButton = lv_btn_create(otaPanel);
+  lv_obj_set_size(otaEnableButton, 250, 40);
+  lv_obj_set_pos(otaEnableButton, 300, 280);
+  lv_obj_set_style_bg_color(otaEnableButton, rgb(24, 128, 84), 0);
+  lv_obj_set_style_radius(otaEnableButton, 6, 0);
+  lv_obj_add_event_cb(otaEnableButton, otaEnableEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  otaEnableLabel = lv_label_create(otaEnableButton);
+  lv_label_set_text(otaEnableLabel, "ENABLE FOR 5 MIN");
+  lv_obj_set_style_text_font(otaEnableLabel, &lv_font_montserrat_14, 0);
+  lv_obj_center(otaEnableLabel);
+
+  otaCloseButton = lv_btn_create(otaPanel);
+  lv_obj_set_size(otaCloseButton, 150, 40);
+  lv_obj_set_pos(otaCloseButton, 572, 280);
+  lv_obj_set_style_bg_color(otaCloseButton, rgb(20, 68, 82), 0);
+  lv_obj_set_style_radius(otaCloseButton, 6, 0);
+  lv_obj_add_event_cb(otaCloseButton, otaCloseEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* closeLabel = lv_label_create(otaCloseButton);
+  lv_label_set_text(closeLabel, "CLOSE");
+  lv_obj_set_style_text_font(closeLabel, &lv_font_montserrat_14, 0);
+  lv_obj_center(closeLabel);
+
+  updateOtaPanel();
+  lv_obj_add_flag(otaPanel, LV_OBJ_FLAG_HIDDEN);
+}
+
 void buildDetailPanel() {
   detailPanel = lv_obj_create(pagePanel);
   lv_obj_set_size(detailPanel, 752, 337);
@@ -2890,6 +3027,85 @@ void buildDetailPanel() {
   lv_obj_add_flag(pagePanel, LV_OBJ_FLAG_HIDDEN);
 }
 
+void updateOtaPanel() {
+  if (!otaPanel) return;
+  ota_update::Status status;
+  ota_update::copyStatus(status);
+
+  char stateText[96];
+  if (status.serverRunning && status.secondsRemaining) {
+    snprintf(stateText, sizeof(stateText), "LOCAL OTA: %s   %02lu:%02lu",
+             ota_update::stateName(status.state),
+             static_cast<unsigned long>(status.secondsRemaining / 60U),
+             static_cast<unsigned long>(status.secondsRemaining % 60U));
+  } else {
+    snprintf(stateText, sizeof(stateText), "LOCAL OTA: %s",
+             ota_update::stateName(status.state));
+  }
+  setLabelTextIfChanged(otaStateLabel, stateText);
+  lv_obj_set_style_text_color(
+      otaStateLabel,
+      status.state == ota_update::State::ERROR
+          ? rgb(255, 120, 110)
+          : (status.serverRunning ? rgb(120, 240, 155)
+                                  : rgb(110, 220, 255)),
+      0);
+
+  char addressText[220];
+  if (status.serverRunning) {
+    snprintf(addressText, sizeof(addressText),
+             "OPEN ON A DEVICE ON THIS NETWORK\n%s%s%s",
+             status.ipAddress,
+             status.mdnsAddress[0] ? "\n" : "",
+             status.mdnsAddress);
+  } else {
+    snprintf(addressText, sizeof(addressText),
+             "Enable local OTA to open a temporary browser update page.\n"
+             "Only firmware.radarota packages are accepted.");
+  }
+  setLabelTextIfChanged(otaAddressLabel, addressText);
+
+  char codeText[64];
+  snprintf(codeText, sizeof(codeText), "ACCESS CODE  %s",
+           status.accessCode[0] ? status.accessCode : "------");
+  setLabelTextIfChanged(otaCodeLabel, codeText);
+
+  if (otaProgressBar) {
+    lv_bar_set_value(otaProgressBar, status.progressPercent, LV_ANIM_OFF);
+  }
+  char progressText[96];
+  snprintf(progressText, sizeof(progressText), "%u%%  %lu / %lu KB",
+           static_cast<unsigned>(status.progressPercent),
+           static_cast<unsigned long>(status.writtenBytes / 1024U),
+           static_cast<unsigned long>(status.firmwareBytes / 1024U));
+  setLabelTextIfChanged(otaProgressLabel, progressText);
+  setLabelTextIfChanged(otaMessageLabel, status.message);
+
+  const bool isBusy = ota_update::busy();
+  if (otaEnableButton) {
+    if (!status.available || isBusy) lv_obj_add_state(otaEnableButton, LV_STATE_DISABLED);
+    else lv_obj_clear_state(otaEnableButton, LV_STATE_DISABLED);
+    lv_obj_set_style_opa(otaEnableButton,
+                         (!status.available || isBusy) ? LV_OPA_50
+                                                       : LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(
+        otaEnableButton, status.serverRunning ? rgb(126, 48, 44)
+                                              : rgb(24, 128, 84), 0);
+  }
+  setLabelTextIfChanged(
+      otaEnableLabel,
+      isBusy ? "UPDATE IN PROGRESS"
+             : (status.serverRunning ? "DISABLE OTA" : "ENABLE FOR 5 MIN"));
+  if (otaEnableLabel) lv_obj_center(otaEnableLabel);
+
+  if (otaCloseButton) {
+    if (isBusy) lv_obj_add_state(otaCloseButton, LV_STATE_DISABLED);
+    else lv_obj_clear_state(otaCloseButton, LV_STATE_DISABLED);
+    lv_obj_set_style_opa(otaCloseButton, isBusy ? LV_OPA_50 : LV_OPA_COVER, 0);
+  }
+}
+
+
 }  // namespace
 
 bool allocateTargetBuffer() {
@@ -2927,6 +3143,7 @@ bool buildUi() {
   buildPageShell(root);
   loadAirportOptions();
   syncAirportControls();
+  buildOtaPanel();
   buildDetailPanel();
   populateSettingsForm();
   setSettingsFormVisible(false);
@@ -2994,6 +3211,9 @@ void update(uint32_t now) {
   }
   if (now - lastFrame < FRAME_INTERVAL_MS) return;
   lastFrame = now;
+  if (otaPanel && !lv_obj_has_flag(otaPanel, LV_OBJ_FLAG_HIDDEN)) {
+    updateOtaPanel();
+  }
   if (currentPage == 0 && !detailTargetValid) {
     autoExpandTrackedRange();
     renderRadarPage();

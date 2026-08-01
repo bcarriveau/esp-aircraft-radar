@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static integration checks for the amended Product 53R6R1 airport hotfix."""
+"""Static integration checks for Product 54 preserving the airport hotfix."""
 
 from pathlib import Path
 import re
@@ -91,8 +91,8 @@ def main() -> None:
     ui = (ROOT / "src" / "ui.cpp").read_text(encoding="utf-8")
     main_cpp = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
 
-    require(build, "7IN-20260731-PRODUCT53R6R1-AIRPORT-TAP-FIX",
-            "Product 53R6R1 marker")
+    require(build, "7IN-20260801-PRODUCT54-LOCAL-WEB-OTA",
+            "Product 54 marker")
     require(ui, '{"RADAR", "TRACKS", "AIRSPACE", "AIRPORTS", "SYSTEM"}',
             "five-tab navigation")
     require(ui, "AIRPORTS // NEARBY", "airport directory title")
@@ -295,7 +295,7 @@ def main() -> None:
         "lv_obj_set_pos(deviceNetworkCard, 286, 58);",
         "lv_obj_set_size(maintenanceCard, 734, 58);",
         "lv_obj_set_pos(maintenanceCard, 8, 281);",
-        'SYSTEM_BUILD_TEXT = "BUILD ID  PRODUCT53R6R1-TAP-FIX"',
+        'lv_label_set_text(systemBuildLabel, "FIRMWARE / OTA  DISABLED  >")',
     ):
         require(ui, needle, "preserved System layout")
 
@@ -314,7 +314,7 @@ def main() -> None:
     require(renderer_h, "bool airportLabelCount(", "label-count API")
     require(main_cpp, "airport_data::initialize(settings::homeLatitude()",
             "optional airport initialization")
-    print("Product 53R6R1 airport interaction hotfix checks passed")
+    print("Product 54 airport-preservation checks passed")
 
 
 if __name__ == "__main__":

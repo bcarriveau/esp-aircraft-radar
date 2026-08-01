@@ -22,6 +22,8 @@ TaskHandle_t fetchTaskHandle = nullptr;
 portMUX_TYPE commandMux = portMUX_INITIALIZER_UNLOCKED;
 uint32_t pendingCommands = 0;
 bool controlledRestartPending = false;
+bool maintenanceRequested = false;
+bool maintenanceActive = false;
 uint32_t lastWifiAttempt = 0;
 uint32_t wifiAttempts = 0;
 wl_status_t lastLoggedWifiStatus = WL_IDLE_STATUS;
@@ -57,6 +59,19 @@ bool isControlledRestartPending() {
   const bool pending = controlledRestartPending;
   portEXIT_CRITICAL(&commandMux);
   return pending;
+}
+
+bool isMaintenanceRequested() {
+  portENTER_CRITICAL(&commandMux);
+  const bool requested = maintenanceRequested;
+  portEXIT_CRITICAL(&commandMux);
+  return requested;
+}
+
+void setMaintenanceActive(bool active) {
+  portENTER_CRITICAL(&commandMux);
+  maintenanceActive = active;
+  portEXIT_CRITICAL(&commandMux);
 }
 
 void recordWifiAttempt() {
@@ -141,6 +156,19 @@ void fetchTask(void* parameter) {
   uint32_t outageStartedAt = 0;
   uint8_t outageRecoveries = 0;
   for (;;) {
+    if (isMaintenanceRequested()) {
+      setMaintenanceActive(true);
+      app_state::setFetchInProgress(false);
+      Serial.println("ADSB task entered OTA maintenance hold");
+      while (isMaintenanceRequested()) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+      }
+      setMaintenanceActive(false);
+      nextPollAt = millis();
+      Serial.println("ADSB task released from OTA maintenance hold");
+      continue;
+    }
+
     uint32_t commands = takeCommands();
     if (commands & COMMAND_WIFI_RECONNECT) {
       Serial.println("Network task processing WiFi reconnect");
@@ -150,6 +178,8 @@ void fetchTask(void* parameter) {
       nextPollAt = millis();
       commands |= COMMAND_REFRESH;
     }
+
+    if (isMaintenanceRequested()) continue;
 
     const uint32_t now = millis();
     const bool pollDue = (int32_t)(now - nextPollAt) >= 0;
@@ -368,6 +398,8 @@ void service() {
     lastMemorySample = now;
     app_state::observeMemory();
   }
+  if (isMaintenanceRequested()) return;
+
   const uint32_t retryDelayMs =
       (status == WL_NO_SSID_AVAIL || status == WL_CONNECT_FAILED)
           ? 60000U
@@ -393,6 +425,27 @@ void requestRefresh() {
 void requestWifiReconnect() {
   Serial.println("WiFi reconnect queued for network task");
   queueCommand(COMMAND_WIFI_RECONNECT);
+}
+
+void requestMaintenanceHold() {
+  portENTER_CRITICAL(&commandMux);
+  maintenanceRequested = true;
+  portEXIT_CRITICAL(&commandMux);
+  if (fetchTaskHandle) xTaskNotifyGive(fetchTaskHandle);
+}
+
+bool maintenanceHoldActive() {
+  portENTER_CRITICAL(&commandMux);
+  const bool active = maintenanceActive;
+  portEXIT_CRITICAL(&commandMux);
+  return active;
+}
+
+void releaseMaintenanceHold() {
+  portENTER_CRITICAL(&commandMux);
+  maintenanceRequested = false;
+  portEXIT_CRITICAL(&commandMux);
+  if (fetchTaskHandle) xTaskNotifyGive(fetchTaskHandle);
 }
 
 }  // namespace adsb

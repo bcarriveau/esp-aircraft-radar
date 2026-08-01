@@ -15,6 +15,12 @@ void reconnectOrRefresh();
 void requestRefresh();
 void requestWifiReconnect();
 
+// Coordinates exclusive flash-update maintenance with the core-0 network task.
+// A requested hold is acknowledged only after any active ADS-B request finishes.
+void requestMaintenanceHold();
+bool maintenanceHoldActive();
+void releaseMaintenanceHold();
+
 const char* wifiStatusName(wl_status_t status);
 
 }  // namespace adsb
