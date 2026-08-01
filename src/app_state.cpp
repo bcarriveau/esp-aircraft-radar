@@ -178,6 +178,13 @@ uint32_t targetVersion() {
   return version;
 }
 
+uint32_t trackingVersion() {
+  bool locked = lockState();
+  uint32_t version = state.trackingVersion;
+  unlockState(locked);
+  return version;
+}
+
 void setWifiStatus(wl_status_t status) {
   bool locked = lockState();
   state.wifiStatus = status;

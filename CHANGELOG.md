@@ -10,28 +10,112 @@ available.
 
 This consolidated file replaces the earlier split changelog that stopped after
 Product 42. It contains the continuous confirmed history from the current Product
-55 source back through Product 15, the first hardened version-controlled baseline.
+56 source back through Product 15, the first hardened version-controlled baseline.
 Earlier Product history is intentionally omitted where the repository does not
 provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 55
-- **Current build marker:** `7IN-20260801-PRODUCT55-AIRSPACE`
-- **Current branch:** `main`
-- **Product 55 source baseline:** Product 54 uploaded source with its OTA build
-  fixes and project-local package copy
+- **Current source:** Product 56
+- **Current build marker:** `7IN-20260801-PRODUCT56-HA-MQTT`
+- **Current branch:** unavailable in the uploaded ZIP; source matches the Product 55
+  repository baseline used for this focused update
+- **Product 56 source baseline:** Uploaded Product 55 source with build marker
+  `7IN-20260801-PRODUCT55-AIRSPACE`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 55 has passed the available focused host source tests. PlatformIO
-compile/link, installation, physical Airspace range and aircraft-shortcut checks,
-normal Radar and OTA regression checks, and soak testing remain user-side. Product 54
-was previously confirmed to compile successfully under the pinned PlatformIO and
-Arduino-ESP32 3.0.7 environment after its OTA enum and mbedTLS compatibility fixes.
+Product 56 has passed the available focused host source tests. PlatformIO
+compile/link, installation, Home Assistant discovery/control checks, physical display
+power and shared-range checks, normal Radar/OTA regression checks, and soak testing
+remain user-side. Product 54 was previously confirmed to compile successfully under
+the pinned PlatformIO and Arduino-ESP32 3.0.7 environment after its OTA enum and
+mbedTLS compatibility fixes.
+
+## Product 56 - 2026-08-01
+
+**Build:** `7IN-20260801-PRODUCT56-HA-MQTT`  
+**Status:** Focused host source validation complete; PlatformIO and hardware/Home
+Assistant validation pending
+
+### Added
+
+- Added an optional native ESP-MQTT service with Home Assistant discovery,
+  retained availability, Home Assistant birth-message rediscovery, bounded state
+  topics, and deterministic default entity IDs.
+- Added Home Assistant controls for the physical LCD backlight, shared 20/40/80-mile
+  range, and the existing non-overlapping ADS-B refresh command.
+- Added bounded telemetry for aircraft count, data status and age, tracked aircraft,
+  five nearest aircraft, Product 55 Airspace highlights and category totals, Wi-Fi
+  RSSI, build identity, OTA state, and MQTT state.
+- Added a ready-to-paste `home-assistant/aircraft-radar-view.yaml` dashboard using
+  only built-in Home Assistant cards, plus installation and behavior notes.
+- Added a System-page **HA MQTT** status/control overlay and a checked NVS setting for
+  enabling or disabling the service at runtime.
+- Added a project-owned idempotent display-power wrapper around the Waveshare
+  CH422G backlight-enable control.
+- Added a shared non-LVGL manual-range control path used by both Product 55 physical
+  range controls and MQTT commands.
+
+### Resource and failure isolation
+
+- MQTT is disabled by default. Disabled mode creates no MQTT client task, performs no
+  broker retries or JSON publication, and allocates no aircraft snapshot or JSON buffer.
+- Enabling MQTT allocates exactly one `MAX_TARGETS` snapshot buffer and one 4 KB JSON
+  workspace in PSRAM, plus a bounded 16 KB native MQTT outbox.
+- MQTT never owns Wi-Fi setup or recovery, calls `WiFi.begin()`, recycles the radio,
+  changes ADS-B deadlines/cadence, or requests a restart. Broker failure remains
+  isolated from the radar and OTA service.
+- Disabling MQTT publishes retained offline availability when connected, stops and
+  destroys the client, clears pending commands, and releases both MQTT PSRAM buffers.
+
+### OTA coordination
+
+- Extended Product 54's exclusive maintenance preparation to MQTT. OTA now waits for
+  both the core-0 ADS-B task and the optional MQTT client to become idle before an
+  upload can begin.
+- MQTT stops accepting publications, disconnects, destroys its task, and releases its
+  PSRAM snapshot and JSON buffers during the OTA hold. Cancellation, timeout, Wi-Fi loss, or
+  upload failure releases both maintenance holds.
+- Updated the local update page and serial status text to describe all network services
+  rather than only the ADS-B task.
+
+### Preserved
+
+- Native/fallback ADS-B HTTPS behavior, 15-second cadence, request serialization,
+  deadlines, recovery, stale-response rejection, last-good retention, and core-0 task
+  ownership are unchanged.
+- Product 55 stable-ICAO Airspace shortcuts, aircraft selection/tracking, outward
+  auto-zoom, 200-target bounds, airport behavior, single-snapshot rendering, LVGL
+  dirty/version updates, display timing, DMA, OPI PSRAM, and the 20-scanline bounce
+  buffer are unchanged.
+- MQTT configuration values remain private in ignored `include/config.h`; only disabled
+  placeholders are present in `include/config.example.h`.
+
+### Validation
+
+- All repository Python tests, including focused Product 56 MQTT/discovery/dashboard
+  assertions, passed.
+- Strict-warning host syntax checks passed for the new MQTT, display-power, shared-range,
+  settings, app-state, main, and OTA integration sources using focused host stubs.
+- The complete UI source passed host syntax checking with only the same pre-existing
+  Product 55 signed-comparison warning.
+- Compatibility stubs defined Arduino's `DISABLED` macro and confirmed the MQTT state
+  implementation does not reintroduce the Product 54 enum-name collision.
+- Runtime host harnesses generated and parsed all 13 discovery payloads and maximum-size
+  nearest/airspace state payloads; the largest measured state payload was 1,650 bytes
+  inside the bounded 4 KB JSON workspace.
+- The supplied Home Assistant dashboard parsed as a five-section YAML view and uses
+  an explicit `button.press` action for ADS-B refresh.
+- Static checks confirmed the MQTT source does not use `WiFi.begin()`, `WiFi.disconnect()`,
+  `setInsecure()`, blocking `HTTPClient::GET()`, or whole-response Arduino `String`
+  storage.
+- PlatformIO compile/link, firmware size, upload, hardware display/backlight checks,
+  broker discovery/control tests, OTA transfer regression, and soak testing were not
+  run here.
 
 ## Product 55 - 2026-08-01
 

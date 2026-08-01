@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focused source checks for Product 55 Airspace range and navigation behavior."""
+"""Focused source checks for Product 56-preserved Product 55 Airspace range and navigation behavior."""
 
 from pathlib import Path
 
@@ -19,9 +19,12 @@ def section(text: str, start: str, end: str) -> str:
 def main() -> None:
     ui = (ROOT / "src" / "ui.cpp").read_text(encoding="utf-8")
     build = (ROOT / "include" / "build_info.h").read_text(encoding="utf-8")
+    radar_control = (ROOT / "src" / "radar_control.cpp").read_text(
+        encoding="utf-8"
+    )
 
-    require(build, "7IN-20260801-PRODUCT55-AIRSPACE",
-            "Product 55 build marker")
+    require(build, "7IN-20260801-PRODUCT56-HA-MQTT",
+            "Product 56 build marker")
 
     # CURRENT RANGE is an intentionally green, clickable card with no helper copy.
     require(ui, '"TOTAL", "WITHIN 20 MI", "WITHIN 40 MI", "CURRENT RANGE"',
@@ -36,14 +39,19 @@ def main() -> None:
 
     # Radar and Airspace manual controls share the exact state-change path.
     manual_range = section(ui, "bool applyManualRangeIndex", "void rangeEvent")
-    require(manual_range, "app_state::setRadarRangeMiles(RADAR_RANGES[index])",
-            "shared range state update")
+    require(manual_range,
+            "radar_control::setManualRangeMiles(RADAR_RANGES[index])",
+            "shared non-LVGL range command")
     require(manual_range, "syncRangeControls(rangeMiles);",
             "shared Radar control synchronization")
-    require(manual_range, "adsb::requestRefresh();",
-            "shared ADS-B refresh request")
     require(manual_range, "if (currentPage == 2) updatePageContent();",
             "immediate Airspace refresh")
+    require(radar_control, "radar::clearAirportFocus();",
+            "shared airport-focus clearing")
+    require(radar_control, "app_state::setRadarRangeMiles(rangeMiles)",
+            "shared range state update")
+    require(radar_control, "adsb::requestRefresh();",
+            "shared ADS-B refresh request")
 
     radar_range = section(ui, "void rangeEvent", "void airspaceRangeEvent")
     require(radar_range, "applyManualRangeIndex((uint8_t)index);",

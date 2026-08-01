@@ -12,8 +12,10 @@
 #include "airport_data.h"
 #include "airport_status_bitmaps.h"
 #include "build_info.h"
+#include "mqtt_service.h"
 #include "ota_update.h"
 #include "config.h"
+#include "radar_control.h"
 #include "radar_renderer.h"
 #include "settings.h"
 
@@ -171,9 +173,18 @@ lv_obj_t* systemStatusCard = nullptr;
 lv_obj_t* systemStatusLabel = nullptr;
 lv_obj_t* systemBuildLabel = nullptr;
 lv_obj_t* systemFirmwareButton = nullptr;
+lv_obj_t* systemMqttButton = nullptr;
+lv_obj_t* systemMqttLabel = nullptr;
 lv_obj_t* deviceNetworkCard = nullptr;
 lv_obj_t* maintenanceCard = nullptr;
 lv_obj_t* otaPanel = nullptr;
+lv_obj_t* mqttPanel = nullptr;
+lv_obj_t* mqttStateLabel = nullptr;
+lv_obj_t* mqttDeviceLabel = nullptr;
+lv_obj_t* mqttMessageLabel = nullptr;
+lv_obj_t* mqttToggleButton = nullptr;
+lv_obj_t* mqttToggleLabel = nullptr;
+lv_obj_t* mqttCloseButton = nullptr;
 lv_obj_t* otaStateLabel = nullptr;
 lv_obj_t* otaAddressLabel = nullptr;
 lv_obj_t* otaCodeLabel = nullptr;
@@ -196,6 +207,7 @@ uint32_t lastTracksVersion = UINT32_MAX;
 uint32_t lastTracksRangeGeneration = UINT32_MAX;
 uint32_t lastAirspaceVersion = UINT32_MAX;
 uint32_t lastAirspaceRangeGeneration = UINT32_MAX;
+uint32_t lastSyncedRangeGeneration = UINT32_MAX;
 bool pendingAirportEnabled = true;
 uint8_t pendingAirportSymbolMasks[AIRPORT_RANGE_COUNT]{};
 uint8_t pendingAirportLabelMasks[AIRPORT_RANGE_COUNT]{};
@@ -1110,6 +1122,7 @@ void saveSettingsEvent(lv_event_t*) {
   }
   setSettingsStatus(savedStatus, rgb(120, 240, 155));
   setLabelTextIfChanged(headerTitle, settings::deviceTitle().c_str());
+  mqtt_service::requestDiscoveryRefresh();
   if (wifiChanged) adsb::requestWifiReconnect();
   else adsb::requestRefresh();
 }
@@ -1164,11 +1177,14 @@ void resetSettingsEvent(lv_event_t*) {
                                     : "Defaults restored",
                     rgb(255, 220, 120));
   setLabelTextIfChanged(headerTitle, settings::deviceTitle().c_str());
+  mqtt_service::setEnabled(settings::mqttEnabled());
+  mqtt_service::requestDiscoveryRefresh();
   adsb::requestWifiReconnect();
 }
 
 void updatePageContent();
 void updateOtaPanel();
+void updateMqttPanel();
 void showTargetDetails(const aircraft::Target& target, DetailOrigin origin);
 
 void selectPage(uint8_t page) {
@@ -1176,6 +1192,9 @@ void selectPage(uint8_t page) {
   if (otaPanel && !lv_obj_has_flag(otaPanel, LV_OBJ_FLAG_HIDDEN)) {
     if (ota_update::busy()) return;
     lv_obj_add_flag(otaPanel, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (mqttPanel && !lv_obj_has_flag(mqttPanel, LV_OBJ_FLAG_HIDDEN)) {
+    lv_obj_add_flag(mqttPanel, LV_OBJ_FLAG_HIDDEN);
   }
   if (currentPage == 0 && nextPage != 0) {
     radar::clearAirportFocus();
@@ -1264,6 +1283,31 @@ void otaEnableEvent(lv_event_t*) {
 void otaCloseEvent(lv_event_t*) {
   if (!otaPanel || ota_update::busy()) return;
   lv_obj_add_flag(otaPanel, LV_OBJ_FLAG_HIDDEN);
+  updatePageContent();
+}
+
+void mqttOpenEvent(lv_event_t*) {
+  if (!mqttPanel) return;
+  closeSettingsKeyboard();
+  updateMqttPanel();
+  lv_obj_move_foreground(mqttPanel);
+  lv_obj_clear_flag(mqttPanel, LV_OBJ_FLAG_HIDDEN);
+}
+
+void mqttToggleEvent(lv_event_t*) {
+  mqtt_service::Status status;
+  mqtt_service::copyStatus(status);
+  if (!status.configured && !status.enabled) return;
+  if (!mqtt_service::setEnabled(!status.enabled)) {
+    setSettingsStatus("NVS ERROR: MQTT setting not saved",
+                      rgb(255, 120, 110));
+  }
+  updateMqttPanel();
+}
+
+void mqttCloseEvent(lv_event_t*) {
+  if (!mqttPanel) return;
+  lv_obj_add_flag(mqttPanel, LV_OBJ_FLAG_HIDDEN);
   updatePageContent();
 }
 
@@ -1356,12 +1400,11 @@ void syncRangeControls(float rangeMiles) {
 
 bool applyManualRangeIndex(uint8_t index) {
   if (index >= RANGE_OPTION_COUNT) return false;
-  radar::clearAirportFocus();
-  if (!app_state::setRadarRangeMiles(RADAR_RANGES[index])) return false;
+  if (!radar_control::setManualRangeMiles(RADAR_RANGES[index])) return false;
   const float rangeMiles = app_state::radarRangeMiles();
   syncRangeControls(rangeMiles);
+  lastSyncedRangeGeneration = app_state::rangeGeneration();
   Serial.printf("Radar range changed to %.0f miles\n", rangeMiles);
-  adsb::requestRefresh();
   if (currentPage == 2) updatePageContent();
   return true;
 }
@@ -1937,12 +1980,37 @@ void renderSystemPage() {
                                        : rgb(20, 68, 82)),
         0);
   }
+  mqtt_service::Status mqttStatus;
+  mqtt_service::copyStatus(mqttStatus);
+  const char* mqttSummary = mqttStatus.connected
+      ? "ONLINE"
+      : (mqttStatus.state == mqtt_service::State::INACTIVE
+             ? "OFF"
+             : (mqttStatus.state == mqtt_service::State::NOT_CONFIGURED
+                    ? "SETUP"
+                    : (mqttStatus.state == mqtt_service::State::ERROR
+                           ? "ERROR" : "CONNECTING")));
+  char mqttText[32];
+  snprintf(mqttText, sizeof(mqttText), "HA MQTT: %s", mqttSummary);
+  setLabelTextIfChanged(systemMqttLabel, mqttText);
+  if (systemMqttLabel) lv_obj_center(systemMqttLabel);
+  if (systemMqttButton) {
+    const bool mqttError = mqttStatus.state == mqtt_service::State::ERROR ||
+                           mqttStatus.state == mqtt_service::State::NOT_CONFIGURED;
+    lv_obj_set_style_bg_color(
+        systemMqttButton,
+        mqttError ? rgb(126, 48, 44)
+                  : (mqttStatus.connected ? rgb(24, 128, 84)
+                                          : rgb(20, 68, 82)),
+        0);
+  }
   syncSettingsStorageState();
 }
 
 void updatePageContent() {
   if (!pagePanel || currentPage == 0) return;
   if (otaPanel && !lv_obj_has_flag(otaPanel, LV_OBJ_FLAG_HIDDEN)) return;
+  if (mqttPanel && !lv_obj_has_flag(mqttPanel, LV_OBJ_FLAG_HIDDEN)) return;
   if (detailPanel && !lv_obj_has_flag(detailPanel, LV_OBJ_FLAG_HIDDEN)) return;
   switch (currentPage) {
     case 1: renderTracksPage(); break;
@@ -2985,8 +3053,8 @@ void buildPageShell(lv_obj_t* root) {
             rgb(100, 170, 180), 7, 0);
 
   retryButton = lv_btn_create(maintenanceCard);
-  lv_obj_set_size(retryButton, 218, 30);
-  lv_obj_set_pos(retryButton, 14, 17);
+  lv_obj_set_size(retryButton, 164, 30);
+  lv_obj_set_pos(retryButton, 10, 17);
   lv_obj_set_style_bg_color(retryButton, rgb(20, 68, 82), 0);
   lv_obj_set_style_radius(retryButton, 5, 0);
   lv_obj_add_event_cb(retryButton, retryEvent, LV_EVENT_CLICKED, nullptr);
@@ -2996,8 +3064,8 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_center(retryLabel);
 
   reconnectButton = lv_btn_create(maintenanceCard);
-  lv_obj_set_size(reconnectButton, 218, 30);
-  lv_obj_set_pos(reconnectButton, 250, 17);
+  lv_obj_set_size(reconnectButton, 164, 30);
+  lv_obj_set_pos(reconnectButton, 188, 17);
   lv_obj_set_style_bg_color(reconnectButton, rgb(24, 128, 84), 0);
   lv_obj_set_style_radius(reconnectButton, 5, 0);
   lv_obj_add_event_cb(reconnectButton, reconnectEvent,
@@ -3007,9 +3075,21 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_style_text_font(reconnectLabel, &lv_font_montserrat_12, 0);
   lv_obj_center(reconnectLabel);
 
+  systemMqttButton = lv_btn_create(maintenanceCard);
+  lv_obj_set_size(systemMqttButton, 164, 30);
+  lv_obj_set_pos(systemMqttButton, 366, 17);
+  lv_obj_set_style_bg_color(systemMqttButton, rgb(20, 68, 82), 0);
+  lv_obj_set_style_radius(systemMqttButton, 5, 0);
+  lv_obj_add_event_cb(systemMqttButton, mqttOpenEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  systemMqttLabel = lv_label_create(systemMqttButton);
+  lv_label_set_text(systemMqttLabel, "HA MQTT: OFF");
+  lv_obj_set_style_text_font(systemMqttLabel, &lv_font_montserrat_12, 0);
+  lv_obj_center(systemMqttLabel);
+
   resetSettingsButton = lv_btn_create(maintenanceCard);
-  lv_obj_set_size(resetSettingsButton, 218, 30);
-  lv_obj_set_pos(resetSettingsButton, 486, 17);
+  lv_obj_set_size(resetSettingsButton, 164, 30);
+  lv_obj_set_pos(resetSettingsButton, 544, 17);
   lv_obj_set_style_bg_color(resetSettingsButton, rgb(20, 68, 82), 0);
   lv_obj_set_style_radius(resetSettingsButton, 5, 0);
   lv_obj_add_event_cb(resetSettingsButton, resetSettingsEvent,
@@ -3098,6 +3178,69 @@ void buildOtaPanel() {
 
   updateOtaPanel();
   lv_obj_add_flag(otaPanel, LV_OBJ_FLAG_HIDDEN);
+}
+
+void buildMqttPanel() {
+  mqttPanel = lv_obj_create(pagePanel);
+  lv_obj_set_size(mqttPanel, 752, 337);
+  lv_obj_set_pos(mqttPanel, 3, 3);
+  stylePanel(mqttPanel);
+  lv_obj_set_style_bg_color(mqttPanel, rgb(7, 16, 23), 0);
+  lv_obj_clear_flag(mqttPanel, LV_OBJ_FLAG_SCROLLABLE);
+
+  makeLabel(mqttPanel, "HOME ASSISTANT MQTT", &lv_font_montserrat_28,
+            rgb(63, 255, 155), 12, 7);
+  lv_obj_t* installed = makeLabel(
+      mqttPanel, BUILD_ID, &lv_font_montserrat_12,
+      rgb(100, 170, 180), 12, 45);
+  lv_obj_set_width(installed, 710);
+  lv_label_set_long_mode(installed, LV_LABEL_LONG_CLIP);
+
+  mqttStateLabel = makeLabel(mqttPanel, "MQTT: DISABLED",
+                             &lv_font_montserrat_20,
+                             rgb(110, 220, 255), 12, 74);
+  mqttDeviceLabel = makeLabel(
+      mqttPanel, "DEVICE  --", &lv_font_montserrat_14,
+      rgb(225, 235, 240), 12, 112);
+  lv_obj_set_width(mqttDeviceLabel, 710);
+  lv_label_set_long_mode(mqttDeviceLabel, LV_LABEL_LONG_WRAP);
+
+  mqttMessageLabel = makeLabel(
+      mqttPanel, "MQTT is disabled. No task or PSRAM buffers are allocated.",
+      &lv_font_montserrat_16, rgb(180, 210, 215), 12, 164);
+  lv_obj_set_width(mqttMessageLabel, 710);
+  lv_label_set_long_mode(mqttMessageLabel, LV_LABEL_LONG_WRAP);
+
+  makeLabel(mqttPanel,
+            "Dashboard file: home-assistant/aircraft-radar-view.yaml",
+            &lv_font_montserrat_12, rgb(100, 170, 180), 12, 238);
+
+  mqttToggleButton = lv_btn_create(mqttPanel);
+  lv_obj_set_size(mqttToggleButton, 250, 40);
+  lv_obj_set_pos(mqttToggleButton, 300, 280);
+  lv_obj_set_style_bg_color(mqttToggleButton, rgb(24, 128, 84), 0);
+  lv_obj_set_style_radius(mqttToggleButton, 6, 0);
+  lv_obj_add_event_cb(mqttToggleButton, mqttToggleEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  mqttToggleLabel = lv_label_create(mqttToggleButton);
+  lv_label_set_text(mqttToggleLabel, "ENABLE MQTT");
+  lv_obj_set_style_text_font(mqttToggleLabel, &lv_font_montserrat_14, 0);
+  lv_obj_center(mqttToggleLabel);
+
+  mqttCloseButton = lv_btn_create(mqttPanel);
+  lv_obj_set_size(mqttCloseButton, 150, 40);
+  lv_obj_set_pos(mqttCloseButton, 572, 280);
+  lv_obj_set_style_bg_color(mqttCloseButton, rgb(20, 68, 82), 0);
+  lv_obj_set_style_radius(mqttCloseButton, 6, 0);
+  lv_obj_add_event_cb(mqttCloseButton, mqttCloseEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* closeLabel = lv_label_create(mqttCloseButton);
+  lv_label_set_text(closeLabel, "CLOSE");
+  lv_obj_set_style_text_font(closeLabel, &lv_font_montserrat_14, 0);
+  lv_obj_center(closeLabel);
+
+  updateMqttPanel();
+  lv_obj_add_flag(mqttPanel, LV_OBJ_FLAG_HIDDEN);
 }
 
 void buildDetailPanel() {
@@ -3231,6 +3374,54 @@ void updateOtaPanel() {
 }
 
 
+void updateMqttPanel() {
+  if (!mqttPanel) return;
+  mqtt_service::Status status;
+  mqtt_service::copyStatus(status);
+
+  char stateText[96];
+  snprintf(stateText, sizeof(stateText), "MQTT: %s",
+           mqtt_service::stateName(status.state));
+  setLabelTextIfChanged(mqttStateLabel, stateText);
+  lv_obj_set_style_text_color(
+      mqttStateLabel,
+      status.state == mqtt_service::State::ERROR ||
+              status.state == mqtt_service::State::NOT_CONFIGURED
+          ? rgb(255, 120, 110)
+          : (status.connected ? rgb(120, 240, 155)
+                              : rgb(110, 220, 255)),
+      0);
+
+  char deviceText[220];
+  snprintf(deviceText, sizeof(deviceText),
+           "DEVICE  %s\nBROKER  %s\nRUNTIME %s",
+           status.deviceId[0] ? status.deviceId : "--",
+           status.configured ? "CONFIGURED IN PRIVATE config.h"
+                             : "NOT CONFIGURED",
+           status.clientRunning
+               ? (status.connected ? "CONNECTED" : "CLIENT ACTIVE")
+               : "NO MQTT TASK OR PSRAM BUFFERS");
+  setLabelTextIfChanged(mqttDeviceLabel, deviceText);
+  setLabelTextIfChanged(mqttMessageLabel, status.message);
+
+  const bool canChange = settings::storageAvailable() &&
+                         (status.configured || status.enabled) &&
+                         !status.maintenanceActive;
+  if (mqttToggleButton) {
+    if (canChange) lv_obj_clear_state(mqttToggleButton, LV_STATE_DISABLED);
+    else lv_obj_add_state(mqttToggleButton, LV_STATE_DISABLED);
+    lv_obj_set_style_opa(mqttToggleButton,
+                         canChange ? LV_OPA_COVER : LV_OPA_50, 0);
+    lv_obj_set_style_bg_color(
+        mqttToggleButton,
+        status.enabled ? rgb(126, 48, 44) : rgb(24, 128, 84), 0);
+  }
+  setLabelTextIfChanged(mqttToggleLabel,
+                        status.enabled ? "DISABLE MQTT" : "ENABLE MQTT");
+  if (mqttToggleLabel) lv_obj_center(mqttToggleLabel);
+}
+
+
 }  // namespace
 
 bool allocateTargetBuffer() {
@@ -3269,9 +3460,11 @@ bool buildUi() {
   loadAirportOptions();
   syncAirportControls();
   buildOtaPanel();
+  buildMqttPanel();
   buildDetailPanel();
   populateSettingsForm();
   setSettingsFormVisible(false);
+  lastSyncedRangeGeneration = app_state::rangeGeneration();
   return true;
 }
 
@@ -3336,8 +3529,17 @@ void update(uint32_t now) {
   }
   if (now - lastFrame < FRAME_INTERVAL_MS) return;
   lastFrame = now;
+  const uint32_t rangeGeneration = app_state::rangeGeneration();
+  if (rangeGeneration != lastSyncedRangeGeneration) {
+    lastSyncedRangeGeneration = rangeGeneration;
+    syncRangeControls(app_state::radarRangeMiles());
+    if (currentPage == 2) updatePageContent();
+  }
   if (otaPanel && !lv_obj_has_flag(otaPanel, LV_OBJ_FLAG_HIDDEN)) {
     updateOtaPanel();
+  }
+  if (mqttPanel && !lv_obj_has_flag(mqttPanel, LV_OBJ_FLAG_HIDDEN)) {
+    updateMqttPanel();
   }
   if (currentPage == 0 && !detailTargetValid) {
     autoExpandTrackedRange();

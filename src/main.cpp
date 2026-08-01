@@ -6,6 +6,8 @@
 #include "aircraft_data.h"
 #include "airport_data.h"
 #include "build_info.h"
+#include "display_power.h"
+#include "mqtt_service.h"
 #include "ota_update.h"
 #include "settings.h"
 #include "ui.h"
@@ -32,6 +34,7 @@ void setup() {
   if (!ui::allocateTargetBuffer()) return;
 
   lcd_init();
+  display_power::initialize();
   lvgl_port_lock(-1);
   const bool uiReady = ui::buildUi();
   if (!uiReady) ui::showFatalStatus("UI INITIALIZATION FAILED");
@@ -58,6 +61,9 @@ void setup() {
   if (!ota_update::begin()) {
     Serial.println("WARNING: Local OTA update service is unavailable");
   }
+  if (!mqtt_service::begin()) {
+    Serial.println("WARNING: MQTT service initialization failed");
+  }
 
   startupComplete = true;
   Serial.println("Startup complete");
@@ -71,6 +77,7 @@ void loop() {
 
   uint32_t now = millis();
   adsb::service();
+  mqtt_service::service();
   ota_update::service();
   lvgl_port_lock(-1);
   ui::update(now);

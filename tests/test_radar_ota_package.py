@@ -127,13 +127,15 @@ class RadarOtaIntegrationTests(unittest.TestCase):
         network_header = (ROOT / "include" / "adsb_network.h").read_text(encoding="utf-8")
         network_source = (ROOT / "src" / "adsb_network.cpp").read_text(encoding="utf-8")
         main_source = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
+        mqtt_header = (ROOT / "include" / "mqtt_service.h").read_text(encoding="utf-8")
+        mqtt_source = (ROOT / "src" / "mqtt_service.cpp").read_text(encoding="utf-8")
 
         self.assertIn("extra_scripts = post:scripts/build_radar_ota.py", platformio)
         package_script = SCRIPT.read_text(encoding="utf-8")
         self.assertIn('Path("release") / "firmware.radarota"', package_script)
         self.assertIn("board_build.partitions = default_16MB.csv", platformio)
         self.assertIn("platformio/framework-arduinoespressif32-libs@", platformio)
-        self.assertIn("7IN-20260801-PRODUCT55-AIRSPACE", build_info)
+        self.assertIn("7IN-20260801-PRODUCT56-HA-MQTT", build_info)
         for api in ("esp_ota_begin", "esp_ota_write", "esp_ota_end",
                     "esp_ota_set_boot_partition"):
             self.assertIn(api, ota_source)
@@ -145,7 +147,14 @@ class RadarOtaIntegrationTests(unittest.TestCase):
         self.assertIn("releaseMaintenanceHold", network_header)
         self.assertIn("ADSB task entered OTA maintenance hold", network_source)
         self.assertIn("ota_update::service();", main_source)
-        combined = ota_source + network_source + main_source
+        self.assertIn("mqtt_service::requestMaintenanceHold();", ota_source)
+        self.assertIn("mqtt_service::maintenanceHoldActive()", ota_source)
+        self.assertIn("mqtt_service::releaseMaintenanceHold();", ota_source)
+        self.assertIn("requestMaintenanceHold", mqtt_header)
+        self.assertIn("maintenanceHoldActive", mqtt_header)
+        self.assertIn("releaseMaintenanceHold", mqtt_header)
+        self.assertIn("MQTT idle for firmware update", mqtt_source)
+        combined = ota_source + network_source + mqtt_source + main_source
         self.assertNotIn("setInsecure()", combined)
         self.assertNotIn("HTTPClient::GET()", combined)
 

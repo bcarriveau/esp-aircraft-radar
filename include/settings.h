@@ -18,6 +18,9 @@ bool initialize();
 bool storageAvailable();
 bool resetToDefaults();
 
+bool mqttEnabled();
+bool setMqttEnabled(bool enabled);
+
 String deviceTitle();
 void setDeviceTitle(const String& title);
 

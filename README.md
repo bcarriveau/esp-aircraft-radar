@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260801-PRODUCT55-AIRSPACE
+7IN-20260801-PRODUCT56-HA-MQTT
 ```
 
 Current source branch:
@@ -38,13 +38,15 @@ tag:
 product-15-hardened
 ```
 
-Product 55 is the current host-verified candidate. It makes the green Airspace
-**CURRENT RANGE** card cycle the shared 20/40/80-mile radar range, replaces the
-redundant dominant-category highlight with highest airborne, and turns all four live
-traffic highlights into stable-ICAO shortcuts back to the selected aircraft on Radar.
-The Product 54 guarded local browser updater remains intact. Product 55 remains a
-candidate until PlatformIO compile/link, installation, Airspace interaction checks,
-normal radar and OTA regression checks, and soak testing are confirmed.
+Product 56 is the current host-verified candidate. It adds optional native MQTT
+integration for Home Assistant, a dependency-free dashboard view, physical-display
+backlight control, shared 20/40/80-mile range control, bounded aircraft telemetry, and
+read-only system diagnostics. MQTT is disabled by default and creates no client task,
+broker traffic, aircraft snapshot buffer, or JSON buffer until it is configured and
+enabled from the System page. Product 54 guarded local browser OTA and Product 55 Airspace behavior
+remain intact. Product 56 remains a candidate until PlatformIO compile/link,
+installation, MQTT discovery/control checks, OTA regression checks, and soak testing
+are confirmed.
 
 ## Features
 
@@ -110,6 +112,9 @@ Tracked state:
 - **System:** Separate status, device/network, and maintenance cards for build,
   memory, connectivity, saved settings, retry/reconnect, reset controls, and a
   dedicated local firmware-update overlay.
+- **Home Assistant:** Optional MQTT discovery, backlight/range/refresh controls,
+  bounded tracked/nearest/airspace telemetry, diagnostics, and a supplied dashboard
+  view using built-in Home Assistant cards only.
 
 ## Architecture and reliability
 
@@ -158,6 +163,25 @@ Tracked state:
 - Tracking is cleared atomically under the existing app-state mutex after three
   consecutive confirmed misses.
 
+
+### Home Assistant MQTT
+
+- MQTT is disabled by default and its enabled state is stored independently in NVS.
+- Disabled mode creates no MQTT client task, makes no broker connection attempts, and
+  allocates no aircraft snapshot or JSON buffer.
+- When enabled, the native ESP-MQTT client publishes Home Assistant discovery,
+  retained availability, bounded state topics, a tracked-aircraft snapshot, the five
+  nearest aircraft, and the Product 55 Airspace highlights.
+- Home Assistant can switch the physical LCD backlight, select the shared 20/40/80-mile
+  radar range, and queue the existing non-overlapping ADS-B refresh command.
+- MQTT does not own Wi-Fi, reconnect the station, recycle the radio, alter ADS-B
+  recovery, or trigger a restart. Broker failure is nonfatal to the radar.
+- The MQTT client uses a bounded 16 KB outbox and allocates one capacity-sized
+  aircraft snapshot buffer and one bounded JSON buffer in PSRAM only while enabled
+  and configured.
+- `home-assistant/aircraft-radar-view.yaml` provides a ready-to-paste dashboard view
+  using only standard Home Assistant cards.
+
 ### Local firmware updates
 
 - The local HTTP updater is disabled during normal operation and can be armed from
@@ -174,8 +198,9 @@ Tracked state:
 - Upload data is streamed directly to the inactive OTA partition. No complete
   firmware copy is allocated in heap or PSRAM.
 - The core-0 ADS-B task finishes any active request and acknowledges a maintenance
-  hold before the browser can upload. A failed or cancelled preparation releases the
-  hold and resumes normal polling.
+  hold before the browser can upload. When MQTT is active, its client is also stopped
+  and its PSRAM snapshot and JSON buffers are released before OTA becomes ready. A
+  failed or cancelled preparation releases both holds and resumes normal operation.
 - The next boot partition is selected only after package checks, confirmation that
   the declared Product build ID is embedded in the firmware, ESP32-S3 image validation,
   exact-length validation, SHA-256 verification, and `esp_ota_end()` all succeed.
@@ -213,6 +238,7 @@ assets/                 Aircraft artwork and display assets
 tools/                  Generated-data utilities, including airport CSV conversion
 scripts/                PlatformIO post-build OTA package generation
 release/                Latest generated OTA package after a successful build
+home-assistant/          Built-in-card dashboard view and installation notes
 include/                Shared interfaces and hardware configuration
 src/                    Application, networking, state, radar, UI, and OTA sources
 platformio.ini          Pinned PlatformIO environment, workspace, and checks
@@ -249,7 +275,9 @@ cp include/config.example.h include/config.h
 ```
 
 Edit `include/config.h` with the local Wi-Fi credentials and radar-center
-coordinates.
+coordinates. To use Home Assistant, also replace the MQTT placeholders with the
+local broker URI and credentials. MQTT remains disabled until enabled from the
+radar's **System > HA MQTT** panel.
 
 Never commit this file.
 
@@ -325,7 +353,19 @@ Product 54 must first be installed by USB. For later updates:
 
 A partial, rejected, or interrupted package is not selected as the next boot image.
 
-### 7. Upload and monitor
+### 7. Home Assistant MQTT
+
+1. Configure `MQTT_BROKER_URI`, `MQTT_USERNAME`, and `MQTT_PASSWORD` in private
+   `include/config.h`.
+2. Confirm Home Assistant's MQTT integration and discovery are enabled.
+3. On the radar, open **System**, tap **HA MQTT**, and enable MQTT.
+4. Confirm the radar appears as one MQTT device in Home Assistant.
+5. Follow `home-assistant/README.md` to install the supplied dashboard view.
+
+Disabling MQTT from the radar stops and destroys the client and releases its PSRAM
+snapshot and JSON buffers without disconnecting Wi-Fi or changing ADS-B behavior.
+
+### 8. Upload and monitor
 
 ```bash
 pio run -e waveshare-s3-touch-lcd-7 -t upload
@@ -375,7 +415,13 @@ Before calling a Product release complete:
 15. Confirm wrong-code, wrong-extension, mismatched-build, truncated-package, and
     SHA-mismatch failures leave the current firmware selected and release the ADS-B
     maintenance hold.
-16. Complete an extended soak test.
+16. With MQTT disabled, confirm no broker attempts, MQTT task, or MQTT aircraft
+    buffer are reported and normal Product 55 behavior is unchanged.
+17. Enable MQTT and confirm Home Assistant discovery, availability, display power,
+    shared range control, refresh, tracked/nearest telemetry, and dashboard rendering.
+18. Start OTA with MQTT connected and confirm OTA does not become ready until both
+    ADS-B and MQTT maintenance holds are active; confirm cancellation resumes both.
+19. Complete an extended soak test.
 
 ## Screenshots
 
@@ -417,6 +463,9 @@ physically confirmed.
   acknowledged core-0 ADS-B maintenance hold.
 - **Product 55:** Shared Airspace range toggle and stable-ICAO live-highlight
   shortcuts, with highest airborne replacing the redundant dominant-category entry.
+- **Product 56:** Optional Home Assistant MQTT discovery and controls, bounded
+  aircraft telemetry, dependency-free dashboard YAML, disabled-mode zero-allocation
+  behavior, and MQTT-aware OTA maintenance coordination.
 
 Detailed Product-by-Product history is maintained in `CHANGELOG.md`. Unconfirmed
 older history is not guessed.

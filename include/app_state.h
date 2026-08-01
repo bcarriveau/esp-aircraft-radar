@@ -61,6 +61,7 @@ void copySnapshot(aircraft::Target* out, Snapshot& snapshot);
 void copyVisibleTargets(aircraft::Target* out, uint8_t& count);
 uint8_t targetCount();
 uint32_t targetVersion();
+uint32_t trackingVersion();
 
 void setWifiStatus(wl_status_t status);
 wl_status_t wifiStatus();

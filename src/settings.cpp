@@ -7,6 +7,10 @@
 
 #include "config.h"
 
+#ifndef MQTT_ENABLED_DEFAULT
+#define MQTT_ENABLED_DEFAULT 0
+#endif
+
 namespace settings {
 namespace {
 
@@ -19,6 +23,7 @@ constexpr const char* KEY_WIFI_SSID = "wifi_ssid";
 constexpr const char* KEY_WIFI_PASS = "wifi_pass";
 constexpr const char* KEY_LAT = "home_lat";
 constexpr const char* KEY_LON = "home_lon";
+constexpr const char* KEY_MQTT_ENABLED = "mqtt_on";
 constexpr const char* KEY_AIRPORTS_ENABLED = "apt_on";
 constexpr const char* KEY_AIRPORT_OVERRIDES = "apt_ovr";
 constexpr const char* KEY_AIRPORT_SYMBOLS[AIRPORT_RANGE_COUNT] = {
@@ -36,6 +41,7 @@ constexpr uint8_t DEFAULT_AIRPORT_LABELS[AIRPORT_RANGE_COUNT] = {
   0x03, 0x03, 0x03
 };
 
+bool cachedMqttEnabled = MQTT_ENABLED_DEFAULT != 0;
 bool cachedAirportsEnabled = true;
 uint8_t cachedAirportSymbols[AIRPORT_RANGE_COUNT] = {
   DEFAULT_AIRPORT_SYMBOLS[0], DEFAULT_AIRPORT_SYMBOLS[1],
@@ -342,6 +348,7 @@ bool initialize() {
   storageOpen = preferences.begin(NAMESPACE, false);
   storageHealthy = storageOpen;
   if (!storageOpen) {
+    cachedMqttEnabled = MQTT_ENABLED_DEFAULT != 0;
     setAirportSettingsCacheDefaults();
     Serial.println(
         "NVS ERROR: preferences namespace unavailable; using compile-time defaults");
@@ -371,6 +378,10 @@ bool initialize() {
       !writeFloatChecked(KEY_LON, defaultLongitude())) {
     initialized = false;
   }
+  if (preferences.getType(KEY_MQTT_ENABLED) != PT_U8 &&
+      !writeUCharChecked(KEY_MQTT_ENABLED, MQTT_ENABLED_DEFAULT ? 1 : 0)) {
+    initialized = false;
+  }
   if (!initializeAirportDefaults()) initialized = false;
 
   storageHealthy = initialized;
@@ -379,7 +390,10 @@ bool initialize() {
     markStorageError("default initialization");
     return false;
   }
+  cachedMqttEnabled = preferences.getUChar(
+      KEY_MQTT_ENABLED, MQTT_ENABLED_DEFAULT ? 1 : 0) != 0;
   if (!loadAirportSettingsCache()) {
+    cachedMqttEnabled = MQTT_ENABLED_DEFAULT != 0;
     setAirportSettingsCacheDefaults();
     markStorageError("airport override initialization");
     return false;
@@ -402,6 +416,8 @@ bool resetToDefaults() {
   if (!writeStringChecked(KEY_WIFI_PASS, defaultWifiPassword())) saved = false;
   if (!writeFloatChecked(KEY_LAT, defaultLatitude())) saved = false;
   if (!writeFloatChecked(KEY_LON, defaultLongitude())) saved = false;
+  if (!writeUCharChecked(KEY_MQTT_ENABLED,
+                         MQTT_ENABLED_DEFAULT ? 1 : 0)) saved = false;
   if (!writeUCharChecked(KEY_AIRPORTS_ENABLED, 1)) saved = false;
   for (uint8_t i = 0; i < AIRPORT_RANGE_COUNT; ++i) {
     if (!writeUCharChecked(KEY_AIRPORT_SYMBOLS[i],
@@ -421,9 +437,22 @@ bool resetToDefaults() {
   if (!saved) {
     markStorageError("reset to defaults");
   } else {
+    cachedMqttEnabled = MQTT_ENABLED_DEFAULT != 0;
     setAirportSettingsCacheDefaults();
   }
   return saved;
+}
+
+bool mqttEnabled() { return cachedMqttEnabled; }
+
+bool setMqttEnabled(bool enabled) {
+  if (!storageAvailable()) return false;
+  if (!writeUCharChecked(KEY_MQTT_ENABLED, enabled ? 1 : 0)) {
+    markStorageError("MQTT enabled-state save");
+    return false;
+  }
+  cachedMqttEnabled = enabled;
+  return true;
 }
 
 String deviceTitle() {

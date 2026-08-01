@@ -15,6 +15,7 @@
 
 #include "adsb_network.h"
 #include "build_info.h"
+#include "mqtt_service.h"
 
 namespace ota_update {
 namespace {
@@ -80,7 +81,7 @@ const status=document.getElementById('status'), progress=document.getElementById
 async function call(path,options={}){options.headers=Object.assign({},options.headers||{}, {'X-OTA-Code':code()});const r=await fetch(path,options);const t=await r.text();let j={message:t};try{j=JSON.parse(t)}catch(e){}if(!r.ok)throw new Error(j.message||('HTTP '+r.status));return j}
 async function waitReady(){for(let i=0;i<180;i++){const j=await call('/status');status.textContent=j.message||j.state;if(j.state==='READY')return;if(j.state==='ERROR')throw new Error(j.message);await new Promise(r=>setTimeout(r,250))}throw new Error('Radar did not enter update-ready state')}
 function upload(file){return new Promise((resolve,reject)=>{const x=new XMLHttpRequest();x.open('POST','/upload');x.setRequestHeader('X-OTA-Code',code());x.upload.onprogress=e=>{if(e.lengthComputable)progress.value=Math.round(e.loaded*100/e.total)};x.onload=()=>{let j={message:x.responseText};try{j=JSON.parse(x.responseText)}catch(e){};x.status>=200&&x.status<300?resolve(j):reject(new Error(j.message||('HTTP '+x.status)))};x.onerror=()=>reject(new Error('Upload connection failed'));const f=new FormData();f.append('firmware',file,file.name);x.send(f)})}
-install.onclick=async()=>{const file=document.getElementById('file').files[0];if(!/^\d{6}$/.test(code())){status.textContent='Enter the six-digit access code.';return}if(!file||!file.name.toLowerCase().endsWith('.radarota')){status.textContent='Choose firmware.radarota.';return}install.disabled=true;progress.value=0;try{status.textContent='Waiting for the ADS-B task to enter maintenance hold...';await call('/prepare',{method:'POST'});await waitReady();status.textContent='Uploading and validating firmware...';const j=await upload(file);status.textContent=j.message||'Update complete. Radar is restarting.';progress.value=100}catch(e){status.textContent=e.message}finally{install.disabled=false}};
+install.onclick=async()=>{const file=document.getElementById('file').files[0];if(!/^\d{6}$/.test(code())){status.textContent='Enter the six-digit access code.';return}if(!file||!file.name.toLowerCase().endsWith('.radarota')){status.textContent='Choose firmware.radarota.';return}install.disabled=true;progress.value=0;try{status.textContent='Waiting for network services to become idle...';await call('/prepare',{method:'POST'});await waitReady();status.textContent='Uploading and validating firmware...';const j=await upload(file);status.textContent=j.message||'Update complete. Radar is restarting.';progress.value=100}catch(e){status.textContent=e.message}finally{install.disabled=false}};
 document.getElementById('cancel').onclick=async()=>{try{const j=await call('/cancel',{method:'POST'});status.textContent=j.message}catch(e){status.textContent=e.message}};
 </script></main></body></html>
 )HTML";
@@ -177,6 +178,7 @@ void resetUploadSession() {
 
 void releaseMaintenanceHold() {
   adsb::releaseMaintenanceHold();
+  mqtt_service::releaseMaintenanceHold();
 }
 
 void failUpload(const char* message, int responseCode = 400) {
@@ -436,7 +438,8 @@ void handleUploadData() {
         setUploadResponse(403, "Access code rejected");
         return;
       }
-      if (currentState != State::READY || !adsb::maintenanceHoldActive()) {
+      if (currentState != State::READY || !adsb::maintenanceHoldActive() ||
+          !mqtt_service::maintenanceHoldActive()) {
         setUploadResponse(409, "Radar is not ready for firmware upload");
         return;
       }
@@ -483,9 +486,10 @@ void handlePrepare() {
   }
   resetUploadSession();
   adsb::requestMaintenanceHold();
+  mqtt_service::requestMaintenanceHold();
   currentState = State::PREPARING;
   prepareDeadlineMs = millis() + PREPARE_TIMEOUT_MS;
-  setMessage("Waiting for ADS-B maintenance hold");
+  setMessage("Waiting for network services to become idle");
   sendJson(202, statusMessage);
 }
 
@@ -641,10 +645,11 @@ void service() {
   if (stopServerPending) stopServer();
 
   const uint32_t now = millis();
-  if (currentState == State::PREPARING && adsb::maintenanceHoldActive()) {
+  if (currentState == State::PREPARING && adsb::maintenanceHoldActive() &&
+      mqtt_service::maintenanceHoldActive()) {
     currentState = State::READY;
     setMessage("Radar ready. Upload may begin.");
-    Serial.println("OTA maintenance hold active; upload permitted");
+    Serial.println("OTA network maintenance holds active; upload permitted");
   }
   if ((currentState == State::PREPARING || currentState == State::READY) &&
       prepareDeadlineMs && (int32_t)(now - prepareDeadlineMs) >= 0) {
@@ -680,7 +685,8 @@ void copyStatus(Status& status) {
   status.state = currentState;
   status.available = updatePartition != nullptr;
   status.serverRunning = serverRunning;
-  status.maintenanceActive = adsb::maintenanceHoldActive();
+  status.maintenanceActive = adsb::maintenanceHoldActive() &&
+                             mqtt_service::maintenanceHoldActive();
   status.firmwareBytes = packageHeader.firmwareSize;
   status.writtenBytes = payloadWritten;
   status.progressPercent = packageHeader.firmwareSize
