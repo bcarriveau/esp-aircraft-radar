@@ -11,7 +11,7 @@ BUILD = (ROOT / "include" / "build_info.h").read_text(encoding="utf-8")
 class OtaExclusiveWindowTests(unittest.TestCase):
     def test_product_marker(self):
         self.assertIn(
-            "7IN-20260802-PRODUCT59-NETWORK-RECOVERY-MEMORY", BUILD
+            "7IN-20260802-PRODUCT60-OTA-PREPARE-IDEMPOTENT", BUILD
         )
 
     def test_enable_claims_network_before_starting_http_server(self):

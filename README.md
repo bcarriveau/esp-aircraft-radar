@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260802-PRODUCT59-NETWORK-RECOVERY-MEMORY
+7IN-20260802-PRODUCT60-OTA-PREPARE-IDEMPOTENT
 ```
 
 Current intended repository branch:
@@ -38,28 +38,26 @@ tag:
 product-15-hardened
 ```
 
-Product 59 is the current source release. It preserves the physically verified
-Product 58 OTA implementation and adds focused memory and hard Wi-Fi-recovery
-protection. Because this radar does not use Bluetooth, Product 59 releases the unused
-ESP32-S3 BLE controller memory at boot. Before any hard station-radio recycle, Core 0
-requires Core 1 to close and destroy MQTT socket/client resources and release its
-bounded PSRAM work buffers. If that handoff is not acknowledged within two seconds,
-the hard recycle is deferred instead of tearing Wi-Fi down concurrently.
+Product 60 is the current source release. It fixes the OTA preparation handoff
+without changing the verified firmware upload transport or restart path. A repeated
+`POST /prepare` is now idempotent while the radar is already `PREPARING` or `READY`,
+so a lost HTTP response, browser retry, or second click cannot turn a successfully
+accepted preparation into the misleading `OTA service is not available for
+preparation` error. The browser also checks `/status` and performs one bounded retry
+when the first preparation response is lost.
 
-OTA and hard Wi-Fi recovery now use one mutually exclusive network reservation. A
-hard recovery cannot begin after OTA claims its five-minute window, and OTA reports a
-retry message rather than starting its HTTP/mDNS service during an active hard radio
-transition. Outside those focused changes, Product 59 retains Product 58's exact
-Product 57 multipart upload transport, hardware-bound package validation,
-inactive-partition writer, immediate ADS-B/MQTT exclusive hold, and IRAM-safe
-Core-1 restart.
+Product 60 retains Product 59's unused BLE-memory release, acknowledged Core-1 MQTT
+teardown before hard Wi-Fi recovery, and atomic exclusion between OTA and radio
+recovery. It also preserves Product 58's physically verified Product 57 multipart
+upload transport, hardware-bound package validation, inactive-partition writer,
+immediate ADS-B/MQTT exclusive hold, and IRAM-safe Core-1 restart.
 
 The Product 58 runtime was physically verified across two consecutive browser OTA
 cycles. The cycles alternated application partitions, verified both packages,
 restarted without a Guru Meditation, and booted with `Reset reason: 3`; heap, largest
-internal block, and PSRAM remained stable. Product 59 still requires a normal
-PlatformIO build and hardware test of BLE-memory release and forced hard-recovery
-handoff before it is declared physically verified.
+internal block, and PSRAM remained stable. Product 59's recovery additions and the
+Product 60 preparation correction still require a normal PlatformIO build and
+hardware confirmation before they are declared physically verified.
 
 Product 57 added the guided, region-independent airport and runway generator with
 preview, atomic replacement, validation rollback, and relocation documentation.
@@ -580,6 +578,9 @@ screenshots are prepared.
 - **Product 59:** Unused BLE-controller memory release, acknowledged MQTT teardown
   before hard station-radio recovery, bounded recovery deferral, and atomic exclusion
   between hard Wi-Fi recovery and the Product 58 OTA window.
+- **Product 60:** Idempotent OTA preparation requests plus bounded browser recovery
+  when the first `/prepare` response is lost, while preserving the Product 57
+  multipart upload writer and Product 58 restart implementation.
 
 Detailed Product-by-Product history is maintained in `CHANGELOG.md`. Unconfirmed
 older history is not guessed.

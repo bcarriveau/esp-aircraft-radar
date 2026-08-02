@@ -135,7 +135,7 @@ class RadarOtaIntegrationTests(unittest.TestCase):
         self.assertIn('Path("release") / "firmware.radarota"', package_script)
         self.assertIn("board_build.partitions = default_16MB.csv", platformio)
         self.assertIn("platformio/framework-arduinoespressif32-libs@", platformio)
-        self.assertIn("7IN-20260802-PRODUCT59-NETWORK-RECOVERY-MEMORY", build_info)
+        self.assertIn("7IN-20260802-PRODUCT60-OTA-PREPARE-IDEMPOTENT", build_info)
         for api in ("esp_ota_begin", "esp_ota_write", "esp_ota_end",
                     "esp_ota_set_boot_partition"):
             self.assertIn(api, ota_source)

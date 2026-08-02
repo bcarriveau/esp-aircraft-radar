@@ -14,23 +14,70 @@ repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 59
-- **Current build marker:** `7IN-20260802-PRODUCT59-NETWORK-RECOVERY-MEMORY`
+- **Current source:** Product 60
+- **Current build marker:** `7IN-20260802-PRODUCT60-OTA-PREPARE-IDEMPOTENT`
 - **Current branch:** `main`
-- **Product 59 source baseline:** Product 58 OTA release derived from Product 57 commit `c30c330ff3182798d690cbd919c322819a2d17f9`
+- **Product 60 source baseline:** Product 59 network-recovery package derived from Product 57 commit `c30c330ff3182798d690cbd919c322819a2d17f9`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 59 retains the physically verified Product 58 OTA implementation and adds
-focused internal-memory and hard Wi-Fi-recovery protection. Unused BLE controller
-memory is released at boot, MQTT-owned network resources are destroyed before a hard
-station-radio recycle, and OTA ownership is mutually exclusive with that recovery
-transition. Product 59 requires a normal PlatformIO build and hardware recovery test;
-the inherited Product 58 multipart upload, exclusive hold, alternating-partition
-writer, and clean `Reset reason: 3` restart have already been physically verified.
+Product 60 corrects the browser-to-radar OTA preparation handoff while retaining
+Product 59 network recovery and the physically verified Product 58 upload/restart
+implementation. Duplicate or retried preparation requests are now successful and
+side-effect-free in `PREPARING` and `READY`, preventing a lost response from producing
+a false 409 error followed by the 45-second preparation expiry.
+
+## Product 60 - 2026-08-02
+
+**Build:** `7IN-20260802-PRODUCT60-OTA-PREPARE-IDEMPOTENT`  
+**Source baseline:** Product 59 network-recovery package derived from Product 57 commit `c30c330ff3182798d690cbd919c322819a2d17f9`  
+**Status:** Focused OTA preparation correction; PlatformIO and hardware verification pending
+
+### Diagnosed
+
+- Hardware logs showed ADS-B and MQTT entering the exclusive OTA hold and the radar
+  reaching `READY`, while the browser displayed `OTA service is not available for
+  preparation` and no upload began.
+- The first `/prepare` request had succeeded. A duplicate or retried request then saw
+  `PREPARING` or `READY`, received HTTP 409, and caused the browser workflow to abort.
+- With the browser no longer polling or uploading, the radar correctly reached the
+  existing 45-second preparation expiry while retaining the exclusive hold.
+
+### Changed
+
+- Treat repeated authenticated `/prepare` requests during `PREPARING` as HTTP 202
+  success and during `READY` as HTTP 200 success.
+- Return those idempotent responses without resetting the upload session, requesting
+  maintenance again, or extending the existing preparation deadline.
+- Add one bounded browser-side retry. After a failed preparation response, the page
+  checks `/status`; `PREPARING` or `READY` is accepted as success before retrying once.
+- Keep the original Product 57 `FormData` multipart `/upload` transport unchanged.
+
+### Validation
+
+- Added focused preparation-idempotency tests covering duplicate `PREPARING` and
+  `READY` requests, side-effect-free retries, one bounded deadline, browser lost-
+  response recovery, and preservation of the multipart upload path.
+- The complete checked-in Python suite passed after the Product 60 marker update.
+- `src/ota_update.cpp` passed strict host C++17 syntax checking with
+  `-Wall -Wextra -Werror`.
+- Static comparison confirmed the package parser, streamed inactive-slot writer,
+  SHA/image validation, maintenance lifecycle, and IRAM restart implementation were
+  unchanged from Product 59.
+- PlatformIO compile/link, generated OTA package, upload of the Product 60 marker,
+  and hardware verification were not run here.
+
+### Preserved
+
+- Product 59 BLE-memory release, MQTT teardown before hard Wi-Fi recovery, bounded
+  recovery deferral, and OTA/recovery mutual exclusion.
+- Product 58 immediate exclusive OTA hold and physically verified IRAM restart.
+- Product 57 browser multipart upload, package validation, inactive-slot writer,
+  native ADS-B HTTPS behavior, stable ICAO interaction, display configuration, OPI
+  PSRAM/XIP, DMA, and the 20-scanline bounce buffer.
 
 ## Product 59 - 2026-08-02
 
