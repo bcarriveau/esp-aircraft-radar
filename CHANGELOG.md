@@ -14,22 +14,85 @@ repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 61
-- **Current build marker:** `7IN-20260802-PRODUCT61-OTA-SOCKET-PACING`
+- **Current source:** Product 62
+- **Current build marker:** `7IN-20260802-PRODUCT62-AIRPORT-EYE-COVERAGE`
 - **Current branch:** `main`
-- **Product 61 source baseline:** Product 60 OTA-preparation package derived from Product 57 commit `c30c330ff3182798d690cbd919c322819a2d17f9`
+- **Product 62 source baseline:** Product 61 `main` commit `5ab7db06de45883eda8e96bd5c8633d2fb63b862`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 61 is the current physically verified known-good release. It corrects the
-browser-to-radar socket handoff resets while retaining Product 60 idempotent
-preparation, Product 59 network recovery, and the Product 58 upload/restart
-implementation. Browser requests are paced for the Arduino-ESP32 single-client
-`WebServer`, and an upload is retried only when the radar proves that no transfer
-began.
+Product 62 is the current host-verified source candidate on `main`. It corrects the
+Airports-directory eye coverage mismatch while preserving the 64-row directory
+bound. Product 61 remains the current physically verified known-good release.
+
+## Product 62 - 2026-08-02
+
+**Build:** `7IN-20260802-PRODUCT62-AIRPORT-EYE-COVERAGE`  
+**Source baseline:** Product 61 `main` commit `5ab7db06de45883eda8e96bd5c8633d2fb63b862`  
+**Status:** Focused host-verified Airports UI fix; PlatformIO and physical verification pending
+
+### Diagnosed
+
+- The radar renderer can evaluate and label airports from the complete bounded
+  192-entry nearby-airport cache.
+- The Airports page intentionally keeps its scrollable directory bounded at 64 rows.
+- Product 61 filled those rows only from the nearest 64 airports, then queried eye
+  state for that subset.
+- A farther airport whose label fit on Radar could therefore have no corresponding
+  directory row or eye indicator. The reported hardware example showed seven visible
+  labels but only three eyes while scrolling the list.
+
+### Fixed
+
+- Kept the Airports directory bounded at 64 rows.
+- Added one optional 10,752-byte PSRAM scratch buffer for the complete bounded nearby
+  airport set; no internal-RAM fallback was added.
+- Started from the nearest 64 airports, then retained every airport whose label was
+  actually rendered on the latest completed radar frame using its stable airport
+  identifier.
+- Replaced only the farthest non-visible rows when room was required.
+- Restored increasing-distance order after retention while keeping eye state attached
+  to the correct stable identifier.
+- Preserved the prior nearest-64 behavior as a safe fallback if the optional scratch
+  allocation is unavailable.
+
+### Scope and preserved behavior
+
+- Changed only Airports-directory population and eye-state coverage plus the Product
+  build marker and focused regression test.
+- Did not alter airport label placement, collision handling, radar rendering order,
+  airport symbols, saved `AUTO / SHOW / HIDE` preferences, row-action touch filtering,
+  or `SHOW ON RADAR` behavior.
+- Preserved ADS-B networking, native/fallback HTTPS, 15-second cadence, request
+  serialization, Wi-Fi/TLS recovery, stale-response rejection, last-good retention,
+  stable ICAO aircraft interaction, 200-target bounds, panel timing, DMA, OPI PSRAM,
+  LVGL 8.3.11, and the 20-scanline RGB bounce buffer.
+
+### Validation
+
+- Focused seven-label retention and source-integration regression testing passed.
+- An isolated C++17 retention model passed with
+  `-Wall -Wextra -Werror -pedantic`.
+- The isolated retention test passed under AddressSanitizer and
+  UndefinedBehaviorSanitizer.
+- Modified `src/ui.cpp` passed lexical integrity scanning for balanced delimiters,
+  comments, character literals, and string literals.
+- Diff whitespace checks passed.
+- Static scans found no `HTTPClient::GET()` or `setInsecure()` in the changed UI file.
+- Package paths and SHA-256 checksums were verified.
+
+### Pending verification
+
+- PlatformIO compile/link and flash/internal-RAM report.
+- Upload and confirmation of the Product 62 marker on the 7-inch display.
+- At 20, 40, and 80 miles, physical confirmation that every visible radar airport
+  label appears exactly once in the scrollable directory with an eye indicator.
+- `AUTO / SHOW / HIDE`, `SHOW ON RADAR`, directory scrolling and row taps, aircraft
+  selection/tracking, 15-second ADS-B updates, display stability, memory stability,
+  and extended soak testing.
 
 ## Product 61 - 2026-08-02
 

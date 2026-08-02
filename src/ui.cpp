@@ -33,6 +33,8 @@ constexpr uint8_t AIRPORT_CATEGORY_COUNT = airport_data::CATEGORY_COUNT;
 constexpr uint8_t AIRPORT_RANGE_COUNT = airport_data::RANGE_COUNT;
 constexpr uint8_t AIRPORT_CONFIG_MODE_COUNT = 2;
 constexpr uint16_t AIRPORT_DIRECTORY_CAPACITY = 64;
+static_assert(AIRPORT_DIRECTORY_CAPACITY <= airport_data::MAX_NEARBY_AIRPORTS,
+              "Airport directory capacity exceeds nearby-airport storage");
 constexpr int AIRPORT_TABLE_TAP_MOVE_LIMIT = 10;
 constexpr uint32_t AIRPORT_TABLE_TAP_MAX_MS = 900;
 constexpr uint32_t AIRPORT_FOCUS_DURATION_MS = 15000;
@@ -215,6 +217,7 @@ uint8_t airportConfigMode = 0;
 bool airportOptionsLoaded = false;
 bool airportOptionsDirty = false;
 airport_data::NearbyAirport airportDirectoryEntries[AIRPORT_DIRECTORY_CAPACITY]{};
+airport_data::NearbyAirport* airportDirectoryScratch = nullptr;
 bool airportDirectoryLabelVisible[AIRPORT_DIRECTORY_CAPACITY]{};
 bool airportDirectoryLabelVisibilityCurrent = false;
 uint16_t airportDirectoryCount = 0;
@@ -580,6 +583,53 @@ void setAirportDirectoryCell(uint16_t row, uint8_t column,
                          LV_TABLE_CELL_CTRL_TEXT_CROP);
 }
 
+void swapAirportDirectoryRows(uint16_t left, uint16_t right) {
+  if (left == right || left >= airportDirectoryCount ||
+      right >= airportDirectoryCount) {
+    return;
+  }
+  const airport_data::NearbyAirport airport = airportDirectoryEntries[left];
+  airportDirectoryEntries[left] = airportDirectoryEntries[right];
+  airportDirectoryEntries[right] = airport;
+  const bool labelVisible = airportDirectoryLabelVisible[left];
+  airportDirectoryLabelVisible[left] = airportDirectoryLabelVisible[right];
+  airportDirectoryLabelVisible[right] = labelVisible;
+}
+
+void sortAirportDirectoryByDistance() {
+  for (uint16_t row = 1; row < airportDirectoryCount; ++row) {
+    uint16_t insertAt = row;
+    while (insertAt > 0 &&
+           airportDirectoryEntries[insertAt].distanceMiles <
+               airportDirectoryEntries[insertAt - 1].distanceMiles) {
+      swapAirportDirectoryRows(insertAt, insertAt - 1);
+      --insertAt;
+    }
+  }
+}
+
+bool airportDirectoryContains(const char* ident) {
+  if (!ident || !ident[0]) return false;
+  for (uint16_t row = 0; row < airportDirectoryCount; ++row) {
+    if (strcmp(airportDirectoryEntries[row].ident, ident) == 0) return true;
+  }
+  return false;
+}
+
+int16_t farthestReplaceableAirportRow() {
+  int16_t farthestRow = -1;
+  float farthestDistance = -1.0f;
+  for (uint16_t row = 0; row < airportDirectoryCount; ++row) {
+    if (airportDirectoryLabelVisible[row]) continue;
+    if (farthestRow < 0 ||
+        airportDirectoryEntries[row].distanceMiles > farthestDistance) {
+      farthestRow = static_cast<int16_t>(row);
+      farthestDistance = airportDirectoryEntries[row].distanceMiles;
+    }
+  }
+  return farthestRow;
+}
+
 void updateAirportDirectory() {
   if (!airportDirectorySummaryLabel || !airportDirectoryTable) return;
   airportDirectoryUpdating = true;
@@ -601,12 +651,26 @@ void updateAirportDirectory() {
   const bool labelCountCurrent = radar::airportLabelCount(
       range, labelMask, renderedLabelCount);
 
-  airportDirectoryCount = overlayEnabled
-      ? airport_data::copyNearby(airportDirectoryEntries,
-                                 AIRPORT_DIRECTORY_CAPACITY,
-                                 rangeMiles,
-                                 airport_data::CATEGORY_MASK_ALL)
-      : 0;
+  uint16_t nearbyCount = 0;
+  if (overlayEnabled && airportDirectoryScratch) {
+    nearbyCount = airport_data::copyNearby(
+        airportDirectoryScratch, airport_data::MAX_NEARBY_AIRPORTS,
+        rangeMiles, airport_data::CATEGORY_MASK_ALL);
+    airportDirectoryCount = nearbyCount < AIRPORT_DIRECTORY_CAPACITY
+        ? nearbyCount : AIRPORT_DIRECTORY_CAPACITY;
+    if (airportDirectoryCount) {
+      memcpy(airportDirectoryEntries, airportDirectoryScratch,
+             airportDirectoryCount * sizeof(airportDirectoryEntries[0]));
+    }
+  } else {
+    airportDirectoryCount = overlayEnabled
+        ? airport_data::copyNearby(airportDirectoryEntries,
+                                   AIRPORT_DIRECTORY_CAPACITY,
+                                   rangeMiles,
+                                   airport_data::CATEGORY_MASK_ALL)
+        : 0;
+    nearbyCount = airportDirectoryCount;
+  }
 
   memset(airportDirectoryLabelVisible, 0,
          sizeof(airportDirectoryLabelVisible));
@@ -618,12 +682,42 @@ void updateAirportDirectory() {
               range, labelMask, airportDirectoryEntries[row].ident,
               visible)) {
         airportDirectoryLabelVisibilityCurrent = false;
-        memset(airportDirectoryLabelVisible, 0,
-               sizeof(airportDirectoryLabelVisible));
         break;
       }
       airportDirectoryLabelVisible[row] = visible;
     }
+  }
+
+  if (airportDirectoryLabelVisibilityCurrent && airportDirectoryScratch) {
+    for (uint16_t candidate = airportDirectoryCount;
+         candidate < nearbyCount; ++candidate) {
+      bool visible = false;
+      if (!radar::airportLabelVisible(
+              range, labelMask, airportDirectoryScratch[candidate].ident,
+              visible)) {
+        airportDirectoryLabelVisibilityCurrent = false;
+        break;
+      }
+      if (!visible ||
+          airportDirectoryContains(airportDirectoryScratch[candidate].ident)) {
+        continue;
+      }
+      const int16_t replaceRow = farthestReplaceableAirportRow();
+      if (replaceRow < 0) break;
+      airportDirectoryEntries[replaceRow] = airportDirectoryScratch[candidate];
+      airportDirectoryLabelVisible[replaceRow] = true;
+    }
+  }
+
+  if (!airportDirectoryLabelVisibilityCurrent) {
+    memset(airportDirectoryLabelVisible, 0,
+           sizeof(airportDirectoryLabelVisible));
+    if (airportDirectoryScratch && airportDirectoryCount) {
+      memcpy(airportDirectoryEntries, airportDirectoryScratch,
+             airportDirectoryCount * sizeof(airportDirectoryEntries[0]));
+    }
+  } else {
+    sortAirportDirectoryByDistance();
   }
 
   uint16_t manualShowCount = 0;
@@ -3444,6 +3538,20 @@ bool allocateTargetBuffer() {
     free(uiTargets);
     uiTargets = nullptr;
     return false;
+  }
+  if (!airportDirectoryScratch) {
+    airportDirectoryScratch = static_cast<airport_data::NearbyAirport*>(
+        heap_caps_calloc(airport_data::MAX_NEARBY_AIRPORTS,
+                         sizeof(airport_data::NearbyAirport),
+                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (airportDirectoryScratch) {
+      Serial.printf("Airport directory scratch in PSRAM: %u bytes\n",
+                    (unsigned)(airport_data::MAX_NEARBY_AIRPORTS *
+                               sizeof(airport_data::NearbyAirport)));
+    } else {
+      Serial.println(
+          "Airport directory scratch unavailable; using nearest rows only");
+    }
   }
   Serial.printf("UI target buffer in PSRAM: %u bytes\n",
                 (unsigned)(aircraft::MAX_TARGETS *

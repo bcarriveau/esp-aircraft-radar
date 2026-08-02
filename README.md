@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260802-PRODUCT61-OTA-SOCKET-PACING
+7IN-20260802-PRODUCT62-AIRPORT-EYE-COVERAGE
 ```
 
 Current intended repository branch:
@@ -38,37 +38,38 @@ tag:
 product-15-hardened
 ```
 
-Product 61 is the current physically verified known-good release. Earlier Chrome
-HAR captures showed rapid follow-up connections receiving
-`net::ERR_CONNECTION_RESET` from the single-client Arduino `WebServer` before
-firmware upload or flash writing began. One repeated-click capture recorded six
-failed `/status` connections and one failed multipart `/upload`; the next 2.4 MB
-upload succeeded without any firmware, hardware, or network configuration change.
-Every successful response also contained two identical `Connection: close` headers.
+Product 62 is the current source candidate on `main`. It corrects an Airports-page
+coverage mismatch: the radar renderer can place labels from the complete bounded
+192-airport nearby cache, while the scrollable directory intentionally remains
+bounded at 64 rows. Product 61 populated that directory with only the nearest 64
+airports, so a label rendered for a farther airport could have no matching row or eye
+indicator.
 
-Product 61 spaces the browser control-request handoffs, reduces status polling to one
-request per second, and retries transient control resets with bounded backoff. A lost
-upload connection is retried only once and only after `/status` confirms the radar is
-still `READY` with zero firmware bytes received and written. JSON status responses
-expose those transfer counters, and the duplicate application-added `Connection:
-close` header is removed because Arduino-ESP32 already adds it.
+Product 62 keeps the 64-row directory and uses one optional 10,752-byte PSRAM scratch
+buffer to examine the complete nearby set. Every airport whose label was actually
+rendered is retained by stable airport identifier; only the farthest non-visible rows
+are displaced, and the final directory is restored to increasing-distance order. If
+the optional allocation is unavailable, the prior nearest-64 behavior remains as a
+safe fallback.
 
-Physical verification on the 7-inch radar completed the intended one-click sequence
-with exactly one `POST /prepare` (`202`), one `GET /status` (`200`), and one multipart
-`POST /upload` (`200`). The HAR recorded no reset, retry, duplicate preparation, or
-repeated upload. The browser left about 513 ms between preparation and status and
-about 517 ms between status and upload. The 2,409,888-byte firmware image verified,
-the radar restarted cleanly with `Reset reason: 3`, booted the Product 61 marker, and
-resumed native ADS-B HTTPS and MQTT operation. Restart diagnostics reported intact
-heap, a 53,236-byte largest internal block, and about 3.97 MB free PSRAM.
+Product 62 passed focused host retention, strict C++17, ASan/UBSan, source-integrity,
+whitespace, and forbidden-API checks. PlatformIO compile/link, firmware memory use,
+upload, and physical display verification have not yet been run for Product 62.
+Product 61 therefore remains the current physically verified known-good release.
 
-Product 61 retains Product 60's idempotent `/prepare`, Product 59's unused BLE-memory
-release and acknowledged MQTT teardown before hard Wi-Fi recovery, and Product 58's
-Product 57 multipart upload writer, exclusive ADS-B/MQTT hold, hardware-bound
-validation, inactive-partition writer, and IRAM-safe restart. The normal one-click
-OTA path, exclusive hold, package write/verification, restart, and post-boot service
-recovery are physically verified. The forced hard-Wi-Fi-recovery branch and duplicate
-preparation retry branch were not separately fault-injected during this final test.
+Product 61 corrected browser-to-radar socket handoff resets by pacing the
+single-client Arduino `WebServer`, bounding control-request retries, allowing only a
+safe zero-byte upload retry, exposing transfer counters, and removing the duplicate
+`Connection: close` header. Physical verification completed the intended one-click
+OTA sequence, verified a 2,409,888-byte firmware image, restarted cleanly with
+`Reset reason: 3`, and resumed native ADS-B HTTPS and MQTT operation with stable
+heap and PSRAM.
+
+Product 62 retains Product 61's OTA behavior, Product 60's idempotent `/prepare`,
+Product 59's unused BLE-memory release and acknowledged MQTT teardown before hard
+Wi-Fi recovery, and Product 58's Product 57 multipart upload writer, exclusive
+ADS-B/MQTT hold, hardware-bound validation, inactive-partition writer, and IRAM-safe
+restart.
 
 Product 57 added the guided, region-independent airport and runway generator with
 preview, atomic replacement, validation rollback, and relocation documentation.
@@ -139,7 +140,8 @@ Tracked state:
   shortcuts that select the aircraft on Radar by stable ICAO hex.
 - **Airports:** Nearby-airport awareness, directory/profile views, per-category
   20/40/80-mile symbol and label controls, `AUTO / SHOW / HIDE` preferences,
-  current-label eye indicators, and `SHOW ON RADAR` range selection.
+  current-label eye indicators retained for every airport label actually rendered,
+  and `SHOW ON RADAR` range selection.
 - **System:** A tall status card for build, memory, connectivity, and airport
   diagnostics; a separate Device & Network form; a two-row retry/reconnect/MQTT/reset
   control card; and a dedicated local firmware-update overlay.
@@ -161,6 +163,10 @@ Tracked state:
   them but cannot make them jump or blink.
 - Airport symbols are drawn below aircraft; aircraft contacts and all aircraft
   labels retain priority.
+- The Airports directory remains deterministically bounded at 64 rows. It retains
+  every airport identifier reported as visibly labeled by the latest completed radar
+  frame, replacing only farther non-visible rows when required and then restoring
+  distance order.
 - The checked-in generated header is the exact regional airport table compiled into
   the firmware and remains tracked in Git.
 - Product 57 provides `tools/Build Airport Database.bat` for a guided Windows flow
@@ -533,7 +539,10 @@ Before calling a Product release complete:
 23. From Chrome or Edge, select the package and press **PREPARE & INSTALL** once.
     Confirm the page reaches upload without manual retries, the serial log reports one
     upload start, and no `/status` or `/upload` connection-reset error appears.
-24. Complete an extended soak test.
+24. At 20, 40, and 80 miles, note every airport label visible on Radar, then scroll
+    the complete Airports directory and confirm each visible label has exactly one eye
+    indicator, including visible airports outside the nearest subset.
+25. Complete an extended soak test.
 
 ## Screenshots
 
@@ -598,6 +607,10 @@ screenshots are prepared.
 - **Product 61:** HAR-confirmed single-client socket pacing, bounded control-request
   retries, safe zero-byte-only upload retry, transfer counters, and removal of the
   duplicate `Connection: close` header.
+- **Product 62:** Retained every radar-visible airport in the bounded 64-row
+  Airports directory so scrolling exposes an eye indicator for each label actually
+  rendered, with stable identifiers, deterministic replacement, distance ordering,
+  and a nearest-row fallback if optional PSRAM is unavailable.
 
 Detailed Product-by-Product history is maintained in `CHANGELOG.md`. Unconfirmed
 older history is not guessed.
