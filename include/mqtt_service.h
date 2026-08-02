@@ -38,6 +38,12 @@ void requestMaintenanceHold();
 bool maintenanceHoldActive();
 void releaseMaintenanceHold();
 
+// Core-0 hard Wi-Fi recovery requests this hold, then waits for core 1 to
+// destroy the MQTT socket/client and bounded work buffers before radio teardown.
+void requestNetworkRecoveryHold();
+bool networkRecoveryHoldActive();
+void releaseNetworkRecoveryHold();
+
 void copyStatus(Status& status);
 const char* stateName(State state);
 

@@ -509,7 +509,10 @@ void handlePrepare() {
     return;
   }
   resetUploadSession();
-  adsb::requestMaintenanceHold();
+  if (!adsb::requestMaintenanceHold()) {
+    sendJson(409, "Wi-Fi recovery in progress; try preparation again");
+    return;
+  }
   mqtt_service::requestMaintenanceHold();
   currentState = State::PREPARING;
   prepareDeadlineMs = millis() + PREPARE_TIMEOUT_MS;
@@ -774,6 +777,13 @@ bool enable() {
     return false;
   }
 
+  if (!adsb::requestMaintenanceHold()) {
+    currentState = State::ERROR;
+    setMessage("Wi-Fi recovery in progress; try enabling OTA again");
+    return false;
+  }
+  mqtt_service::requestMaintenanceHold();
+
   resetUploadSession();
   snprintf(accessCode, sizeof(accessCode), "%06lu",
            static_cast<unsigned long>(esp_random() % 1000000U));
@@ -793,9 +803,6 @@ bool enable() {
   // The OTA window owns the network immediately. ADS-B finishes only a request
   // already in flight, then parks its Core-0 task. MQTT closes its socket and
   // frees its client and work buffers before any upload is permitted.
-  adsb::requestMaintenanceHold();
-  mqtt_service::requestMaintenanceHold();
-
   if (!serverRunning) {
     server.begin();
     serverRunning = true;

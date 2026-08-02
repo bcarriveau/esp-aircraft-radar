@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260802-PRODUCT58-OTA-EXCLUSIVE-HOLD
+7IN-20260802-PRODUCT59-NETWORK-RECOVERY-MEMORY
 ```
 
 Current intended repository branch:
@@ -38,25 +38,28 @@ tag:
 product-15-hardened
 ```
 
-Product 58 is the current source release. Its exact runtime implementation was
-physically verified across two consecutive OTA cycles before the final Product 58
-marker and documentation promotion. It preserves the Product 57 airport-database
-setup workflow and the Product 56 R6 radar, MQTT, UI,
-display, and networking baseline while making local OTA updates network-exclusive.
-Pressing **ENABLE OTA** immediately parks ADS-B after any in-flight request, tears
-down MQTT and releases its buffers, and suppresses refresh, reconnect, Wi-Fi recovery,
-and fallback-restart commands until OTA is cancelled, expires, loses Wi-Fi, or
-completes. The local HTTP server, mDNS, Wi-Fi station, display, touch, LVGL, and OTA
-status UI remain active because they are required for the update.
+Product 59 is the current source release. It preserves the physically verified
+Product 58 OTA implementation and adds focused memory and hard Wi-Fi-recovery
+protection. Because this radar does not use Bluetooth, Product 59 releases the unused
+ESP32-S3 BLE controller memory at boot. Before any hard station-radio recycle, Core 0
+requires Core 1 to close and destroy MQTT socket/client resources and release its
+bounded PSRAM work buffers. If that handoff is not acknowledged within two seconds,
+the hard recycle is deferred instead of tearing Wi-Fi down concurrently.
 
-Product 58 also corrects the automatic restart failure that previously occurred when
-Core 1 remained in flash-resident code while the ESP-IDF restart path disabled the
-caches. Core 1 now acknowledges shutdown only after entering a dedicated IRAM park
-with maskable interrupts disabled; a bounded Core-0 restart task then calls the public
-`esp_restart()` API. Two consecutive hardware OTA cycles alternated the application
-partitions, verified the packages, restarted without a Guru Meditation, and booted
-with `Reset reason: 3`. Heap, largest internal block, and PSRAM remained stable across
-both cycles.
+OTA and hard Wi-Fi recovery now use one mutually exclusive network reservation. A
+hard recovery cannot begin after OTA claims its five-minute window, and OTA reports a
+retry message rather than starting its HTTP/mDNS service during an active hard radio
+transition. Outside those focused changes, Product 59 retains Product 58's exact
+Product 57 multipart upload transport, hardware-bound package validation,
+inactive-partition writer, immediate ADS-B/MQTT exclusive hold, and IRAM-safe
+Core-1 restart.
+
+The Product 58 runtime was physically verified across two consecutive browser OTA
+cycles. The cycles alternated application partitions, verified both packages,
+restarted without a Guru Meditation, and booted with `Reset reason: 3`; heap, largest
+internal block, and PSRAM remained stable. Product 59 still requires a normal
+PlatformIO build and hardware test of BLE-memory release and forced hard-recovery
+handoff before it is declared physically verified.
 
 Product 57 added the guided, region-independent airport and runway generator with
 preview, atomic replacement, validation rollback, and relocation documentation.
@@ -513,7 +516,12 @@ Before calling a Product release complete:
     both, then complete two OTA cycles and verify clean `Reset reason: 3` restarts.
 20. Generate a different airport region with synthetic or downloaded data, confirm
     the generic tests pass, then verify the intended regional airports appear.
-21. Complete an extended soak test.
+21. Confirm boot logs report the unused BLE-memory release, then fault-inject a hard
+    ADS-B recovery and verify MQTT resources are released before the station radio
+    restarts and reconnects.
+22. Confirm enabling OTA during a hard recovery is rejected with a retry message,
+    while enabling OTA first prevents the hard recovery from starting.
+23. Complete an extended soak test.
 
 ## Screenshots
 
@@ -569,6 +577,9 @@ screenshots are prepared.
   and MQTT maintenance ownership, suppression of competing Wi-Fi recovery, preserved
   Product 57 multipart/package writer, and a clean IRAM-safe dual-core restart proven
   across consecutive alternating-partition updates.
+- **Product 59:** Unused BLE-controller memory release, acknowledged MQTT teardown
+  before hard station-radio recovery, bounded recovery deferral, and atomic exclusion
+  between hard Wi-Fi recovery and the Product 58 OTA window.
 
 Detailed Product-by-Product history is maintained in `CHANGELOG.md`. Unconfirmed
 older history is not guessed.

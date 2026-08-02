@@ -1,6 +1,9 @@
 #include <Arduino.h>
 #include <Waveshare_ST7262_LVGL.h>
 
+#include <esp_bt.h>
+#include <esp_err.h>
+#include <esp_heap_caps.h>
 #include <esp_system.h>
 
 #include "adsb_network.h"
@@ -16,6 +19,33 @@
 
 namespace {
 bool startupComplete = false;
+
+void releaseUnusedBluetoothControllerMemory() {
+  const size_t heapBefore = heap_caps_get_free_size(
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t largestBefore = heap_caps_get_largest_free_block(
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+
+  const esp_err_t result =
+      esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
+
+  const size_t heapAfter = heap_caps_get_free_size(
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t largestAfter = heap_caps_get_largest_free_block(
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+
+  if (result == ESP_OK) {
+    Serial.printf(
+        "Unused BLE controller memory released: internal heap +%ld, "
+        "largest block %+ld bytes\n",
+        static_cast<long>(heapAfter) - static_cast<long>(heapBefore),
+        static_cast<long>(largestAfter) -
+            static_cast<long>(largestBefore));
+  } else {
+    Serial.printf("BLE controller memory release skipped: %s (%d)\n",
+                  esp_err_to_name(result), static_cast<int>(result));
+  }
+}
 }
 
 void setup() {
@@ -27,6 +57,7 @@ void setup() {
                 (unsigned)aircraft::MAX_TARGETS);
   Serial.printf("PSRAM: %s, size=%u\n", psramFound() ? "YES" : "NO",
                 ESP.getPsramSize());
+  releaseUnusedBluetoothControllerMemory();
 
   if (!settings::initialize()) {
     Serial.println(
@@ -81,7 +112,7 @@ void loop() {
   uint32_t now = millis();
   adsb::service();
   mqtt_service::service();
-  ota_update::service();
+  if (!adsb::wifiOperationInProgress()) ota_update::service();
   lvgl_port_lock(-1);
   ui::update(now);
   lvgl_port_unlock();

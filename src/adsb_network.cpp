@@ -6,6 +6,7 @@
 #include "app_state.h"
 #include "config.h"
 #include "network_reconnect_logic.h"
+#include "mqtt_service.h"
 #include "settings.h"
 
 namespace adsb {
@@ -15,6 +16,7 @@ constexpr uint32_t WIFI_CONNECT_WINDOW_MS = 12000;
 constexpr uint32_t LAST_RESORT_RESTART_MS = 30UL * 60UL * 1000UL;
 constexpr uint16_t LAST_RESORT_FAILURE_COUNT = 20;
 constexpr uint32_t POST_RECOVERY_RETRY_MS = 1000;
+constexpr uint32_t NETWORK_QUIESCE_SETTLE_MS = 100;
 constexpr uint32_t COMMAND_REFRESH = 1U << 0;
 constexpr uint32_t COMMAND_WIFI_RECONNECT = 1U << 1;
 
@@ -24,6 +26,7 @@ uint32_t pendingCommands = 0;
 bool controlledRestartPending = false;
 bool maintenanceRequested = false;
 bool maintenanceActive = false;
+bool wifiOperationPending = false;
 uint32_t lastWifiAttempt = 0;
 uint32_t wifiAttempts = 0;
 wl_status_t lastLoggedWifiStatus = WL_IDLE_STATUS;
@@ -84,6 +87,71 @@ void setMaintenanceActive(bool active) {
   portEXIT_CRITICAL(&commandMux);
 }
 
+void setWifiOperationPending(bool pending) {
+  portENTER_CRITICAL(&commandMux);
+  wifiOperationPending = pending;
+  portEXIT_CRITICAL(&commandMux);
+}
+
+bool isWifiOperationPending() {
+  portENTER_CRITICAL(&commandMux);
+  const bool pending = wifiOperationPending;
+  portEXIT_CRITICAL(&commandMux);
+  return pending;
+}
+
+bool reserveHardWifiRecovery() {
+  portENTER_CRITICAL(&commandMux);
+  const bool reserved = !maintenanceRequested && !wifiOperationPending;
+  if (reserved) wifiOperationPending = true;
+  portEXIT_CRITICAL(&commandMux);
+  return reserved;
+}
+
+bool prepareHardWifiRecovery() {
+  if (!reserveHardWifiRecovery()) {
+    Serial.println(
+        "WiFi recovery: hard radio recycle deferred for OTA or another recovery");
+    return false;
+  }
+
+  mqtt_service::requestNetworkRecoveryHold();
+
+  const uint32_t startedAt = millis();
+  while (!mqtt_service::networkRecoveryHoldActive() &&
+         millis() - startedAt < 2000U) {
+    delay(10);
+    yield();
+  }
+
+  if (!mqtt_service::networkRecoveryHoldActive()) {
+    Serial.println(
+        "WiFi recovery: MQTT quiesce timed out; deferring hard radio recycle");
+    mqtt_service::releaseNetworkRecoveryHold();
+    setWifiOperationPending(false);
+    return false;
+  }
+
+  // WiFiClient::stop() releases the application socket synchronously, but
+  // lwIP completes some buffer callbacks on its own task. Give that bounded
+  // cleanup a short window before the station driver is stopped.
+  delay(NETWORK_QUIESCE_SETTLE_MS);
+  yield();
+
+  Serial.printf(
+      "WiFi recovery: dependent network resources released, heap=%u, "
+      "largest internal=%u, PSRAM=%u\n",
+      ESP.getFreeHeap(),
+      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+      ESP.getFreePsram());
+  return true;
+}
+
+void finishHardWifiRecovery() {
+  mqtt_service::releaseNetworkRecoveryHold();
+  setWifiOperationPending(false);
+}
+
 void recordWifiAttempt() {
   portENTER_CRITICAL(&commandMux);
   lastWifiAttempt = millis();
@@ -101,7 +169,9 @@ bool reserveWifiReconnect(wl_status_t status, uint32_t retryDelayMs) {
   return reconnectDue;
 }
 
-void beginWifiConnection(const char* reason, bool restartRadio = false) {
+bool beginWifiConnection(const char* reason, bool restartRadio = false) {
+  if (restartRadio && !prepareHardWifiRecovery()) return false;
+
   ++wifiAttempts;
   recordWifiAttempt();
   const String ssid = settings::wifiSsid();
@@ -122,6 +192,7 @@ void beginWifiConnection(const char* reason, bool restartRadio = false) {
   WiFi.setAutoReconnect(true);
   WiFi.begin(ssid.c_str(), password.c_str());
   app_state::setWifiStatus(WiFi.status());
+  return true;
 }
 
 bool waitForWifi(uint32_t timeoutMs) {
@@ -285,14 +356,17 @@ void fetchTask(void* parameter) {
             "ADSB recovery ladder: %s WiFi after %s failure\n",
             restartRadio ? "hard-recycling" : "reconnecting",
             app_state::failureStageName(result.failureStage));
-        beginWifiConnection(restartRadio ? "ADSB hard recovery"
-                                         : "ADSB recovery",
-                            restartRadio);
-        app_state::recordNetworkRecovery();
-        ++outageRecoveries;
-        recoveryConnected = waitForWifi(WIFI_CONNECT_WINDOW_MS);
-        Serial.printf("ADSB recovery result: WiFi %s\n",
-                      recoveryConnected ? "connected" : "not connected");
+        const bool recoveryStarted = beginWifiConnection(
+            restartRadio ? "ADSB hard recovery" : "ADSB recovery",
+            restartRadio);
+        if (recoveryStarted) {
+          app_state::recordNetworkRecovery();
+          ++outageRecoveries;
+          recoveryConnected = waitForWifi(WIFI_CONNECT_WINDOW_MS);
+          if (restartRadio) finishHardWifiRecovery();
+          Serial.printf("ADSB recovery result: WiFi %s\n",
+                        recoveryConnected ? "connected" : "not connected");
+        }
       }
 
       if (outageStartedAt != 0 &&
@@ -411,6 +485,8 @@ void service() {
     ESP.restart();
     return;
   }
+  if (isWifiOperationPending()) return;
+
   const uint32_t now = millis();
   const wl_status_t status = WiFi.status();
   if (status != lastLoggedWifiStatus) {
@@ -460,12 +536,28 @@ void requestWifiReconnect() {
   queueCommand(COMMAND_WIFI_RECONNECT);
 }
 
-void requestMaintenanceHold() {
+bool wifiOperationInProgress() {
+  return isWifiOperationPending();
+}
+
+bool requestMaintenanceHold() {
+  bool accepted = false;
   portENTER_CRITICAL(&commandMux);
-  maintenanceRequested = true;
-  pendingCommands = 0;
+  if (maintenanceRequested) {
+    accepted = true;
+  } else if (!wifiOperationPending) {
+    maintenanceRequested = true;
+    pendingCommands = 0;
+    accepted = true;
+  }
   portEXIT_CRITICAL(&commandMux);
-  if (fetchTaskHandle) xTaskNotifyGive(fetchTaskHandle);
+
+  if (accepted && fetchTaskHandle) xTaskNotifyGive(fetchTaskHandle);
+  if (!accepted) {
+    Serial.println(
+        "OTA hold deferred: hard Wi-Fi recovery already owns the network");
+  }
+  return accepted;
 }
 
 bool maintenanceHoldActive() {

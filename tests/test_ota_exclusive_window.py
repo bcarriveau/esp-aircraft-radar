@@ -11,17 +11,27 @@ BUILD = (ROOT / "include" / "build_info.h").read_text(encoding="utf-8")
 class OtaExclusiveWindowTests(unittest.TestCase):
     def test_product_marker(self):
         self.assertIn(
-            "7IN-20260802-PRODUCT58-OTA-EXCLUSIVE-HOLD", BUILD
+            "7IN-20260802-PRODUCT59-NETWORK-RECOVERY-MEMORY", BUILD
         )
 
     def test_enable_claims_network_before_starting_http_server(self):
         enable = OTA[OTA.index("bool enable()") : OTA.index("void disable()") ]
-        adsb_hold = enable.index("adsb::requestMaintenanceHold();")
+        adsb_hold = enable.index("if (!adsb::requestMaintenanceHold())")
         mqtt_hold = enable.index("mqtt_service::requestMaintenanceHold();")
         server_start = enable.index("server.begin();")
         self.assertLess(adsb_hold, server_start)
         self.assertLess(mqtt_hold, server_start)
         self.assertIn("OTA exclusive window requested", enable)
+        self.assertIn("Wi-Fi recovery in progress; try enabling OTA again", enable)
+
+    def test_hard_recovery_cannot_steal_an_ota_reserved_network(self):
+        reserve = ADSB[ADSB.index("bool reserveHardWifiRecovery()") :
+                       ADSB.index("bool prepareHardWifiRecovery()") ]
+        self.assertIn("!maintenanceRequested && !wifiOperationPending", reserve)
+        request = ADSB[ADSB.index("bool requestMaintenanceHold()") :
+                       ADSB.index("bool maintenanceHoldActive()") ]
+        self.assertIn("else if (!wifiOperationPending)", request)
+        self.assertIn("return accepted;", request)
 
     def test_upload_failure_keeps_the_bounded_exclusive_hold(self):
         failure = OTA[OTA.index("void failUpload(") : OTA.index("void prepareBuildIdentityMatcher") ]
@@ -64,14 +74,14 @@ class OtaExclusiveWindowTests(unittest.TestCase):
         self.assertIn("OTA exclusive hold was requested", recovery)
 
     def test_maintenance_request_clears_pending_network_commands(self):
-        request = ADSB[ADSB.index("void requestMaintenanceHold()") :
+        request = ADSB[ADSB.index("bool requestMaintenanceHold()") :
                        ADSB.index("bool maintenanceHoldActive()") ]
         self.assertIn("maintenanceRequested = true;", request)
         self.assertIn("pendingCommands = 0;", request)
 
     def test_manual_refresh_and_reconnect_are_ignored_during_hold(self):
         refresh = ADSB[ADSB.index("void requestRefresh()") :
-                       ADSB.index("void requestMaintenanceHold()") ]
+                       ADSB.index("bool requestMaintenanceHold()") ]
         self.assertGreaterEqual(refresh.count("isMaintenanceRequested()"), 2)
         self.assertIn("refresh ignored during OTA exclusive hold", refresh)
         self.assertIn("reconnect ignored during OTA exclusive hold", refresh)

@@ -14,23 +14,85 @@ repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 58
-- **Current build marker:** `7IN-20260802-PRODUCT58-OTA-EXCLUSIVE-HOLD`
+- **Current source:** Product 59
+- **Current build marker:** `7IN-20260802-PRODUCT59-NETWORK-RECOVERY-MEMORY`
 - **Current branch:** `main`
-- **Product 58 source baseline:** Product 57 at commit `c30c330ff3182798d690cbd919c322819a2d17f9`
+- **Product 59 source baseline:** Product 58 OTA release derived from Product 57 commit `c30c330ff3182798d690cbd919c322819a2d17f9`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 58 preserves Product 57's airport-database workflow and working multipart
-OTA package writer, adds exclusive network ownership for the entire OTA window, and
-corrects the dual-core restart sequence. The exact runtime implementation was
-physically verified across two consecutive hardware OTA cycles before the final
-Product 58 marker and documentation promotion. The cycles alternated the application
-partitions, verified the package, restarted without a Guru Meditation, and booted
-with `Reset reason: 3`.
+Product 59 retains the physically verified Product 58 OTA implementation and adds
+focused internal-memory and hard Wi-Fi-recovery protection. Unused BLE controller
+memory is released at boot, MQTT-owned network resources are destroyed before a hard
+station-radio recycle, and OTA ownership is mutually exclusive with that recovery
+transition. Product 59 requires a normal PlatformIO build and hardware recovery test;
+the inherited Product 58 multipart upload, exclusive hold, alternating-partition
+writer, and clean `Reset reason: 3` restart have already been physically verified.
+
+## Product 59 - 2026-08-02
+
+**Build:** `7IN-20260802-PRODUCT59-NETWORK-RECOVERY-MEMORY`  
+**Source baseline:** Product 58 OTA release derived from Product 57 commit `c30c330ff3182798d690cbd919c322819a2d17f9`  
+**Status:** Focused memory and hard-recovery update; PlatformIO and hardware verification pending
+
+### Changed
+
+- Release unused ESP32-S3 BLE controller memory during startup before settings,
+  display, Wi-Fi, MQTT, or OTA allocation begins, while logging the resulting free
+  internal heap and largest-block gain.
+- Before a hard station-radio recycle, reserve exclusive Wi-Fi-operation ownership,
+  request a Core-1 MQTT recovery hold, and wait up to two seconds for acknowledgement.
+- The Core-1 MQTT service now closes its socket without graceful broker traffic,
+  deletes the client objects, and releases its bounded aircraft and JSON buffers
+  before acknowledging that the radio may be recycled.
+- Allow a bounded 100 ms lwIP settlement interval after MQTT resource teardown and
+  log heap, largest internal block, and PSRAM immediately before the hard recycle.
+- Defer the hard radio recycle rather than disconnecting Wi-Fi when MQTT does not
+  acknowledge the recovery hold.
+- Keep the MQTT recovery hold active through the reconnect attempt, then release it
+  only after the bounded Wi-Fi connection window finishes.
+
+### OTA/recovery ownership
+
+- Make the OTA maintenance reservation and hard-recovery reservation mutually
+  exclusive under the existing Core-0 command lock.
+- Reject a new OTA enable or browser preparation request with a retry message when a
+  hard Wi-Fi recovery already owns the network.
+- Prevent a hard Wi-Fi recovery from starting once OTA has reserved its exclusive
+  ADS-B/MQTT maintenance window.
+- Skip OTA HTTP/mDNS servicing while the station-radio transition is in progress.
+- Preserve Product 58's behavior where an already-running ADS-B request may finish,
+  but cannot enter recovery after OTA requests its hold.
+
+### Validation
+
+- 42 focused OTA package, IRAM restart, exclusive-window, BLE-memory, MQTT teardown,
+  hard-recovery ordering, and mutual-exclusion tests passed.
+- The complete checked-in Python test suite passed: 48 tests.
+- `src/main.cpp` and `src/ota_update.cpp` passed strict host C++17 syntax checks with
+  `-Wall -Wextra -Werror`.
+- Python syntax compilation passed for all changed tests.
+- Complete-file and static checks confirmed the Product 57 multipart upload page,
+  `/upload` route, package parser, inactive-slot writer, SHA/image verification, and
+  Product 58 IRAM restart implementation were not replaced by later raw, chunked,
+  resumable, or extended-timeout experiments.
+- Static inspection found no `setInsecure()` or blocking `HTTPClient::GET()`.
+- PlatformIO compile/link, generated memory report, hard-recovery fault injection,
+  OTA upload of the Product 59 marker, and hardware soak were not run here.
+
+### Preserved
+
+- The physically verified Product 58 network-exclusive OTA window, immediate ADS-B
+  and MQTT hold, Product 57 multipart/package writer, alternating application slots,
+  and IRAM-safe Core-1 restart.
+- Product 57 airport tooling, Product 56 R6 UI and Home Assistant MQTT behavior,
+  native preferred ADS-B HTTPS, verified fallback, 15-second cadence, recovery
+  thresholds, stale-response rejection, last-good retention, stable ICAO interaction,
+  200-target bounds, panel timing, DMA, OPI PSRAM/XIP, LVGL 8.3.11, and the
+  20-scanline RGB bounce buffer.
 
 ## Product 58 - 2026-08-02
 

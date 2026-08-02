@@ -266,6 +266,8 @@ bool desiredEnabled = false;
 bool clientConnected = false;
 bool maintenanceRequested = false;
 bool maintenanceActive = false;
+bool networkRecoveryRequested = false;
+bool networkRecoveryActive = false;
 bool stopRequested = false;
 bool availabilityPublished = false;
 bool legacyUpdateAgeCleanupPending = true;
@@ -447,22 +449,24 @@ void markClientDisconnected(const char* message) {
   portENTER_CRITICAL(&stateMux);
   clientConnected = false;
   portEXIT_CRITICAL(&stateMux);
-  if (desiredEnabled && !maintenanceRequested) {
+  if (desiredEnabled && !maintenanceRequested &&
+      !networkRecoveryRequested) {
     setState(State::CONNECTING,
              message ? message : "Waiting for MQTT broker");
   }
 }
 
-void destroyClient() {
+void destroyClient(bool graceful = true) {
   logMemoryStage("destroy-begin");
 
+  if (!graceful && networkClient) networkClient->stop();
   if (mqttClient) {
-    if (mqttClient->connected()) mqttClient->disconnect();
+    if (graceful && mqttClient->connected()) mqttClient->disconnect();
     delete mqttClient;
     mqttClient = nullptr;
   }
   if (networkClient) {
-    networkClient->stop();
+    if (graceful) networkClient->stop();
     delete networkClient;
     networkClient = nullptr;
   }
@@ -1179,6 +1183,8 @@ bool begin() {
   desiredEnabled = settings::mqttEnabled();
   maintenanceRequested = false;
   maintenanceActive = false;
+  networkRecoveryRequested = false;
+  networkRecoveryActive = false;
   earliestStartMs = millis() + MQTT_STARTUP_DELAY_MS;
   nextStartAttemptMs = 0;
   if (!desiredEnabled) {
@@ -1232,19 +1238,59 @@ void releaseMaintenanceHold() {
   portEXIT_CRITICAL(&stateMux);
 }
 
+void requestNetworkRecoveryHold() {
+  portENTER_CRITICAL(&stateMux);
+  networkRecoveryRequested = true;
+  networkRecoveryActive = false;
+  portEXIT_CRITICAL(&stateMux);
+}
+
+bool networkRecoveryHoldActive() {
+  portENTER_CRITICAL(&stateMux);
+  const bool active = networkRecoveryActive;
+  portEXIT_CRITICAL(&stateMux);
+  return active;
+}
+
+void releaseNetworkRecoveryHold() {
+  portENTER_CRITICAL(&stateMux);
+  networkRecoveryRequested = false;
+  networkRecoveryActive = false;
+  portEXIT_CRITICAL(&stateMux);
+}
+
 void service() {
   const uint32_t now = millis();
 
   bool localMaintenanceRequested = false;
+  bool localNetworkRecoveryRequested = false;
   bool localDesiredEnabled = false;
   bool localClientPresent = false;
   bool localBufferPresent = false;
   portENTER_CRITICAL(&stateMux);
   localMaintenanceRequested = maintenanceRequested;
+  localNetworkRecoveryRequested = networkRecoveryRequested;
   localDesiredEnabled = desiredEnabled;
   localClientPresent = mqttClient != nullptr || networkClient != nullptr;
   localBufferPresent = targetBuffer != nullptr || jsonBuffer != nullptr;
   portEXIT_CRITICAL(&stateMux);
+
+  // A hard station-radio recycle is owned by the core-0 ADS-B task, but
+  // MQTT objects are owned by this core-1 service. Destroy them here before
+  // acknowledging the hold so no MQTT socket or client can overlap Wi-Fi
+  // RX-buffer teardown. The bounded PSRAM work buffers are also released,
+  // maximizing recovery headroom before the radio is restarted.
+  if (localNetworkRecoveryRequested) {
+    if (mqttClient || networkClient || targetBuffer || jsonBuffer) {
+      destroyClient(false);
+    }
+    portENTER_CRITICAL(&stateMux);
+    networkRecoveryActive = true;
+    portEXIT_CRITICAL(&stateMux);
+    setState(State::WAITING_FOR_WIFI,
+             "MQTT resources released for Wi-Fi recovery");
+    return;
+  }
 
   // The normal disabled state is deliberately almost free: no MQTT task,
   // no broker traffic, no aircraft buffer, and no command-processing work.
