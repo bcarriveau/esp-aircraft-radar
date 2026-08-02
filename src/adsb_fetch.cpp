@@ -32,7 +32,7 @@ constexpr uint8_t MAX_NATIVE_ATTEMPTS = 2;
 constexpr uint32_t RETRY_DELAY_MS = 500;
 
 void logMemoryStage(const char* stage) {
-  app_state::observeMemory(stage);
+  app_state::observeFetchMemory(stage);
   Serial.printf(
       "MEM ADSB %-18s heap=%u block=%u psram=%u\n",
       stage ? stage : "unknown", ESP.getFreeHeap(),
@@ -770,6 +770,7 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
   esp_http_client_set_header(client, "Connection", "close");
 
   const uint32_t connectStarted = millis();
+  logMemoryStage("tls-handshake");
   const esp_err_t openError = esp_http_client_open(client, 0);
   if (openError != ESP_OK) {
     const int socketError = esp_http_client_get_errno(client);

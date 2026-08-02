@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focused Product 63 Phase 1 internal-memory checks."""
+"""Focused Product 64 Phase 2 internal-memory checks."""
 
 from pathlib import Path
 
@@ -10,13 +10,13 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_product_63_memory_marker_and_system_diagnostics() -> None:
+def test_product_64_memory_marker_and_system_diagnostics() -> None:
     build = read("include/build_info.h")
     header = read("include/app_state.h")
     state = read("src/app_state.cpp")
     ui = read("src/ui.cpp")
 
-    assert "7IN-20260802-PRODUCT63-MEMORY-PHASE1" in build
+    assert "7IN-20260802-PRODUCT64-MEMORY-PHASE2" in build
     assert "lastFetchMinimumFreeHeap" in header
     assert "lastFetchMinimumLargestInternalBlock" in header
     assert "lastFetchMinimumBlockStage" in header
@@ -76,6 +76,7 @@ def test_memory_stage_attribution_covers_fetch_and_mqtt() -> None:
         "native-start",
         "after-dns",
         "client-init",
+        "tls-handshake",
         "tls-connected",
         "headers-complete",
         "payload-ready",
@@ -90,14 +91,40 @@ def test_memory_stage_attribution_covers_fetch_and_mqtt() -> None:
     ):
         assert f'logMemoryStage("{stage}")' in fetch
 
-    assert "app_state::observeMemory(stage);" in fetch
-    assert "app_state::observeMemory(stage);" in network
+    assert "app_state::observeFetchMemory(stage);" in fetch
+    assert "app_state::observeFetchMemory(stage);" in network
     assert "app_state::observeMemory(stage);" in mqtt
     assert 'logFetchMemory("task-before-fetch")' in network
     assert 'logFetchMemory("task-after-fetch")' in network
     assert "recordAdsbTaskStackFreeBytes" in network
     assert "uxTaskGetStackHighWaterMark(nullptr)" in network
     assert "MEM ADSB FETCH LOW" in network
+
+
+def test_phase2_stack_bound_and_active_fetch_stage_tracking() -> None:
+    network = read("src/adsb_network.cpp")
+    state = read("src/app_state.cpp")
+    fetch = read("src/adsb_fetch.cpp")
+
+    assert "constexpr uint32_t ADSB_TASK_STACK_BYTES = 12U * 1024U;" in network
+    assert 'fetchTask, "ADSB", ADSB_TASK_STACK_BYTES' in network
+    assert 'fetchTask, "ADSB", 16384' not in network
+    assert "char activeFetchStage[24]{};" in state
+    assert "effectiveStage = state.activeFetchStage;" in state
+    assert "void observeFetchMemory(const char* stage)" in state
+    assert 'logMemoryStage("tls-handshake");' in fetch
+    assert "state.activeFetchStage[0] = 0;" in state
+
+
+def test_system_firmware_button_is_in_page_header() -> None:
+    ui = read("src/ui.cpp")
+
+    assert "systemFirmwareButton = lv_btn_create(pagePanel);" in ui
+    assert "systemFirmwareButton = lv_btn_create(systemStatusCard);" not in ui
+    assert "lv_obj_set_size(systemFirmwareButton, 196, 34);" in ui
+    assert "lv_obj_set_pos(systemFirmwareButton, 548, 8);" in ui
+    assert "setVisible(systemFirmwareButton, visible);" in ui
+    assert "lv_obj_set_width(pageTitle, 520);" in ui
 
 
 def test_airport_directory_storage_is_psram_only_and_nonfatal() -> None:

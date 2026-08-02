@@ -28,6 +28,7 @@ struct SharedState {
   uint32_t trackingVersion = 0;
   uint8_t trackingMissCount = 0;
   bool fetchInProgress = false;
+  char activeFetchStage[24]{};
   uint32_t lastUpdateMs = 0;
   Diagnostics diagnostics;
 };
@@ -52,6 +53,12 @@ void copyMemoryStage(char* destination, size_t capacity,
 }
 
 void observeMemoryLocked(const char* stage = nullptr) {
+  const char* effectiveStage = stage;
+  if ((!effectiveStage || !effectiveStage[0]) && state.fetchInProgress &&
+      state.activeFetchStage[0]) {
+    effectiveStage = state.activeFetchStage;
+  }
+
   const uint32_t freeHeap = ESP.getFreeHeap();
   const uint32_t largestInternalBlock =
       heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -66,7 +73,8 @@ void observeMemoryLocked(const char* stage = nullptr) {
           state.diagnostics.minimumLargestInternalBlock) {
     state.diagnostics.minimumLargestInternalBlock = largestInternalBlock;
     copyMemoryStage(state.diagnostics.minimumBlockStage,
-                    sizeof(state.diagnostics.minimumBlockStage), stage);
+                    sizeof(state.diagnostics.minimumBlockStage),
+                    effectiveStage);
   }
   if (freePsram > 0 && (state.diagnostics.minimumFreePsram == 0 ||
                        freePsram < state.diagnostics.minimumFreePsram)) {
@@ -86,7 +94,7 @@ void observeMemoryLocked(const char* stage = nullptr) {
         largestInternalBlock;
     copyMemoryStage(state.diagnostics.lastFetchMinimumBlockStage,
                     sizeof(state.diagnostics.lastFetchMinimumBlockStage),
-                    stage);
+                    effectiveStage);
   }
 }
 
@@ -350,6 +358,7 @@ bool isManuallyTracked(const aircraft::Target& target,
 void setFetchInProgress(bool inProgress) {
   bool locked = lockState();
   state.fetchInProgress = inProgress;
+  if (!inProgress) state.activeFetchStage[0] = 0;
   unlockState(locked);
 }
 
@@ -370,6 +379,8 @@ uint32_t lastUpdateMs() {
 void beginFetch() {
   bool locked = lockState();
   state.fetchInProgress = true;
+  copyMemoryStage(state.activeFetchStage,
+                  sizeof(state.activeFetchStage), "begin-fetch");
   state.diagnostics.lastAttemptMs = millis();
   ++state.diagnostics.totalAttempts;
   // Reset per-fetch lows so the System page can show both lifetime MIN and
@@ -388,6 +399,7 @@ void recordFetchSuccess(uint32_t durationMs, uint32_t responseBytes,
   bool locked = lockState();
   observeMemoryLocked("fetch-complete");
   state.fetchInProgress = false;
+  state.activeFetchStage[0] = 0;
   state.diagnostics.lastSuccessMs = millis();
   state.diagnostics.lastDurationMs = durationMs;
   state.diagnostics.lastResponseBytes = responseBytes;
@@ -405,6 +417,7 @@ void recordFetchFailure(FetchFailureStage stage, uint32_t durationMs,
   bool locked = lockState();
   observeMemoryLocked("fetch-complete");
   state.fetchInProgress = false;
+  state.activeFetchStage[0] = 0;
   state.diagnostics.lastDurationMs = durationMs;
   state.diagnostics.lastResponseBytes = responseBytes;
   ++state.diagnostics.consecutiveFailures;
@@ -419,6 +432,7 @@ void recordDiscardedResponse(uint32_t durationMs, uint32_t responseBytes,
   bool locked = lockState();
   observeMemoryLocked("fetch-complete");
   state.fetchInProgress = false;
+  state.activeFetchStage[0] = 0;
   ++state.diagnostics.discardedResponses;
   state.diagnostics.lastDurationMs = durationMs;
   state.diagnostics.lastResponseBytes = responseBytes;
@@ -449,6 +463,16 @@ void recordAdsbTaskStackFreeBytes(uint32_t freeBytes) {
 
 void observeMemory(const char* stage) {
   bool locked = lockState();
+  observeMemoryLocked(stage);
+  unlockState(locked);
+}
+
+void observeFetchMemory(const char* stage) {
+  bool locked = lockState();
+  if (state.fetchInProgress && stage && stage[0]) {
+    copyMemoryStage(state.activeFetchStage,
+                    sizeof(state.activeFetchStage), stage);
+  }
   observeMemoryLocked(stage);
   unlockState(locked);
 }

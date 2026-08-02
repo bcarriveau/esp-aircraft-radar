@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static integration checks for Product 55 preserving the airport hotfix."""
+"""Static integration checks for Product 64 preserving the airport hotfix."""
 
 from pathlib import Path
 import re
@@ -91,8 +91,8 @@ def main() -> None:
     ui = (ROOT / "src" / "ui.cpp").read_text(encoding="utf-8")
     main_cpp = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
 
-    require(build, "7IN-20260801-PRODUCT56-R3-LIGHTWEIGHT-MQTT",
-            "Product 56 marker")
+    require(build, "7IN-20260802-PRODUCT64-MEMORY-PHASE2",
+            "Product 64 marker")
     require(ui, '{"RADAR", "TRACKS", "AIRSPACE", "AIRPORTS", "SYSTEM"}',
             "five-tab navigation")
     require(ui, "AIRPORTS // NEARBY", "airport directory title")
@@ -280,7 +280,8 @@ def main() -> None:
             "  0x03, 0x03, 0x03\n};",
             "major/public symbol defaults")
 
-    # Existing page/subview and System layouts remain unchanged.
+    # Existing airport page/subview layout remains unchanged. Product 64 moves
+    # only the firmware action into the System page header.
     require(ui, 'lv_label_set_text(airportOptionsLabel, "DISPLAY SETTINGS")',
             "display-settings action")
     require(ui, 'lv_label_set_text(airportBackLabel, "BACK TO AIRPORTS")',
@@ -289,15 +290,19 @@ def main() -> None:
     require(ui, "lv_obj_set_pos(airportDetailShowButton, 558, 46);",
             "focused profile action below Back")
     for needle in (
-        "lv_obj_set_size(systemStatusCard, 270, 215);",
+        "lv_obj_set_size(systemStatusCard, 270, 281);",
         "lv_obj_set_pos(systemStatusCard, 8, 58);",
-        "lv_obj_set_size(deviceNetworkCard, 456, 215);",
+        "lv_obj_set_size(deviceNetworkCard, 456, 205);",
         "lv_obj_set_pos(deviceNetworkCard, 286, 58);",
-        "lv_obj_set_size(maintenanceCard, 734, 58);",
-        "lv_obj_set_pos(maintenanceCard, 8, 281);",
+        "lv_obj_set_size(maintenanceCard, 456, 68);",
+        "lv_obj_set_pos(maintenanceCard, 286, 271);",
+        "systemFirmwareButton = lv_btn_create(pagePanel);",
+        "lv_obj_set_size(systemFirmwareButton, 196, 34);",
+        "lv_obj_set_pos(systemFirmwareButton, 548, 8);",
         'lv_label_set_text(systemBuildLabel, "FIRMWARE / OTA  DISABLED  >")',
     ):
-        require(ui, needle, "preserved System layout")
+        require(ui, needle, "preserved Product 64 System layout")
+    assert "systemFirmwareButton = lv_btn_create(systemStatusCard);" not in ui
 
     # Airport map remains beneath all aircraft layers and aircraft hit testing is
     # still ICAO-only.
@@ -314,7 +319,7 @@ def main() -> None:
     require(renderer_h, "bool airportLabelCount(", "label-count API")
     require(main_cpp, "airport_data::initialize(settings::homeLatitude()",
             "optional airport initialization")
-    print("Product 55 airport-preservation checks passed")
+    print("Product 64 airport-preservation checks passed")
 
 
 if __name__ == "__main__":

@@ -385,6 +385,7 @@ void setSystemCreditVisible(bool visible) {
 
 void setSettingsFormVisible(bool visible) {
   setVisible(systemStatusCard, visible);
+  setVisible(systemFirmwareButton, visible);
   setVisible(deviceNetworkCard, visible);
   setVisible(maintenanceCard, visible);
   setVisible(titleField, visible);
@@ -2613,6 +2614,8 @@ void buildPageShell(lv_obj_t* root) {
   stylePanel(pagePanel);
   pageTitle = makeLabel(pagePanel, "", &lv_font_montserrat_28,
                         rgb(63, 255, 155), 14, 10);
+  lv_obj_set_width(pageTitle, 520);
+  lv_label_set_long_mode(pageTitle, LV_LABEL_LONG_CLIP);
   pageBody = makeLabel(pagePanel, "", &lv_font_montserrat_18,
                        rgb(225, 235, 240), 14, 62);
   lv_obj_set_width(pageBody, 735);
@@ -3062,9 +3065,9 @@ void buildPageShell(lv_obj_t* root) {
       rgb(225, 235, 240), 7, 27);
   lv_obj_set_width(systemStatusLabel, 250);
   lv_label_set_long_mode(systemStatusLabel, LV_LABEL_LONG_CLIP);
-  systemFirmwareButton = lv_btn_create(systemStatusCard);
-  lv_obj_set_size(systemFirmwareButton, 250, 27);
-  lv_obj_set_pos(systemFirmwareButton, 3, 248);
+  systemFirmwareButton = lv_btn_create(pagePanel);
+  lv_obj_set_size(systemFirmwareButton, 196, 34);
+  lv_obj_set_pos(systemFirmwareButton, 548, 8);
   lv_obj_set_style_bg_color(systemFirmwareButton, rgb(20, 68, 82), 0);
   lv_obj_set_style_radius(systemFirmwareButton, 5, 0);
   lv_obj_set_style_pad_all(systemFirmwareButton, 0, 0);

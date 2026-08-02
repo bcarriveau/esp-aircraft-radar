@@ -17,6 +17,7 @@ constexpr uint32_t LAST_RESORT_RESTART_MS = 30UL * 60UL * 1000UL;
 constexpr uint16_t LAST_RESORT_FAILURE_COUNT = 20;
 constexpr uint32_t POST_RECOVERY_RETRY_MS = 1000;
 constexpr uint32_t NETWORK_QUIESCE_SETTLE_MS = 100;
+constexpr uint32_t ADSB_TASK_STACK_BYTES = 12U * 1024U;
 constexpr uint32_t COMMAND_REFRESH = 1U << 0;
 constexpr uint32_t COMMAND_WIFI_RECONNECT = 1U << 1;
 
@@ -32,7 +33,7 @@ uint32_t wifiAttempts = 0;
 wl_status_t lastLoggedWifiStatus = WL_IDLE_STATUS;
 
 void logFetchMemory(const char* stage) {
-  app_state::observeMemory(stage);
+  app_state::observeFetchMemory(stage);
   Serial.printf(
       "MEM ADSB %-18s heap=%u block=%u psram=%u\n",
       stage ? stage : "unknown", ESP.getFreeHeap(),
@@ -491,7 +492,8 @@ bool begin() {
 
   fetchTaskHandle = nullptr;
   const BaseType_t taskResult = xTaskCreatePinnedToCore(
-      fetchTask, "ADSB", 16384, incoming, 1, &fetchTaskHandle, 0);
+      fetchTask, "ADSB", ADSB_TASK_STACK_BYTES, incoming, 1,
+      &fetchTaskHandle, 0);
   if (taskResult != pdPASS) {
     fetchTaskHandle = nullptr;
     free(incoming);

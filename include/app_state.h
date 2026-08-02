@@ -110,8 +110,10 @@ void recordDiscardedResponse(uint32_t durationMs, uint32_t responseBytes,
 void recordNetworkRecovery();
 void recordAdsbTaskStackFreeBytes(uint32_t freeBytes);
 // Optional stage labels identify the source of new lifetime and active-fetch
-// largest-block minima. Unlabelled samples are explicitly recorded as such.
+// largest-block minima. Unlabelled samples taken during a fetch inherit the
+// current ADS-B fetch stage without allowing unrelated service labels to replace it.
 void observeMemory(const char* stage = nullptr);
+void observeFetchMemory(const char* stage);
 void copyDiagnostics(Diagnostics& diagnostics);
 const char* failureStageName(FetchFailureStage stage);
 

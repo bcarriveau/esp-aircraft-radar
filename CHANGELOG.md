@@ -14,26 +14,102 @@ repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 63
-- **Current build marker:** `7IN-20260802-PRODUCT63-MEMORY-PHASE1`
-- **Intended integration branch:** `TEST`
-- **Product 63 source baseline:** Uploaded Product 62 working tree based on `main` commit `2bae5aadeb4207c4c846cdc1f70e52b333b88214`
+- **Current source:** Product 64
+- **Current build marker:** `7IN-20260802-PRODUCT64-MEMORY-PHASE2`
+- **Intended integration branch:** `main`
+- **Product 64 source baseline:** Product 63 `main` commit `cf8504fb68b069fce096187b3f3012bdacee4866`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 63 is the current host-verified source candidate for the intended `TEST`
-branch. It reduces and instruments internal-memory pressure without changing the
-LVGL pool, task-stack sizes, display path, target capacity, or HTTPS behavior.
-Product 61 remains the current physically verified known-good release.
+Product 64 is the current focused source candidate on `main`. Product 63 was
+physically exercised with native HTTPS, MQTT connected, 120-plus retained aircraft,
+and the new System-page memory diagnostics. Its internal heap and largest block
+recovered after each request; the remaining 8-12 KiB trough was captured during
+native TLS, while JSON and response-payload work stayed in PSRAM. Product 64 uses
+that evidence for a bounded stack reduction and leaves LVGL at 128 KiB.
+
+## Product 64 - 2026-08-02
+
+**Build:** `7IN-20260802-PRODUCT64-MEMORY-PHASE2`  
+**Source baseline:** Product 63 `main` commit `cf8504fb68b069fce096187b3f3012bdacee4866`  
+**Intended integration branch:** `main`  
+**Status:** Focused host-verified Phase 2; PlatformIO and Product 64 hardware verification pending
+
+### Hardware evidence from Product 63
+
+- Native HTTPS fetches restored internal heap to approximately 70-73 KiB and the
+  largest internal block to approximately 55-57 KiB after transport release.
+- The latest-fetch low remained inside the native TLS window at approximately
+  19-21 KiB free heap and 8-12 KiB largest internal block.
+- JSON completion did not reduce internal heap or largest block after Product 63
+  moved both ArduinoJson documents and response payload storage to PSRAM.
+- PSRAM returned to the same post-fetch baseline, with no leak visible in the
+  supplied requests.
+- The ADS-B task retained approximately 11.4 KiB of its 16 KiB stack on the observed
+  native path.
+- LVGL reported approximately 31 KiB free, a 29 KiB largest block, and 6 percent
+  fragmentation. That is not sufficient evidence for a general LVGL-pool reduction
+  across other locations and maximum table populations.
+
+### Changed
+
+- Reduced only the core-0 ADS-B task stack from 16 KiB to 12 KiB, recovering 4 KiB
+  of permanent internal memory while retaining roughly 7 KiB of measured headroom
+  on the observed native HTTPS path.
+- Added an active fetch-stage label. Periodic memory samples taken while the network
+  task is blocked in `esp_http_client_open()` now inherit `tls-handshake` rather
+  than replacing the true low-water stage with `unlabelled`.
+- Added an explicit `tls-handshake` checkpoint immediately before the native TLS
+  open call.
+- Moved the existing Firmware / OTA button from the bottom of the System Status
+  card to the top-right of the System page header so the AIRPORTS and memory status
+  lines remain unobstructed.
+- Bounded the page-title width to prevent title/button overlap.
+
+### Preserved
+
+- The 128 KiB LVGL pool, 20-scanline RGB bounce buffer, panel timing, DMA, OPI
+  PSRAM, and Arduino-ESP32 3.0.7 high-performance XIP/PSRAM configuration.
+- Native ESP-IDF HTTPS preference, verified fallback HTTPS, certificate and hostname
+  verification, bounded framing and response sizes, all deadlines, 15-second
+  cadence, request serialization, stale rejection, recovery, and last-good retention.
+- 200-target capacity, coherent PSRAM-backed snapshots, stable ICAO selection and
+  tracking, collision-aware labels, outward auto-zoom, and MPH display.
+- Existing OTA state, authentication, upload, restart, and page behavior; only the
+  System-page launch-button position changed.
+
+### Validation
+
+- Complete checked-in Python suite passed after Product 64 updates.
+- Focused tests cover the 12 KiB task-stack bound, active fetch-stage inheritance,
+  explicit TLS-handshake label, and System-header Firmware / OTA placement.
+- Standalone airport-preservation checks confirm that the airport page, overlay, and
+  bounded directory behavior remain unchanged.
+- Static scans confirm no `HTTPClient::GET()` or `setInsecure()` and no private
+  `include/config.h` in the package.
+- PlatformIO compile/link, linker memory totals, upload, and physical testing were
+  not run here.
+
+### Pending verification
+
+- Confirm the Product 64 marker after user-side PlatformIO build and upload.
+- Exercise native and fallback HTTPS, TLS failures, Wi-Fi recovery, MQTT, OTA, and
+  maximum-size aircraft responses while watching `ADSB STK`.
+- Confirm the new fetch-low stage reports `tls-handshake` for the deepest TLS sample.
+- Confirm the Firmware / OTA button is fully visible at the top-right and all System
+  Status rows remain readable.
+- Keep LVGL at 128 KiB until 200 Tracks rows, 64 airport rows, dense-location data,
+  long airport names, all pages, and repeated switching show adequate worst-case
+  headroom.
 
 ## Product 63 - 2026-08-02
 
 **Build:** `7IN-20260802-PRODUCT63-MEMORY-PHASE1`  
 **Source baseline:** Uploaded Product 62 working tree based on `main` commit `2bae5aadeb4207c4c846cdc1f70e52b333b88214`  
-**Intended integration branch:** `TEST`  
+**Intended integration branch:** `main`  
 **Status:** Focused host-verified memory phase; PlatformIO and physical verification pending
 
 ### Diagnosed

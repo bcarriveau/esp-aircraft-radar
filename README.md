@@ -22,13 +22,13 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260802-PRODUCT63-MEMORY-PHASE1
+7IN-20260802-PRODUCT64-MEMORY-PHASE2
 ```
 
 Current intended repository branch:
 
 ```text
-TEST
+main
 ```
 
 The hardened version-controlled baseline is **Product 15**, with the recommended
@@ -38,31 +38,31 @@ tag:
 product-15-hardened
 ```
 
-Product 63 is the current source candidate for `TEST`. It is the first bounded
-internal-memory phase built on the uploaded Product 62 source. Both ADS-B
-ArduinoJson documents now use a PSRAM-only allocator, the response payload no
-longer falls back to internal `malloc()`, and the 15-second request path uses fixed
-character buffers instead of temporary `String` construction.
+Product 64 is the current source candidate on `main`, built directly on the
+hardware-tested Product 63 commit `cf8504fb68b069fce096187b3f3012bdacee4866`.
+It keeps the Product 63 PSRAM-only ADS-B JSON and response-body protections,
+reduces the measured core-0 ADS-B task stack from 16 KiB to 12 KiB, and preserves
+the 128 KiB LVGL pool until broader location and full-table testing justifies any
+reduction.
 
-The 3,584-byte Airports directory entry array is now allocated in PSRAM. Failure of
-that optional allocation disables only the directory page; aircraft radar and airport
-overlay operation continue. Product 63 also separates the most recent fetch low-water
-marks from lifetime minima, records the stage producing each largest-block low,
-reports ADS-B task stack headroom, and displays LVGL pool use, maximum use, largest
-free block, and fragmentation on the System page. The LVGL pool and task stack sizes
-are deliberately unchanged until hardware measurements support a later reduction.
+Product 64 also records the active fetch stage so periodic low-water samples taken
+inside the blocking TLS handshake are attributed to `tls-handshake` instead of
+`unlabelled`. The existing Firmware / OTA action has moved from the bottom of the
+System Status card to the top-right of the System page header, leaving all status
+rows unobstructed while preserving the same OTA behavior.
 
-Product 63 passed the complete 64-test checked-in Python suite, strict host
-compilation of the PSRAM ArduinoJson allocator and app-state source, ASan/UBSan
-allocator and diagnostic models, source-integrity checks, and forbidden-API scans.
-PlatformIO compile/link,
-firmware memory reporting, upload, and physical verification have not been run.
-Product 61 therefore remains the current physically verified known-good release.
+Product 63 hardware logs showed internal heap and largest-block recovery after every
+request, with idle values around 70-73 KiB heap and 55-57 KiB largest block. The
+observed low point remained inside native TLS at roughly 8-12 KiB largest block;
+JSON parsing and response-payload storage no longer reduced internal memory. The
+System page reported about 31 KiB LVGL free, a 29 KiB largest LVGL block, 6 percent
+fragmentation, and approximately 11.4 KiB unused ADS-B stack. Those measurements
+support the 4 KiB stack reduction but do not yet justify reducing the LVGL pool.
 
-Product 63 retains Product 62's bounded 64-row airport eye-coverage fix, Product 61's
-OTA socket pacing, Product 60's idempotent `/prepare`, Product 59's unused BLE-memory
-release and acknowledged MQTT teardown before hard Wi-Fi recovery, and Product 58's
-network-exclusive OTA window and IRAM-safe restart.
+Product 64 retains Product 62's bounded 64-row airport eye-coverage fix, Product
+61's OTA socket pacing, Product 60's idempotent `/prepare`, Product 59's unused
+BLE-memory release and acknowledged MQTT teardown before hard Wi-Fi recovery, and
+Product 58's network-exclusive OTA window and IRAM-safe restart.
 
 Product 57 added the guided, region-independent airport and runway generator with
 preview, atomic replacement, validation rollback, and relocation documentation.

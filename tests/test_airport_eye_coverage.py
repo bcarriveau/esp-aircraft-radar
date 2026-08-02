@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Product 63 checks retaining Product 62 airport eye coverage."""
+"""Product 64 checks retaining Product 62 airport eye coverage."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -64,8 +64,8 @@ def main() -> None:
 
     require(
         build,
-        "7IN-20260802-PRODUCT63-MEMORY-PHASE1",
-        "Product 63 build marker",
+        "7IN-20260802-PRODUCT64-MEMORY-PHASE2",
+        "Product 64 build marker",
     )
     require(ui, "AIRPORT_DIRECTORY_CAPACITY = 64", "bounded directory capacity")
     require(
@@ -116,7 +116,7 @@ def main() -> None:
     assert "HTTPClient::GET" not in ui
     assert "setInsecure" not in ui
 
-    print("Product 63 airport eye-coverage checks passed")
+    print("Product 64 airport eye-coverage checks passed")
 
 
 if __name__ == "__main__":
