@@ -14,30 +14,76 @@ repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 65
-- **Current build marker:** `7IN-20260802-PRODUCT65-RADAR-FRAME-CADENCE`
+- **Current source:** Product 66
+- **Current build marker:** `7IN-20260802-PRODUCT66-RADAR-DIRTY-REGIONS`
 - **Intended integration branch:** `main`
-- **Product 65 source baseline:** Hardware-tested Product 64 replacement source built from Product 63 `main` commit `cf8504fb68b069fce096187b3f3012bdacee4866`
+- **Product 66 source baseline:** Exact hardware-tested Product 65 replacement source; repository ancestry reaches Product 63 `main` commit `cf8504fb68b069fce096187b3f3012bdacee4866`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 65 is the current focused source candidate on `main`. Product 64 was
-physically exercised through repeated native HTTPS requests with MQTT connected and
-roughly 127-133 retained aircraft. Idle internal heap and largest block returned to
-about 77 KiB and 61 KiB after every request; the deepest supplied native TLS sample
-retained about 14 KiB as the largest block, and the 12 KiB ADS-B task stack retained
-about 7.4 KiB free. Product 65 addresses the separately observed radar-frame slowdown
-during that TLS window without altering networking.
+Product 66 is the current focused source candidate for `main`, built from the exact
+Product 65 files that were physically exercised. Product 65 kept memory stable and
+made radar motion visibly better, but dense 40/80-mile frames still copied the complete
+309,600-byte cached radar layer every 80 ms. Product 66 removes that steady-state full
+copy in favor of bounded merged dirty-region restoration while preserving the elapsed-
+time sweep and all Product 64 memory protections.
+
+## Product 66 - 2026-08-02
+
+### Bounded radar dirty-region restoration
+
+**Build:** `7IN-20260802-PRODUCT66-RADAR-DIRTY-REGIONS`  
+**Source baseline:** Exact hardware-tested Product 65 replacement source  
+**Intended integration branch:** `main`  
+**Status:** Focused host-verified candidate; PlatformIO and device validation pending
+
+- Removed Product 65's steady-state full 430 x 360 PSRAM canvas copy for dense 40/80-mile radar frames.
+- Added a deterministic PSRAM dirty-region list sized from `MAX_TARGETS`; overlapping contact and tag rectangles are merged before bounded row restoration.
+- Preserved exact-pixel restoration for the previous sweep and retained a complete cached-layer fallback if the optional dirty-region buffer is unavailable.
+- Version-gated the coherent radar target snapshot so the 200-target buffer is recopied only after a target publish, range generation change, or tracking-state change.
+- Added throttled `RADAR PERF` serial diagnostics for render time, frame gap, contact count, dirty-region count, restored bytes, snapshot copies, cache rebuilds, fallback count, heap, and largest internal block.
+- Added `RADAR CACHE` before/after heap and largest-block diagnostics around static-layer rebuilds to trace the observed range-change fragmentation without changing allocation policy.
+- Kept ordinary, selected, and tracked labels refreshed every radar frame to avoid introducing visual lag.
+- Preserved Product 64 memory protections, the 128 KiB LVGL pool, 12 KiB ADS-B stack, display timing, DMA, 20-scanline bounce buffer, HTTPS behavior, 15-second cadence, target capacity, stable ICAO selection/tracking, and airport-eye behavior.
+
+### Validation
+
+- Complete checked-in Python suite passed: 71 tests.
+- Full `radar_renderer.cpp` host C++17 syntax checking completed with the same one
+  pre-existing LVGL opacity enum warning present in Product 65 and no new warnings.
+- A focused 401-region merge/coverage model passed strict compilation plus ASan and
+  UBSan across 1,000 randomized trials.
+- Static checks confirm the 128 KiB LVGL pool, 12 KiB ADS-B task stack, 20-scanline
+  bounce buffer, `MAX_TARGETS`, native/fallback HTTPS files, and all network source
+  files are unchanged.
+- No `HTTPClient::GET()`, `setInsecure()`, credentials, or `include/config.h` were
+  introduced.
+- PlatformIO compile/link, firmware upload, final linker memory totals, and physical
+  Product 66 testing were not run here.
+
+### Pending verification
+
+- Confirm the Product 66 marker and startup allocation of the approximately 3.2 KiB
+  PSRAM dirty-region list.
+- At 80 miles with a dense aircraft set, confirm `RADAR PERF` normally reports
+  restored bytes well below 309,600 and `fallback=0`.
+- Compare render time and frame gap through DATA AGE 12-15 seconds while TLS is active.
+- Exercise 20/40/80 ranges, selected/tracked aircraft, tag taps, airport focus and
+  expiry, airport-setting changes, and location changes.
+- Use `RADAR CACHE` before/after block values to identify whether range-cache rebuilds
+  coincide with the previously observed largest-block split.
+- Verify 15-second ADS-B updates, MQTT, OTA, no screen rolling, heap/PSRAM stability,
+  and extended soak behavior.
 
 ## Product 65 - 2026-08-02
 
 **Build:** `7IN-20260802-PRODUCT65-RADAR-FRAME-CADENCE`  
 **Source baseline:** Exact hardware-tested Product 64 replacement source  
 **Intended integration branch:** `main`  
-**Status:** Focused host-verified radar cadence update; PlatformIO and Product 65 hardware verification pending
+**Status:** Physically tested; elapsed-time sweep and static-layer cache improved motion, but dense-frame jerk remained
 
 ### Diagnosed
 
@@ -97,9 +143,19 @@ during that TLS window without altering networking.
 - PlatformIO compile/link, linker memory totals, upload, and physical testing were not
   run here.
 
+### Hardware verification
+
+- Product 65 booted with the expected marker and optional 309,600-byte PSRAM static
+  radar cache.
+- Repeated 20/40/80-mile native HTTPS requests restored PSRAM and internal heap after
+  each fetch; the 12 KiB ADS-B task stack retained approximately 7.3 KiB free.
+- The elapsed-time sweep and cached airport layer made motion visibly better, but the
+  remaining dense-frame path was still noticeably jerky during the TLS window.
+- At 80 miles with roughly 138-143 retained aircraft, the steady-state renderer used
+  the Product 65 complete cached-base copy every frame, motivating Product 66.
+
 ### Pending verification
 
-- Confirm the Product 65 marker after user-side PlatformIO build and upload.
 - Confirm the sweep retains its normal speed and aircraft motion is visibly steadier
   while DATA AGE moves through 12-15 seconds and native TLS is active.
 - Exercise 20/40/80-mile ranges, selected/tracked aircraft, radar taps, airport focus,

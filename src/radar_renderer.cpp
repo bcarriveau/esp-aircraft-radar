@@ -37,7 +37,9 @@ constexpr uint32_t SWEEP_PERIOD_MS = 13091;
 constexpr uint32_t ACTIVE_FRAME_GAP_LIMIT_MS = 1000;
 constexpr int BITMAP_CONTACT_CLEAR_RADIUS = 14;
 constexpr int DOT_CONTACT_CLEAR_RADIUS = 6;
-constexpr uint8_t DIRTY_RESTORE_CONTACT_LIMIT = 64;
+constexpr uint16_t DIRTY_REGION_CAPACITY =
+    aircraft::MAX_TARGETS * 2U + 4U;
+constexpr uint32_t RADAR_PERFORMANCE_LOG_INTERVAL_MS = 15000;
 
 View radarView;
 float sweepDegrees = 0;
@@ -142,6 +144,7 @@ struct ScreenContact {
 };
 
 struct LabelBox { int16_t x1, y1, x2, y2; };
+struct DirtyRect { int16_t x1, y1, x2, y2; };
 
 struct HitRegion {
   char hex[7]{};
@@ -165,6 +168,7 @@ struct ContactFrame {
 HitRegion* renderedHits = nullptr;
 ScreenContact* renderedContacts = nullptr;
 LabelBox* renderedLabelBoxes = nullptr;
+DirtyRect* dirtyRegions = nullptr;
 airport_data::NearbyAirport* airportWork = nullptr;
 uint16_t airportFrameCount = 0;
 uint8_t airportFrameSymbolMask = 0;
@@ -180,7 +184,12 @@ uint8_t airportLabelStatsMask = 0;
 uint16_t airportLabelStatsCount = 0;
 ContactFrame contactFrame;
 uint8_t renderedHitCount = 0;
+uint16_t dirtyRegionCount = 0;
 bool renderedTwentyMileRange = false;
+app_state::Snapshot cachedRadarSnapshot{};
+bool cachedRadarSnapshotValid = false;
+uint32_t lastPerformanceLogMs = 0;
+uint32_t currentRestoreBytes = 0;
 
 void invalidateStaticRadarLayer() {
   radarBaseValid = false;
@@ -309,6 +318,9 @@ bool allocateWorkingBuffers() {
   renderedLabelBoxes = static_cast<LabelBox*>(heap_caps_calloc(
       LABEL_BOX_CAPACITY, sizeof(LabelBox),
       MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  dirtyRegions = static_cast<DirtyRect*>(heap_caps_calloc(
+      DIRTY_REGION_CAPACITY, sizeof(DirtyRect),
+      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   airportWork = static_cast<airport_data::NearbyAirport*>(heap_caps_calloc(
       airport_data::MAX_NEARBY_AIRPORTS,
       sizeof(airport_data::NearbyAirport),
@@ -324,12 +336,14 @@ bool allocateWorkingBuffers() {
     free(renderedHits);
     free(renderedContacts);
     free(renderedLabelBoxes);
+    free(dirtyRegions);
     free(airportWork);
     free(airportLabelBoxes);
     free(airportVisibleLabelIdents);
     renderedHits = nullptr;
     renderedContacts = nullptr;
     renderedLabelBoxes = nullptr;
+    dirtyRegions = nullptr;
     airportWork = nullptr;
     airportLabelBoxes = nullptr;
     airportVisibleLabelIdents = nullptr;
@@ -372,6 +386,13 @@ bool allocateWorkingBuffers() {
     Serial.println(
         "Airport directory label-status icons disabled: buffer allocation failed");
   }
+  if (dirtyRegions) {
+    Serial.printf("Radar dirty-region buffer in PSRAM: %u bytes\n",
+                  (unsigned)(DIRTY_REGION_CAPACITY * sizeof(DirtyRect)));
+  } else {
+    Serial.println(
+        "Radar dirty-region buffer unavailable: using full-cache restores");
+  }
   if (radarBaseBuffer) {
     Serial.printf("Radar static base cache in PSRAM: %u bytes\n",
                   (unsigned)RADAR_BUFFER_BYTES);
@@ -388,6 +409,12 @@ void configure(const View& view) {
   radarBaseRangeGeneration = UINT32_MAX;
   lastSweepUpdateMs = 0;
   lastRenderStartedMs = 0;
+  lastPerformanceLogMs = 0;
+  cachedRadarSnapshot = app_state::Snapshot{};
+  cachedRadarSnapshotValid = false;
+  contactFrame.count = 0;
+  renderedHitCount = 0;
+  dirtyRegionCount = 0;
   performanceStats = PerformanceStats{};
   performanceStats.staticLayerCached = radarBaseBuffer != nullptr;
 }
@@ -622,13 +649,16 @@ void restoreLineFromBase(int x0, int y0, int x1, int y1) {
   int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
   int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
   int error = dx + dy;
+  uint32_t restoredPixels = 0;
   while (true) {
     restorePixelFromBase(x0, y0);
+    ++restoredPixels;
     if (x0 == x1 && y0 == y1) break;
     const int doubledError = 2 * error;
     if (doubledError >= dy) { error += dy; x0 += sx; }
     if (doubledError <= dx) { error += dx; y0 += sy; }
   }
+  currentRestoreBytes += restoredPixels * sizeof(lv_color_t);
 }
 
 void restoreRectFromBase(int x1, int y1, int x2, int y2) {
@@ -644,9 +674,51 @@ void restoreRectFromBase(int x1, int y1, int x2, int y2) {
     memcpy(radarView.buffer + y * WIDTH + x1,
            radarBaseBuffer + y * WIDTH + x1, rowBytes);
   }
+  currentRestoreBytes +=
+      static_cast<uint32_t>(rowBytes * static_cast<size_t>(y2 - y1 + 1));
 }
 
-void restorePreviousDynamicLayer(float previousSweepDegrees) {
+bool dirtyRectsTouch(const DirtyRect& first, const DirtyRect& second) {
+  return !(first.x2 + 1 < second.x1 || first.x1 - 1 > second.x2 ||
+           first.y2 + 1 < second.y1 || first.y1 - 1 > second.y2);
+}
+
+bool addDirtyRegion(int x1, int y1, int x2, int y2) {
+  if (!dirtyRegions) return false;
+  x1 = constrain(x1, 0, WIDTH - 1);
+  y1 = constrain(y1, 0, HEIGHT - 1);
+  x2 = constrain(x2, 0, WIDTH - 1);
+  y2 = constrain(y2, 0, HEIGHT - 1);
+  if (x2 < x1 || y2 < y1) return true;
+
+  DirtyRect combined{
+    static_cast<int16_t>(x1), static_cast<int16_t>(y1),
+    static_cast<int16_t>(x2), static_cast<int16_t>(y2)
+  };
+  for (uint16_t index = 0; index < dirtyRegionCount;) {
+    if (!dirtyRectsTouch(combined, dirtyRegions[index])) {
+      ++index;
+      continue;
+    }
+    combined.x1 = min(combined.x1, dirtyRegions[index].x1);
+    combined.y1 = min(combined.y1, dirtyRegions[index].y1);
+    combined.x2 = max(combined.x2, dirtyRegions[index].x2);
+    combined.y2 = max(combined.y2, dirtyRegions[index].y2);
+    dirtyRegions[index] = dirtyRegions[--dirtyRegionCount];
+    index = 0;
+  }
+  if (dirtyRegionCount >= DIRTY_REGION_CAPACITY) return false;
+  dirtyRegions[dirtyRegionCount++] = combined;
+  return true;
+}
+
+bool restorePreviousDynamicLayer(float previousSweepDegrees) {
+  if (!dirtyRegions) return false;
+  dirtyRegionCount = 0;
+  currentRestoreBytes = 0;
+
+  // The sweep is sparse and diagonal, so restoring its exact pixels avoids a
+  // large wedge copy. Contact and tag rectangles are merged separately below.
   for (int tail = 18; tail >= 0; --tail) {
     const float angle =
         (previousSweepDegrees - tail * 1.6f) * M_PI / 180.0f;
@@ -660,8 +732,10 @@ void restorePreviousDynamicLayer(float previousSweepDegrees) {
       CENTER_X, CENTER_Y,
       CENTER_X + (int)(sin(mainAngle) * RADIUS),
       CENTER_Y - (int)(cos(mainAngle) * RADIUS));
-  restoreRectFromBase(CENTER_X - 3, CENTER_Y - 3,
-                      CENTER_X + 3, CENTER_Y + 3);
+  if (!addDirtyRegion(CENTER_X - 3, CENTER_Y - 3,
+                      CENTER_X + 3, CENTER_Y + 3)) {
+    return false;
+  }
 
   for (uint8_t index = 0; index < contactFrame.count; ++index) {
     const ScreenContact& contact = contactFrame.contacts[index];
@@ -669,15 +743,24 @@ void restorePreviousDynamicLayer(float previousSweepDegrees) {
         renderedTwentyMileRange || contact.selected || contact.tracked
             ? BITMAP_CONTACT_CLEAR_RADIUS
             : DOT_CONTACT_CLEAR_RADIUS;
-    restoreRectFromBase(contact.x - clearRadius, contact.y - clearRadius,
-                        contact.x + clearRadius, contact.y + clearRadius);
+    if (!addDirtyRegion(contact.x - clearRadius, contact.y - clearRadius,
+                        contact.x + clearRadius, contact.y + clearRadius)) {
+      return false;
+    }
   }
   for (uint8_t index = 0; index < renderedHitCount; ++index) {
     const HitRegion& hit = renderedHits[index];
     if (!hit.hasTag) continue;
-    restoreRectFromBase(hit.tag.x1 - 1, hit.tag.y1 - 1,
-                        hit.tag.x2 + 1, hit.tag.y2 + 1);
+    if (!addDirtyRegion(hit.tag.x1 - 1, hit.tag.y1 - 1,
+                        hit.tag.x2 + 1, hit.tag.y2 + 1)) {
+      return false;
+    }
   }
+  for (uint16_t index = 0; index < dirtyRegionCount; ++index) {
+    const DirtyRect& region = dirtyRegions[index];
+    restoreRectFromBase(region.x1, region.y1, region.x2, region.y2);
+  }
+  return true;
 }
 
 bool airportScreenPosition(const airport_data::NearbyAirport& airport,
@@ -782,6 +865,9 @@ void drawAirportLabels(float rangeMiles);
 
 bool rebuildStaticRadarLayer(float rangeMiles, uint32_t rangeGeneration) {
   if (!radarBaseBuffer || !radarView.canvas || !radarView.buffer) return false;
+  const uint32_t heapBefore = ESP.getFreeHeap();
+  const uint32_t blockBefore = heap_caps_get_largest_free_block(
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   lv_color_t* const displayBuffer = radarView.buffer;
   bindRadarCanvasBuffer(radarBaseBuffer);
   drawRadarBase();
@@ -792,6 +878,14 @@ bool rebuildStaticRadarLayer(float rangeMiles, uint32_t rangeGeneration) {
   radarBaseValid = true;
   radarBaseRangeGeneration = rangeGeneration;
   ++performanceStats.staticLayerRebuilds;
+  const uint32_t heapAfter = ESP.getFreeHeap();
+  const uint32_t blockAfter = heap_caps_get_largest_free_block(
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  Serial.printf(
+      "RADAR CACHE range=%.0f gen=%lu heap=%lu->%lu block=%lu->%lu\n",
+      rangeMiles, (unsigned long)rangeGeneration,
+      (unsigned long)heapBefore, (unsigned long)heapAfter,
+      (unsigned long)blockBefore, (unsigned long)blockAfter);
   return true;
 }
 
@@ -1737,7 +1831,8 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
 }
 
 }  // namespace
-bool render(aircraft::Target* workTargets, const char* selectedHex) {
+bool render(aircraft::Target* workTargets, const char* selectedHex,
+            app_state::Snapshot* renderedSnapshot) {
   if (!radarView.buffer || !radarView.canvas || !workTargets ||
       !renderedHits || !renderedContacts || !renderedLabelBoxes ||
       !contactFrame.contacts) {
@@ -1758,8 +1853,19 @@ bool render(aircraft::Target* workTargets, const char* selectedHex) {
   }
   lastRenderStartedMs = frameStartedMs;
 
-  app_state::Snapshot snapshot;
-  app_state::copySnapshot(workTargets, snapshot);
+  const uint32_t currentTargetVersion = app_state::targetVersion();
+  const uint32_t currentRangeGeneration = app_state::rangeGeneration();
+  const uint32_t currentTrackingVersion = app_state::trackingVersion();
+  if (!cachedRadarSnapshotValid ||
+      cachedRadarSnapshot.targetVersion != currentTargetVersion ||
+      cachedRadarSnapshot.rangeGeneration != currentRangeGeneration ||
+      cachedRadarSnapshot.trackingVersion != currentTrackingVersion) {
+    app_state::copySnapshot(workTargets, cachedRadarSnapshot);
+    cachedRadarSnapshotValid = true;
+    ++performanceStats.snapshotCopies;
+  }
+  const app_state::Snapshot& snapshot = cachedRadarSnapshot;
+  if (renderedSnapshot) *renderedSnapshot = snapshot;
   const uint8_t count = snapshot.count;
   const uint32_t publishedAt = snapshot.lastUpdateMs;
   const uint32_t contactAgeMs =
@@ -1784,6 +1890,8 @@ bool render(aircraft::Target* workTargets, const char* selectedHex) {
   // unchanged. Focus changes invalidate both the cache and label statistics.
   airportFocusActive();
 
+  currentRestoreBytes = 0;
+  dirtyRegionCount = 0;
   if (radarBaseBuffer) {
     const bool rebuilt =
         !radarBaseValid ||
@@ -1791,13 +1899,15 @@ bool render(aircraft::Target* workTargets, const char* selectedHex) {
     if (rebuilt) {
       rebuildStaticRadarLayer(rangeMiles, snapshot.rangeGeneration);
       copyStaticRadarLayerToDisplay();
-    } else if (contactFrame.count <= DIRTY_RESTORE_CONTACT_LIMIT) {
-      restorePreviousDynamicLayer(sweepDegrees);
-    } else {
-      // Dense 40/80-mile frames are faster as one bounded PSRAM copy than as
-      // thousands of tiny row restores. The static airport work still remains
-      // cached and is not recalculated.
+      currentRestoreBytes = RADAR_BUFFER_BYTES;
+    } else if (!restorePreviousDynamicLayer(sweepDegrees)) {
+      // The region buffer is optional and deterministically bounded. If it is
+      // unavailable or ever overflows, restore the complete cached layer for
+      // this frame rather than leaving stale dynamic pixels behind.
+      currentRestoreBytes = RADAR_BUFFER_BYTES;
+      dirtyRegionCount = 0;
       copyStaticRadarLayerToDisplay();
+      ++performanceStats.fullCacheFallbacks;
     }
   } else {
     drawRadarBase();
@@ -1835,6 +1945,35 @@ bool render(aircraft::Target* workTargets, const char* selectedHex) {
   performanceStats.lastRenderUs = renderUs;
   performanceStats.maximumRenderUs =
       max(performanceStats.maximumRenderUs, renderUs);
+  performanceStats.lastRestoredBytes = currentRestoreBytes;
+  performanceStats.maximumRestoredBytes =
+      max(performanceStats.maximumRestoredBytes, currentRestoreBytes);
+  performanceStats.lastDirtyRegionCount = dirtyRegionCount;
+  performanceStats.lastContactCount = contactFrame.count;
+
+  if (frameStartedMs - lastPerformanceLogMs >=
+          RADAR_PERFORMANCE_LOG_INTERVAL_MS &&
+      !app_state::fetchInProgress()) {
+    lastPerformanceLogMs = frameStartedMs;
+    const uint32_t freeHeap = ESP.getFreeHeap();
+    const uint32_t largestBlock = heap_caps_get_largest_free_block(
+        MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    Serial.printf(
+        "RADAR PERF render=%lu/%lu us gap=%lu/%lu ms contacts=%u "
+        "dirty=%u restore=%lu B snapshots=%lu cache=%lu fallback=%lu "
+        "heap=%lu block=%lu\n",
+        (unsigned long)performanceStats.lastRenderUs,
+        (unsigned long)performanceStats.maximumRenderUs,
+        (unsigned long)performanceStats.lastFrameGapMs,
+        (unsigned long)performanceStats.maximumFrameGapMs,
+        (unsigned)performanceStats.lastContactCount,
+        (unsigned)performanceStats.lastDirtyRegionCount,
+        (unsigned long)performanceStats.lastRestoredBytes,
+        (unsigned long)performanceStats.snapshotCopies,
+        (unsigned long)performanceStats.staticLayerRebuilds,
+        (unsigned long)performanceStats.fullCacheFallbacks,
+        (unsigned long)freeHeap, (unsigned long)largestBlock);
+  }
   return selectedAvailable;
 }
 

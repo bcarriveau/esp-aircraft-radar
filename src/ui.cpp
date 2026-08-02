@@ -1563,9 +1563,7 @@ float projectedTrackedDistance(const aircraft::Target& target,
   return sqrtf(northMiles * northMiles + eastMiles * eastMiles);
 }
 
-void autoExpandTrackedRange() {
-  app_state::Snapshot snapshot;
-  app_state::copySnapshot(uiTargets, snapshot);
+void autoExpandTrackedRange(const app_state::Snapshot& snapshot) {
   if (!snapshot.manualTracking || snapshot.rangeMiles >= 79.9f) return;
 
   for (uint8_t i = 0; i < snapshot.count; ++i) {
@@ -1813,7 +1811,10 @@ void detailTrackEvent(lv_event_t*) {
 }
 
 void renderRadarPage() {
-  const bool selectedAvailable = radar::render(uiTargets, selectedHex);
+  app_state::Snapshot snapshot;
+  const bool selectedAvailable =
+      radar::render(uiTargets, selectedHex, &snapshot);
+  autoExpandTrackedRange(snapshot);
   if (hasSelectedAircraft() && !selectedAvailable) {
     clearSelectedAircraft(true);
   }
@@ -3714,7 +3715,6 @@ void update(uint32_t now) {
     updateMqttPanel();
   }
   if (currentPage == 0 && !detailTargetValid) {
-    autoExpandTrackedRange();
     renderRadarPage();
   }
   if (now - lastHeaderUpdate >= 500) {

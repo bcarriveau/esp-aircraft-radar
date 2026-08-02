@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260802-PRODUCT65-RADAR-FRAME-CADENCE
+7IN-20260802-PRODUCT66-RADAR-DIRTY-REGIONS
 ```
 
 Current intended repository branch:
@@ -38,31 +38,37 @@ tag:
 product-15-hardened
 ```
 
-Product 65 is the current source candidate on `main`, built from the exact
-hardware-tested Product 64 replacement source. It keeps the Product 63 PSRAM-only
-ADS-B JSON and response-body protections, Product 64's measured 12 KiB core-0 ADS-B
-task stack, and the unchanged 128 KiB LVGL pool.
+Product 66 is the current source candidate for `main`, built from the exact
+hardware-tested Product 65 replacement source. It keeps Product 63's PSRAM-only ADS-B
+JSON and response-body protections, Product 64's measured 12 KiB core-0 ADS-B task
+stack, the unchanged 128 KiB LVGL pool, and Product 65's elapsed-time radar sweep and
+optional 309,600-byte PSRAM static radar/airport cache.
 
-Product 65 makes radar motion elapsed-time based and reduces repeated canvas work.
-The fixed grid and configured airport layer are cached in an optional 309,600-byte
-PSRAM buffer and rebuilt only after a range, location, airport-setting, or temporary
-airport-focus change. Sparse frames restore only the prior sweep, contacts, and tags;
-dense frames use one bounded copy of the cached base. If the optional cache cannot be
-allocated, the established full-frame renderer remains available.
+Product 65 made the sweep and aircraft motion visibly better, but dense 40/80-mile
+frames still restored the complete 430 x 360 cached layer every 80 ms. With roughly
+138-143 retained aircraft at 80 miles, that meant a 309,600-byte PSRAM-to-PSRAM copy
+on every frame while TLS, display DMA, contact drawing, and label work shared memory
+bandwidth.
 
-Product 64 hardware logs confirmed that the stack reduction increased the steady
-largest internal block to about 61 KiB with MQTT connected, while repeated native
-HTTPS requests still recovered fully after each fetch. The deepest supplied native
-TLS sample retained about 14 KiB as the largest internal block, and the 12 KiB ADS-B
-task stack retained about 7.4 KiB free. The logs also tied the visible radar slowdown
-at data age 12-13 seconds to the approximately 2.7-second HTTPS request window.
+Product 66 replaces that dense steady-state copy with a deterministic PSRAM list of
+merged dirty rectangles. The previous sweep is restored by exact pixels, while prior
+contact and tag rectangles are clipped, merged, and restored by bounded rows. The
+complete cached-layer copy remains a safe fallback if the optional dirty-region
+allocation is unavailable or its deterministic capacity is ever exceeded.
 
-Product 65 adds current/maximum radar-render duration and maximum active frame-gap
-diagnostics to the System page. It does not alter ADS-B cadence, HTTPS behavior,
-MQTT, target capacity, selection/tracking, panel timing, DMA, or the 20-scanline RGB
+The coherent radar target snapshot is now recopied only after a published target
+version, range generation, or tracking-state change. Aircraft projection, contact
+bitmaps/dots, selected and tracked styling, and all labels still update every radar
+frame. Throttled `RADAR PERF` logs report render time, frame gap, contacts, dirty
+regions, restored bytes, snapshot copies, cache rebuilds, fallback count, heap, and
+largest block. `RADAR CACHE` logs bracket static-layer rebuilds to help locate the
+observed range-change largest-block fragmentation.
+
+Product 66 does not alter ADS-B cadence, HTTPS behavior, MQTT, target capacity,
+selection/tracking, airport capacities, panel timing, DMA, or the 20-scanline RGB
 bounce buffer.
 
-Product 65 retains Product 62's bounded 64-row airport eye-coverage fix, Product
+Product 66 retains Product 62's bounded 64-row airport eye-coverage fix, Product
 61's OTA socket pacing, Product 60's idempotent `/prepare`, Product 59's unused
 BLE-memory release and acknowledged MQTT teardown before hard Wi-Fi recovery, and
 Product 58's network-exclusive OTA window and IRAM-safe restart.

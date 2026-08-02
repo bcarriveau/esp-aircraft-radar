@@ -4,6 +4,8 @@
 
 #include "aircraft_data.h"
 
+namespace app_state { struct Snapshot; }
+
 namespace radar {
 // Owns radar canvas drawing and aircraft-preview rendering.
 
@@ -61,12 +63,19 @@ struct PerformanceStats {
   uint32_t lastFrameGapMs = 0;
   uint32_t maximumFrameGapMs = 0;
   uint32_t staticLayerRebuilds = 0;
+  uint32_t snapshotCopies = 0;
+  uint32_t fullCacheFallbacks = 0;
+  uint32_t lastRestoredBytes = 0;
+  uint32_t maximumRestoredBytes = 0;
+  uint16_t lastDirtyRegionCount = 0;
+  uint8_t lastContactCount = 0;
   bool staticLayerCached = false;
 };
 
 bool allocateWorkingBuffers();
 void configure(const View& view);
-bool render(aircraft::Target* workTargets, const char* selectedHex);
+bool render(aircraft::Target* workTargets, const char* selectedHex,
+            app_state::Snapshot* renderedSnapshot = nullptr);
 void copyPerformanceStats(PerformanceStats& stats);
 bool hitTest(int canvasX, int canvasY, HitResult& result);
 bool airportLabelCount(uint8_t rangeIndex, uint8_t labelMask,
