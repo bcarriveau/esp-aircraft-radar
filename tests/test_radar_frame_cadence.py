@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Focused Product 66 bounded radar dirty-region regression checks."""
+"""Focused Product 67 radar cadence and gap-attribution checks."""
 
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_product66_marker_and_scope():
+def test_product67_marker_and_scope():
     build = (ROOT / "include/build_info.h").read_text(encoding="utf-8")
     renderer = (ROOT / "src/radar_renderer.cpp").read_text(encoding="utf-8")
     renderer_h = (ROOT / "include/radar_renderer.h").read_text(encoding="utf-8")
@@ -14,7 +14,7 @@ def test_product66_marker_and_scope():
     lv_conf = (ROOT / "include/lv_conf.h").read_text(encoding="utf-8")
     panel = (ROOT / "include/waveshare_panel_board.h").read_text(encoding="utf-8")
 
-    assert "7IN-20260802-PRODUCT66-RADAR-DIRTY-REGIONS" in build
+    assert "7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION" in build
     assert "SWEEP_DEGREES_PER_SECOND = 27.5f" in renderer
     assert "elapsedMs * (SWEEP_DEGREES_PER_SECOND / 1000.0f)" in renderer
     assert "sweepDegrees + 2.2f" not in renderer
@@ -28,7 +28,7 @@ def test_product66_marker_and_scope():
 
     assert "struct PerformanceStats" in renderer_h
     assert "copyPerformanceStats" in renderer_h
-    assert '"RADAR      %lu / %lu ms  GAP %lu ms\\n"' in ui
+    assert '"RADAR      %lu / %lu ms  G%lu %s\\n"' in ui
     assert "RADAR PERF render=" in renderer
     assert "RADAR CACHE range=" in renderer
 
@@ -83,3 +83,43 @@ def test_static_airport_layer_invalidation_paths():
     assert focus.count("invalidateStaticRadarLayer();") >= 2
     invalidator = renderer[renderer.index("void invalidateAirportLabelCount"):renderer.index("void drawAircraftPreview")]
     assert "invalidateStaticRadarLayer();" in invalidator
+
+
+def test_gap_attribution_is_bounded_and_stage_specific():
+    app_h = (ROOT / "include/app_state.h").read_text(encoding="utf-8")
+    app = (ROOT / "src/app_state.cpp").read_text(encoding="utf-8")
+    renderer = (ROOT / "src/radar_renderer.cpp").read_text(encoding="utf-8")
+    renderer_h = (ROOT / "include/radar_renderer.h").read_text(encoding="utf-8")
+
+    for token in (
+        "ActivityStage::DNS",
+        "ActivityStage::TLS_HANDSHAKE",
+        "ActivityStage::RESPONSE_BODY",
+        "ActivityStage::JSON",
+        "ActivityStage::PUBLISH",
+        "ActivityStage::RADAR_CACHE",
+    ):
+        assert token in app or token in renderer
+    assert "ACTIVITY_WINDOW_CAPACITY = 16" in app
+    assert "dominantActivityStage" in app_h
+    assert "recordActivityWindow" in app_h
+    assert "activityStageForFetchLabel" in app
+    assert 'strcmp(stage, "native-start") == 0' in app
+    assert 'strcmp(stage, "tls-handshake") == 0' in app
+    assert 'strcmp(stage, "payload-ready") == 0' in app
+    assert 'strcmp(stage, "transport-released") == 0' in app
+    assert "transitionActivityStageLocked(ActivityStage::PUBLISH" in app
+    assert "maximumFrameGapByStage" in renderer_h
+    assert "RADAR GAP MAX idle=" in renderer
+    assert "stage=%s/%s" in renderer
+    assert "recordActivityWindow(app_state::ActivityStage::RADAR_CACHE" in renderer
+
+
+def test_gap_attribution_does_not_change_protected_sizes():
+    network = (ROOT / "src/adsb_network.cpp").read_text(encoding="utf-8")
+    lv_conf = (ROOT / "include/lv_conf.h").read_text(encoding="utf-8")
+    panel = (ROOT / "include/waveshare_panel_board.h").read_text(encoding="utf-8")
+    assert "ADSB_TASK_STACK_BYTES = 12U * 1024U" in network
+    assert "FETCH_INTERVAL_MS = 15000" in (ROOT / "include/adsb_network.h").read_text(encoding="utf-8")
+    assert "#define LV_MEM_SIZE (128U * 1024U)" in lv_conf
+    assert "ESP_PANEL_LCD_WIDTH * 20" in panel

@@ -91,7 +91,7 @@ def main() -> None:
     ui = (ROOT / "src" / "ui.cpp").read_text(encoding="utf-8")
     main_cpp = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
 
-    require(build, "7IN-20260802-PRODUCT66-RADAR-DIRTY-REGIONS",
+    require(build, "7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION",
             "Product 66 marker")
     require(ui, '{"RADAR", "TRACKS", "AIRSPACE", "AIRPORTS", "SYSTEM"}',
             "five-tab navigation")

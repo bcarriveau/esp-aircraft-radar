@@ -865,6 +865,7 @@ void drawAirportLabels(float rangeMiles);
 
 bool rebuildStaticRadarLayer(float rangeMiles, uint32_t rangeGeneration) {
   if (!radarBaseBuffer || !radarView.canvas || !radarView.buffer) return false;
+  const uint32_t cacheStartedMs = millis();
   const uint32_t heapBefore = ESP.getFreeHeap();
   const uint32_t blockBefore = heap_caps_get_largest_free_block(
       MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -881,9 +882,14 @@ bool rebuildStaticRadarLayer(float rangeMiles, uint32_t rangeGeneration) {
   const uint32_t heapAfter = ESP.getFreeHeap();
   const uint32_t blockAfter = heap_caps_get_largest_free_block(
       MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const uint32_t cacheEndedMs = millis();
+  app_state::recordActivityWindow(app_state::ActivityStage::RADAR_CACHE,
+                                  cacheStartedMs, cacheEndedMs);
   Serial.printf(
-      "RADAR CACHE range=%.0f gen=%lu heap=%lu->%lu block=%lu->%lu\n",
+      "RADAR CACHE range=%.0f gen=%lu time=%lu ms "
+      "heap=%lu->%lu block=%lu->%lu\n",
       rangeMiles, (unsigned long)rangeGeneration,
+      (unsigned long)(cacheEndedMs - cacheStartedMs),
       (unsigned long)heapBefore, (unsigned long)heapAfter,
       (unsigned long)blockBefore, (unsigned long)blockAfter);
   return true;
@@ -1844,11 +1850,23 @@ bool render(aircraft::Target* workTargets, const char* selectedHex,
   if (lastRenderStartedMs != 0) {
     const uint32_t frameGapMs = frameStartedMs - lastRenderStartedMs;
     if (frameGapMs <= ACTIVE_FRAME_GAP_LIMIT_MS) {
+      const app_state::ActivityStage gapStage =
+          app_state::dominantActivityStage(lastRenderStartedMs,
+                                           frameStartedMs);
       performanceStats.lastFrameGapMs = frameGapMs;
-      performanceStats.maximumFrameGapMs =
-          max(performanceStats.maximumFrameGapMs, frameGapMs);
+      performanceStats.lastFrameGapStage = gapStage;
+      const size_t stageIndex = static_cast<size_t>(gapStage);
+      if (stageIndex < static_cast<size_t>(app_state::ActivityStage::COUNT)) {
+        performanceStats.maximumFrameGapByStage[stageIndex] = max(
+            performanceStats.maximumFrameGapByStage[stageIndex], frameGapMs);
+      }
+      if (frameGapMs > performanceStats.maximumFrameGapMs) {
+        performanceStats.maximumFrameGapMs = frameGapMs;
+        performanceStats.maximumFrameGapStage = gapStage;
+      }
     } else {
       performanceStats.lastFrameGapMs = 0;
+      performanceStats.lastFrameGapStage = app_state::ActivityStage::IDLE;
     }
   }
   lastRenderStartedMs = frameStartedMs;
@@ -1959,13 +1977,15 @@ bool render(aircraft::Target* workTargets, const char* selectedHex,
     const uint32_t largestBlock = heap_caps_get_largest_free_block(
         MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     Serial.printf(
-        "RADAR PERF render=%lu/%lu us gap=%lu/%lu ms contacts=%u "
-        "dirty=%u restore=%lu B snapshots=%lu cache=%lu fallback=%lu "
-        "heap=%lu block=%lu\n",
+        "RADAR PERF render=%lu/%lu us gap=%lu/%lu ms stage=%s/%s "
+        "contacts=%u dirty=%u restore=%lu B snapshots=%lu cache=%lu "
+        "fallback=%lu heap=%lu block=%lu\n",
         (unsigned long)performanceStats.lastRenderUs,
         (unsigned long)performanceStats.maximumRenderUs,
         (unsigned long)performanceStats.lastFrameGapMs,
         (unsigned long)performanceStats.maximumFrameGapMs,
+        app_state::activityStageName(performanceStats.lastFrameGapStage),
+        app_state::activityStageName(performanceStats.maximumFrameGapStage),
         (unsigned)performanceStats.lastContactCount,
         (unsigned)performanceStats.lastDirtyRegionCount,
         (unsigned long)performanceStats.lastRestoredBytes,
@@ -1973,6 +1993,25 @@ bool render(aircraft::Target* workTargets, const char* selectedHex,
         (unsigned long)performanceStats.staticLayerRebuilds,
         (unsigned long)performanceStats.fullCacheFallbacks,
         (unsigned long)freeHeap, (unsigned long)largestBlock);
+    Serial.printf(
+        "RADAR GAP MAX idle=%lu dns=%lu tls=%lu body=%lu json=%lu "
+        "publish=%lu cache=%lu other=%lu ms\n",
+        (unsigned long)performanceStats.maximumFrameGapByStage[
+            static_cast<size_t>(app_state::ActivityStage::IDLE)],
+        (unsigned long)performanceStats.maximumFrameGapByStage[
+            static_cast<size_t>(app_state::ActivityStage::DNS)],
+        (unsigned long)performanceStats.maximumFrameGapByStage[
+            static_cast<size_t>(app_state::ActivityStage::TLS_HANDSHAKE)],
+        (unsigned long)performanceStats.maximumFrameGapByStage[
+            static_cast<size_t>(app_state::ActivityStage::RESPONSE_BODY)],
+        (unsigned long)performanceStats.maximumFrameGapByStage[
+            static_cast<size_t>(app_state::ActivityStage::JSON)],
+        (unsigned long)performanceStats.maximumFrameGapByStage[
+            static_cast<size_t>(app_state::ActivityStage::PUBLISH)],
+        (unsigned long)performanceStats.maximumFrameGapByStage[
+            static_cast<size_t>(app_state::ActivityStage::RADAR_CACHE)],
+        (unsigned long)performanceStats.maximumFrameGapByStage[
+            static_cast<size_t>(app_state::ActivityStage::OTHER)]);
   }
   return selectedAvailable;
 }

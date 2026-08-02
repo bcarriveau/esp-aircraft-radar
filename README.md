@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260802-PRODUCT66-RADAR-DIRTY-REGIONS
+7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION
 ```
 
 Current intended repository branch:
@@ -38,8 +38,8 @@ tag:
 product-15-hardened
 ```
 
-Product 66 is the current source candidate for `main`, built from the exact
-hardware-tested Product 65 replacement source. It keeps Product 63's PSRAM-only ADS-B
+Product 67 is the current focused source candidate for `main`, built from the exact
+hardware-tested Product 66 replacement source. It keeps Product 63's PSRAM-only ADS-B
 JSON and response-body protections, Product 64's measured 12 KiB core-0 ADS-B task
 stack, the unchanged 128 KiB LVGL pool, and Product 65's elapsed-time radar sweep and
 optional 309,600-byte PSRAM static radar/airport cache.
@@ -50,25 +50,27 @@ frames still restored the complete 430 x 360 cached layer every 80 ms. With roug
 on every frame while TLS, display DMA, contact drawing, and label work shared memory
 bandwidth.
 
-Product 66 replaces that dense steady-state copy with a deterministic PSRAM list of
-merged dirty rectangles. The previous sweep is restored by exact pixels, while prior
-contact and tag rectangles are clipped, merged, and restored by bounded rows. The
-complete cached-layer copy remains a safe fallback if the optional dirty-region
-allocation is unavailable or its deterministic capacity is ever exceeded.
+Product 66 replaced that dense steady-state copy with a deterministic PSRAM list
+of merged dirty rectangles. Physical logs with roughly 124-136 retained aircraft
+showed normal render times around 14-26 ms, a worst observed render under 61 ms,
+`fallback=0`, stable heap/PSRAM recovery, and a remaining maximum frame-start gap of
+201 ms. That proved the renderer itself fits inside the 80 ms budget and narrowed the
+remaining visible jerk to scheduling delays around other activity.
 
-The coherent radar target snapshot is now recopied only after a published target
-version, range generation, or tracking-state change. Aircraft projection, contact
-bitmaps/dots, selected and tracked styling, and all labels still update every radar
-frame. Throttled `RADAR PERF` logs report render time, frame gap, contacts, dirty
-regions, restored bytes, snapshot copies, cache rebuilds, fallback count, heap, and
-largest block. `RADAR CACHE` logs bracket static-layer rebuilds to help locate the
-observed range-change largest-block fragmentation.
+Product 67 adds bounded diagnostic-only gap attribution. A 16-entry cross-core
+activity history classifies each active radar-frame interval as idle, DNS, TLS
+handshake, response body, JSON, target publication, radar-cache work, or other. The
+existing `RADAR PERF` line now reports the last and lifetime-maximum gap stages, and a
+second `RADAR GAP MAX` line reports the maximum gap seen in each category. The System
+page shows the stage associated with the lifetime maximum gap. Cache rebuild logs now
+include their measured duration.
 
-Product 66 does not alter ADS-B cadence, HTTPS behavior, MQTT, target capacity,
-selection/tracking, airport capacities, panel timing, DMA, or the 20-scanline RGB
-bounce buffer.
+Product 67 does not alter radar drawing, sweep timing, dirty-region behavior, ADS-B
+cadence, HTTPS transport, MQTT, target capacity, selection/tracking, airport
+capacities, panel timing, DMA, the 128 KiB LVGL pool, the 12 KiB ADS-B stack, or the
+20-scanline RGB bounce buffer.
 
-Product 66 retains Product 62's bounded 64-row airport eye-coverage fix, Product
+Product 67 retains Product 62's bounded 64-row airport eye-coverage fix, Product
 61's OTA socket pacing, Product 60's idempotent `/prepare`, Product 59's unused
 BLE-memory release and acknowledged MQTT teardown before hard Wi-Fi recovery, and
 Product 58's network-exclusive OTA window and IRAM-safe restart.

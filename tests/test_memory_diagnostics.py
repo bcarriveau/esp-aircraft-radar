@@ -16,7 +16,7 @@ def test_product_64_memory_marker_and_system_diagnostics() -> None:
     state = read("src/app_state.cpp")
     ui = read("src/ui.cpp")
 
-    assert "7IN-20260802-PRODUCT66-RADAR-DIRTY-REGIONS" in build
+    assert "7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION" in build
     assert "lastFetchMinimumFreeHeap" in header
     assert "lastFetchMinimumLargestInternalBlock" in header
     assert "lastFetchMinimumBlockStage" in header

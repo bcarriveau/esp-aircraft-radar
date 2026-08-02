@@ -11,6 +11,13 @@ namespace {
 constexpr float MIN_RADAR_RANGE_MILES = 20.0f;
 constexpr float MAX_RADAR_RANGE_MILES = 80.0f;
 constexpr uint8_t TRACKING_MISS_LIMIT = 3;
+constexpr uint8_t ACTIVITY_WINDOW_CAPACITY = 16;
+
+struct ActivityWindow {
+  ActivityStage stage = ActivityStage::IDLE;
+  uint32_t startedMs = 0;
+  uint32_t endedMs = 0;
+};
 
 struct SharedState {
   aircraft::Target* targets = nullptr;
@@ -29,6 +36,12 @@ struct SharedState {
   uint8_t trackingMissCount = 0;
   bool fetchInProgress = false;
   char activeFetchStage[24]{};
+  ActivityStage activeActivityStage = ActivityStage::IDLE;
+  uint32_t activeActivityStartedMs = 0;
+  bool activityStageInitialized = false;
+  ActivityWindow activityWindows[ACTIVITY_WINDOW_CAPACITY]{};
+  uint8_t activityWindowNext = 0;
+  uint8_t activityWindowCount = 0;
   uint32_t lastUpdateMs = 0;
   Diagnostics diagnostics;
 };
@@ -50,6 +63,75 @@ void copyMemoryStage(char* destination, size_t capacity,
   const char* value = stage && stage[0] ? stage : "unlabelled";
   strncpy(destination, value, capacity - 1);
   destination[capacity - 1] = 0;
+}
+
+bool timeBefore(uint32_t first, uint32_t second) {
+  return static_cast<int32_t>(first - second) < 0;
+}
+
+uint32_t activityOverlapMs(uint32_t firstStartedMs,
+                           uint32_t firstEndedMs,
+                           uint32_t secondStartedMs,
+                           uint32_t secondEndedMs) {
+  const uint32_t overlapStartedMs =
+      timeBefore(firstStartedMs, secondStartedMs)
+          ? secondStartedMs : firstStartedMs;
+  const uint32_t overlapEndedMs =
+      timeBefore(firstEndedMs, secondEndedMs)
+          ? firstEndedMs : secondEndedMs;
+  if (!timeBefore(overlapStartedMs, overlapEndedMs)) return 0;
+  return overlapEndedMs - overlapStartedMs;
+}
+
+void appendActivityWindowLocked(ActivityStage stage, uint32_t startedMs,
+                                uint32_t endedMs) {
+  if (stage == ActivityStage::COUNT ||
+      !timeBefore(startedMs, endedMs)) {
+    return;
+  }
+  ActivityWindow& window =
+      state.activityWindows[state.activityWindowNext];
+  window.stage = stage;
+  window.startedMs = startedMs;
+  window.endedMs = endedMs;
+  state.activityWindowNext = static_cast<uint8_t>(
+      (state.activityWindowNext + 1U) % ACTIVITY_WINDOW_CAPACITY);
+  if (state.activityWindowCount < ACTIVITY_WINDOW_CAPACITY) {
+    ++state.activityWindowCount;
+  }
+}
+
+void transitionActivityStageLocked(ActivityStage stage, uint32_t nowMs) {
+  if (stage == ActivityStage::COUNT) stage = ActivityStage::OTHER;
+  if (!state.activityStageInitialized) {
+    state.activeActivityStage = stage;
+    state.activeActivityStartedMs = nowMs;
+    state.activityStageInitialized = true;
+    return;
+  }
+  if (state.activeActivityStage == stage) return;
+  appendActivityWindowLocked(state.activeActivityStage,
+                             state.activeActivityStartedMs, nowMs);
+  state.activeActivityStage = stage;
+  state.activeActivityStartedMs = nowMs;
+}
+
+ActivityStage activityStageForFetchLabel(const char* stage) {
+  if (!stage || !stage[0]) return ActivityStage::OTHER;
+  if (strcmp(stage, "native-start") == 0) return ActivityStage::DNS;
+  if (strcmp(stage, "tls-handshake") == 0 ||
+      strcmp(stage, "fallback-start") == 0) {
+    return ActivityStage::TLS_HANDSHAKE;
+  }
+  if (strcmp(stage, "payload-ready") == 0 ||
+      strcmp(stage, "fallback-payload") == 0) {
+    return ActivityStage::RESPONSE_BODY;
+  }
+  if (strcmp(stage, "transport-released") == 0 ||
+      strcmp(stage, "fallback-release") == 0) {
+    return ActivityStage::JSON;
+  }
+  return ActivityStage::OTHER;
 }
 
 void observeMemoryLocked(const char* stage = nullptr) {
@@ -101,6 +183,11 @@ void observeMemoryLocked(const char* stage = nullptr) {
 }  // namespace
 
 void initialize() {
+  if (!state.activityStageInitialized) {
+    state.activeActivityStage = ActivityStage::IDLE;
+    state.activeActivityStartedMs = millis();
+    state.activityStageInitialized = true;
+  }
   if (!stateMutex) {
     stateMutex = xSemaphoreCreateMutex();
     if (!stateMutex) Serial.println("FATAL: App-state mutex allocation failed");
@@ -131,6 +218,8 @@ void publishTargets(const aircraft::Target* targets, uint8_t count,
   char lostTrackedHex[7]{};
   bool trackingCleared = false;
   bool locked = lockState();
+  const ActivityStage resumedActivityStage = state.activeActivityStage;
+  transitionActivityStageLocked(ActivityStage::PUBLISH, millis());
   if (state.manualTracking && state.trackedHex[0]) {
     bool trackedPresent = false;
     for (uint8_t i = 0; i < count; ++i) {
@@ -166,6 +255,7 @@ void publishTargets(const aircraft::Target* targets, uint8_t count,
   ++state.targetVersion;
   state.lastUpdateMs = updatedAtMs;
   state.locationUpdatePending = false;
+  transitionActivityStageLocked(resumedActivityStage, millis());
   unlockState(locked);
   if (trackingCleared) {
     Serial.printf(
@@ -358,6 +448,8 @@ bool isManuallyTracked(const aircraft::Target& target,
 void setFetchInProgress(bool inProgress) {
   bool locked = lockState();
   state.fetchInProgress = inProgress;
+  transitionActivityStageLocked(
+      inProgress ? ActivityStage::OTHER : ActivityStage::IDLE, millis());
   if (!inProgress) state.activeFetchStage[0] = 0;
   unlockState(locked);
 }
@@ -379,6 +471,7 @@ uint32_t lastUpdateMs() {
 void beginFetch() {
   bool locked = lockState();
   state.fetchInProgress = true;
+  transitionActivityStageLocked(ActivityStage::OTHER, millis());
   copyMemoryStage(state.activeFetchStage,
                   sizeof(state.activeFetchStage), "begin-fetch");
   state.diagnostics.lastAttemptMs = millis();
@@ -399,6 +492,7 @@ void recordFetchSuccess(uint32_t durationMs, uint32_t responseBytes,
   bool locked = lockState();
   observeMemoryLocked("fetch-complete");
   state.fetchInProgress = false;
+  transitionActivityStageLocked(ActivityStage::IDLE, millis());
   state.activeFetchStage[0] = 0;
   state.diagnostics.lastSuccessMs = millis();
   state.diagnostics.lastDurationMs = durationMs;
@@ -417,6 +511,7 @@ void recordFetchFailure(FetchFailureStage stage, uint32_t durationMs,
   bool locked = lockState();
   observeMemoryLocked("fetch-complete");
   state.fetchInProgress = false;
+  transitionActivityStageLocked(ActivityStage::IDLE, millis());
   state.activeFetchStage[0] = 0;
   state.diagnostics.lastDurationMs = durationMs;
   state.diagnostics.lastResponseBytes = responseBytes;
@@ -432,6 +527,7 @@ void recordDiscardedResponse(uint32_t durationMs, uint32_t responseBytes,
   bool locked = lockState();
   observeMemoryLocked("fetch-complete");
   state.fetchInProgress = false;
+  transitionActivityStageLocked(ActivityStage::IDLE, millis());
   state.activeFetchStage[0] = 0;
   ++state.diagnostics.discardedResponses;
   state.diagnostics.lastDurationMs = durationMs;
@@ -472,9 +568,71 @@ void observeFetchMemory(const char* stage) {
   if (state.fetchInProgress && stage && stage[0]) {
     copyMemoryStage(state.activeFetchStage,
                     sizeof(state.activeFetchStage), stage);
+    transitionActivityStageLocked(activityStageForFetchLabel(stage), millis());
   }
   observeMemoryLocked(stage);
   unlockState(locked);
+}
+
+void recordActivityWindow(ActivityStage stage, uint32_t startedMs,
+                          uint32_t endedMs) {
+  bool locked = lockState();
+  appendActivityWindowLocked(stage, startedMs, endedMs);
+  unlockState(locked);
+}
+
+ActivityStage dominantActivityStage(uint32_t startedMs, uint32_t endedMs) {
+  if (!timeBefore(startedMs, endedMs)) return ActivityStage::IDLE;
+  constexpr size_t STAGE_COUNT =
+      static_cast<size_t>(ActivityStage::COUNT);
+  uint32_t overlapByStage[STAGE_COUNT]{};
+
+  bool locked = lockState();
+  const uint8_t first = static_cast<uint8_t>(
+      (state.activityWindowNext + ACTIVITY_WINDOW_CAPACITY -
+       state.activityWindowCount) % ACTIVITY_WINDOW_CAPACITY);
+  for (uint8_t offset = 0; offset < state.activityWindowCount; ++offset) {
+    const uint8_t index = static_cast<uint8_t>(
+        (first + offset) % ACTIVITY_WINDOW_CAPACITY);
+    const ActivityWindow& window = state.activityWindows[index];
+    const size_t stageIndex = static_cast<size_t>(window.stage);
+    if (stageIndex >= STAGE_COUNT) continue;
+    overlapByStage[stageIndex] += activityOverlapMs(
+        startedMs, endedMs, window.startedMs, window.endedMs);
+  }
+  const size_t activeStageIndex =
+      static_cast<size_t>(state.activeActivityStage);
+  if (activeStageIndex < STAGE_COUNT && state.activityStageInitialized) {
+    overlapByStage[activeStageIndex] += activityOverlapMs(
+        startedMs, endedMs, state.activeActivityStartedMs, endedMs);
+  }
+  unlockState(locked);
+
+  ActivityStage dominant = ActivityStage::IDLE;
+  uint32_t dominantOverlapMs = 0;
+  // Prefer a specific recorded activity over IDLE. This makes a bounded cache
+  // or network window visible even though the rest of the 80 ms cadence is idle.
+  for (size_t index = 1; index < STAGE_COUNT; ++index) {
+    if (overlapByStage[index] > dominantOverlapMs) {
+      dominantOverlapMs = overlapByStage[index];
+      dominant = static_cast<ActivityStage>(index);
+    }
+  }
+  return dominantOverlapMs > 0 ? dominant : ActivityStage::IDLE;
+}
+
+const char* activityStageName(ActivityStage stage) {
+  switch (stage) {
+    case ActivityStage::IDLE: return "idle";
+    case ActivityStage::DNS: return "dns";
+    case ActivityStage::TLS_HANDSHAKE: return "tls";
+    case ActivityStage::RESPONSE_BODY: return "body";
+    case ActivityStage::JSON: return "json";
+    case ActivityStage::PUBLISH: return "publish";
+    case ActivityStage::RADAR_CACHE: return "cache";
+    case ActivityStage::OTHER: return "other";
+    default: return "unknown";
+  }
 }
 
 void copyDiagnostics(Diagnostics& diagnostics) {

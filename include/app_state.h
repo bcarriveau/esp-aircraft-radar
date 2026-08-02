@@ -22,6 +22,20 @@ enum class FetchFailureStage : uint8_t {
   STALE_RESULT
 };
 
+// Bounded cross-core activity categories used only to attribute delayed radar
+// frames. They do not change request scheduling, transport behavior, or UI work.
+enum class ActivityStage : uint8_t {
+  IDLE,
+  DNS,
+  TLS_HANDSHAKE,
+  RESPONSE_BODY,
+  JSON,
+  PUBLISH,
+  RADAR_CACHE,
+  OTHER,
+  COUNT
+};
+
 struct Snapshot {
   uint8_t count = 0;
   uint32_t targetVersion = 0;
@@ -114,6 +128,15 @@ void recordAdsbTaskStackFreeBytes(uint32_t freeBytes);
 // current ADS-B fetch stage without allowing unrelated service labels to replace it.
 void observeMemory(const char* stage = nullptr);
 void observeFetchMemory(const char* stage);
+// Records a bounded completed activity interval without replacing the current
+// ADS-B stage. Radar cache rebuilds use this to distinguish cache work from
+// network stalls.
+void recordActivityWindow(ActivityStage stage, uint32_t startedMs,
+                          uint32_t endedMs);
+// Returns the non-idle activity with the greatest overlap in the requested
+// interval. IDLE is returned when no recorded activity overlaps it.
+ActivityStage dominantActivityStage(uint32_t startedMs, uint32_t endedMs);
+const char* activityStageName(ActivityStage stage);
 void copyDiagnostics(Diagnostics& diagnostics);
 const char* failureStageName(FetchFailureStage stage);
 

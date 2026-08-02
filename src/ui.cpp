@@ -2074,7 +2074,7 @@ void renderSystemPage() {
       "PSRAM      %u KB  MIN %u KB\n"
       "LVGL       %u / %u KB  MAX %u KB\n"
       "LVGL FREE  %u KB  BIG %u KB  F%u%%\n"
-      "RADAR      %lu / %lu ms  GAP %lu ms\n"
+      "RADAR      %lu / %lu ms  G%lu %s\n"
       "ADSB STK   %u B FREE\n"
       "AIRPORTS   %s  %u CACHED",
       settings::storageAvailable() ? "READY" : "ERROR",
@@ -2105,6 +2105,7 @@ void renderSystemPage() {
       (unsigned long)((radarPerformance.lastRenderUs + 500U) / 1000U),
       (unsigned long)((radarPerformance.maximumRenderUs + 500U) / 1000U),
       (unsigned long)radarPerformance.maximumFrameGapMs,
+      app_state::activityStageName(radarPerformance.maximumFrameGapStage),
       (unsigned)diagnostics.minimumAdsbTaskStackFreeBytes,
       airportStatus.ready ? "READY" : "OFF",
       (unsigned)airportStatus.cachedCount);

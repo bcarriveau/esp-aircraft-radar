@@ -14,22 +14,72 @@ repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 66
-- **Current build marker:** `7IN-20260802-PRODUCT66-RADAR-DIRTY-REGIONS`
+- **Current source:** Product 67
+- **Current build marker:** `7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION`
 - **Intended integration branch:** `main`
-- **Product 66 source baseline:** Exact hardware-tested Product 65 replacement source; repository ancestry reaches Product 63 `main` commit `cf8504fb68b069fce096187b3f3012bdacee4866`
+- **Product 67 source baseline:** Exact hardware-tested Product 66 replacement source; repository ancestry reaches Product 63 `main` commit `cf8504fb68b069fce096187b3f3012bdacee4866`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 66 is the current focused source candidate for `main`, built from the exact
-Product 65 files that were physically exercised. Product 65 kept memory stable and
-made radar motion visibly better, but dense 40/80-mile frames still copied the complete
-309,600-byte cached radar layer every 80 ms. Product 66 removes that steady-state full
-copy in favor of bounded merged dirty-region restoration while preserving the elapsed-
-time sweep and all Product 64 memory protections.
+Product 67 is the current focused source candidate for `main`, built from the exact
+Product 66 files that were physically exercised. Product 66 removed the dense full-
+canvas copy and kept normal render work inside the 80 ms budget, while the remaining
+visible jerk correlated with frame-start gaps up to 201 ms. Product 67 adds bounded
+cross-core stage attribution only so the next device log can identify whether those
+gaps belong to DNS, TLS, body reception, JSON, publication, cache work, or idle time.
+
+## Product 67 - 2026-08-02
+
+### Radar frame-gap attribution
+
+**Build:** `7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION`  
+**Source baseline:** Exact hardware-tested Product 66 replacement source  
+**Intended integration branch:** `main`  
+**Status:** Focused host-verified diagnostic candidate; PlatformIO and device validation pending
+
+- Added a fixed 16-entry activity-window history in app state for diagnostic use only.
+- Classified native DNS, native/fallback TLS handshake, response-body reception,
+  JSON parsing, target publication, radar-cache rebuilding, idle time, and other
+  bounded fetch work without changing any request or rendering behavior.
+- At each radar frame start, attributes the measured frame gap to the non-idle stage
+  with the greatest overlap in that interval.
+- Extended `RADAR PERF` with last/maximum gap-stage names and added `RADAR GAP MAX`
+  per-stage maximums.
+- Added measured cache-rebuild duration to `RADAR CACHE` logs.
+- Shows the stage associated with the lifetime maximum radar gap on the System page.
+- Preserved Product 66 dirty-region rendering, elapsed-time sweep, coherent snapshot,
+  native/fallback HTTPS, 15-second cadence, 128 KiB LVGL pool, 12 KiB ADS-B task
+  stack, panel timing, DMA, 20-scanline bounce buffer, target capacity, and stable
+  ICAO interaction.
+
+### Validation
+
+- Complete checked-in Python suite passed: 77 tests.
+- Full `app_state.cpp` host C++17 syntax checking passed with strict warnings.
+- Full `radar_renderer.cpp` and `ui.cpp` host syntax checking passed; only the same
+  pre-existing LVGL flexible-array, opacity-enum, and signed-comparison warnings
+  were present.
+- The actual app-state interval classifier passed a focused ASan/UBSan host test for
+  DNS, TLS, response-body, JSON, cache, and idle attribution.
+- Static checks confirm the 15-second cadence, 128 KiB LVGL pool, 12 KiB ADS-B stack,
+  20-scanline bounce buffer, `MAX_TARGETS`, and networking files remain unchanged.
+- No `HTTPClient::GET()`, `setInsecure()`, credentials, or `include/config.h` were
+  introduced.
+- PlatformIO compile/link, firmware upload, final linker totals, and physical Product
+  67 testing were not run here.
+
+### Pending verification
+
+- Confirm the Product 67 marker at boot.
+- Let the radar run at 80 miles through several fetches and capture both `RADAR PERF`
+  and `RADAR GAP MAX` lines.
+- Compare the maximum `tls`, `body`, `publish`, `cache`, and `idle` values to identify
+  the actual source of the previously observed 201 ms gap.
+- Confirm radar motion, selection/tracking, ranges, MQTT, OTA, memory recovery, touch,
+  and no screen rolling remain unchanged.
 
 ## Product 66 - 2026-08-02
 

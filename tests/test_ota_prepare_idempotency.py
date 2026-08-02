@@ -10,7 +10,7 @@ BUILD = (ROOT / "include" / "build_info.h").read_text(encoding="utf-8")
 class OtaPrepareIdempotencyTests(unittest.TestCase):
     def test_product_marker(self):
         self.assertIn(
-            "7IN-20260802-PRODUCT66-RADAR-DIRTY-REGIONS", BUILD
+            "7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION", BUILD
         )
 
     def test_duplicate_preparing_request_is_successful_and_side_effect_free(self):

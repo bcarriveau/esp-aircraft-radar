@@ -3,8 +3,7 @@
 #include <lvgl.h>
 
 #include "aircraft_data.h"
-
-namespace app_state { struct Snapshot; }
+#include "app_state.h"
 
 namespace radar {
 // Owns radar canvas drawing and aircraft-preview rendering.
@@ -62,6 +61,12 @@ struct PerformanceStats {
   uint32_t maximumRenderUs = 0;
   uint32_t lastFrameGapMs = 0;
   uint32_t maximumFrameGapMs = 0;
+  app_state::ActivityStage lastFrameGapStage =
+      app_state::ActivityStage::IDLE;
+  app_state::ActivityStage maximumFrameGapStage =
+      app_state::ActivityStage::IDLE;
+  uint32_t maximumFrameGapByStage[
+      static_cast<size_t>(app_state::ActivityStage::COUNT)]{};
   uint32_t staticLayerRebuilds = 0;
   uint32_t snapshotCopies = 0;
   uint32_t fullCacheFallbacks = 0;

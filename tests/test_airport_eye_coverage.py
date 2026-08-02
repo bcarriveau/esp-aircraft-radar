@@ -64,7 +64,7 @@ def main() -> None:
 
     require(
         build,
-        "7IN-20260802-PRODUCT66-RADAR-DIRTY-REGIONS",
+        "7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION",
         "Product 66 build marker",
     )
     require(ui, "AIRPORT_DIRECTORY_CAPACITY = 64", "bounded directory capacity")

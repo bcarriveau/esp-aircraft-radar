@@ -24,7 +24,7 @@ OTA = read("src/ota_update.cpp")
 class NetworkRecoveryResourceTests(unittest.TestCase):
     def test_product_59_releases_unused_ble_controller_memory(self):
         self.assertIn(
-            "7IN-20260802-PRODUCT66-RADAR-DIRTY-REGIONS", BUILD
+            "7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION", BUILD
         )
         self.assertIn("esp_bt_controller_mem_release(ESP_BT_MODE_BLE)", MAIN)
         self.assertIn("MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT", MAIN)
