@@ -22,13 +22,13 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260802-PRODUCT62-AIRPORT-EYE-COVERAGE
+7IN-20260802-PRODUCT63-MEMORY-PHASE1
 ```
 
 Current intended repository branch:
 
 ```text
-main
+TEST
 ```
 
 The hardened version-controlled baseline is **Product 15**, with the recommended
@@ -38,38 +38,31 @@ tag:
 product-15-hardened
 ```
 
-Product 62 is the current source candidate on `main`. It corrects an Airports-page
-coverage mismatch: the radar renderer can place labels from the complete bounded
-192-airport nearby cache, while the scrollable directory intentionally remains
-bounded at 64 rows. Product 61 populated that directory with only the nearest 64
-airports, so a label rendered for a farther airport could have no matching row or eye
-indicator.
+Product 63 is the current source candidate for `TEST`. It is the first bounded
+internal-memory phase built on the uploaded Product 62 source. Both ADS-B
+ArduinoJson documents now use a PSRAM-only allocator, the response payload no
+longer falls back to internal `malloc()`, and the 15-second request path uses fixed
+character buffers instead of temporary `String` construction.
 
-Product 62 keeps the 64-row directory and uses one optional 10,752-byte PSRAM scratch
-buffer to examine the complete nearby set. Every airport whose label was actually
-rendered is retained by stable airport identifier; only the farthest non-visible rows
-are displaced, and the final directory is restored to increasing-distance order. If
-the optional allocation is unavailable, the prior nearest-64 behavior remains as a
-safe fallback.
+The 3,584-byte Airports directory entry array is now allocated in PSRAM. Failure of
+that optional allocation disables only the directory page; aircraft radar and airport
+overlay operation continue. Product 63 also separates the most recent fetch low-water
+marks from lifetime minima, records the stage producing each largest-block low,
+reports ADS-B task stack headroom, and displays LVGL pool use, maximum use, largest
+free block, and fragmentation on the System page. The LVGL pool and task stack sizes
+are deliberately unchanged until hardware measurements support a later reduction.
 
-Product 62 passed focused host retention, strict C++17, ASan/UBSan, source-integrity,
-whitespace, and forbidden-API checks. PlatformIO compile/link, firmware memory use,
-upload, and physical display verification have not yet been run for Product 62.
+Product 63 passed the complete 64-test checked-in Python suite, strict host
+compilation of the PSRAM ArduinoJson allocator and app-state source, ASan/UBSan
+allocator and diagnostic models, source-integrity checks, and forbidden-API scans.
+PlatformIO compile/link,
+firmware memory reporting, upload, and physical verification have not been run.
 Product 61 therefore remains the current physically verified known-good release.
 
-Product 61 corrected browser-to-radar socket handoff resets by pacing the
-single-client Arduino `WebServer`, bounding control-request retries, allowing only a
-safe zero-byte upload retry, exposing transfer counters, and removing the duplicate
-`Connection: close` header. Physical verification completed the intended one-click
-OTA sequence, verified a 2,409,888-byte firmware image, restarted cleanly with
-`Reset reason: 3`, and resumed native ADS-B HTTPS and MQTT operation with stable
-heap and PSRAM.
-
-Product 62 retains Product 61's OTA behavior, Product 60's idempotent `/prepare`,
-Product 59's unused BLE-memory release and acknowledged MQTT teardown before hard
-Wi-Fi recovery, and Product 58's Product 57 multipart upload writer, exclusive
-ADS-B/MQTT hold, hardware-bound validation, inactive-partition writer, and IRAM-safe
-restart.
+Product 63 retains Product 62's bounded 64-row airport eye-coverage fix, Product 61's
+OTA socket pacing, Product 60's idempotent `/prepare`, Product 59's unused BLE-memory
+release and acknowledged MQTT teardown before hard Wi-Fi recovery, and Product 58's
+network-exclusive OTA window and IRAM-safe restart.
 
 Product 57 added the guided, region-independent airport and runway generator with
 preview, atomic replacement, validation rollback, and relocation documentation.
@@ -611,6 +604,10 @@ screenshots are prepared.
   Airports directory so scrolling exposes an eye indicator for each label actually
   rendered, with stable identifiers, deterministic replacement, distance ordering,
   and a nearest-row fallback if optional PSRAM is unavailable.
+- **Product 63:** Moved ADS-B JSON and response payload allocation to PSRAM-only
+  storage, removed hot-path `String` construction, moved the 64-entry airport
+  directory array to optional PSRAM, and added fetch, LVGL-pool, and ADS-B stack
+  low-water diagnostics without changing pool or task sizes.
 
 Detailed Product-by-Product history is maintained in `CHANGELOG.md`. Unconfirmed
 older history is not guessed.

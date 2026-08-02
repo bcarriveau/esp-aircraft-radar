@@ -216,7 +216,7 @@ uint8_t pendingAirportLabelMasks[AIRPORT_RANGE_COUNT]{};
 uint8_t airportConfigMode = 0;
 bool airportOptionsLoaded = false;
 bool airportOptionsDirty = false;
-airport_data::NearbyAirport airportDirectoryEntries[AIRPORT_DIRECTORY_CAPACITY]{};
+airport_data::NearbyAirport* airportDirectoryEntries = nullptr;
 airport_data::NearbyAirport* airportDirectoryScratch = nullptr;
 bool airportDirectoryLabelVisible[AIRPORT_DIRECTORY_CAPACITY]{};
 bool airportDirectoryLabelVisibilityCurrent = false;
@@ -584,7 +584,8 @@ void setAirportDirectoryCell(uint16_t row, uint8_t column,
 }
 
 void swapAirportDirectoryRows(uint16_t left, uint16_t right) {
-  if (left == right || left >= airportDirectoryCount ||
+  if (!airportDirectoryEntries || left == right ||
+      left >= airportDirectoryCount ||
       right >= airportDirectoryCount) {
     return;
   }
@@ -597,6 +598,7 @@ void swapAirportDirectoryRows(uint16_t left, uint16_t right) {
 }
 
 void sortAirportDirectoryByDistance() {
+  if (!airportDirectoryEntries) return;
   for (uint16_t row = 1; row < airportDirectoryCount; ++row) {
     uint16_t insertAt = row;
     while (insertAt > 0 &&
@@ -609,7 +611,7 @@ void sortAirportDirectoryByDistance() {
 }
 
 bool airportDirectoryContains(const char* ident) {
-  if (!ident || !ident[0]) return false;
+  if (!airportDirectoryEntries || !ident || !ident[0]) return false;
   for (uint16_t row = 0; row < airportDirectoryCount; ++row) {
     if (strcmp(airportDirectoryEntries[row].ident, ident) == 0) return true;
   }
@@ -617,6 +619,7 @@ bool airportDirectoryContains(const char* ident) {
 }
 
 int16_t farthestReplaceableAirportRow() {
+  if (!airportDirectoryEntries) return -1;
   int16_t farthestRow = -1;
   float farthestDistance = -1.0f;
   for (uint16_t row = 0; row < airportDirectoryCount; ++row) {
@@ -635,6 +638,26 @@ void updateAirportDirectory() {
   airportDirectoryUpdating = true;
   lv_obj_set_style_text_color(airportDirectorySummaryLabel,
                               rgb(180, 210, 215), 0);
+
+  if (!airportDirectoryEntries) {
+    airportDirectoryCount = 0;
+    memset(airportDirectoryLabelVisible, 0,
+           sizeof(airportDirectoryLabelVisible));
+    airportDirectoryLabelVisibilityCurrent = false;
+    setLabelTextIfChanged(
+        airportDirectorySummaryLabel,
+        "DIRECTORY OFF  |  PSRAM STORAGE UNAVAILABLE  |  RADAR AIRPORTS ACTIVE");
+    lv_obj_set_style_text_color(airportDirectorySummaryLabel,
+                                rgb(255, 190, 95), 0);
+    lv_table_set_row_cnt(airportDirectoryTable, 1);
+    setAirportDirectoryCell(0, 0, "");
+    setAirportDirectoryCell(0, 1, "Airport directory storage unavailable");
+    for (uint8_t column = 2; column < 6; ++column) {
+      setAirportDirectoryCell(0, column, "");
+    }
+    airportDirectoryUpdating = false;
+    return;
+  }
 
   airport_data::Status status;
   airport_data::copyStatus(status);
@@ -2014,6 +2037,8 @@ void renderSystemPage() {
   app_state::copyDiagnostics(diagnostics);
   airport_data::Status airportStatus;
   airport_data::copyStatus(airportStatus);
+  lv_mem_monitor_t lvMemory{};
+  lv_mem_monitor(&lvMemory);
 
   setTracksVisible(false);
   setAirspaceVisible(false);
@@ -2030,7 +2055,7 @@ void renderSystemPage() {
   const bool wifiConnected = wifiStatus == WL_CONNECTED;
   const uint32_t dataAgeSeconds = snapshot.lastUpdateMs
       ? (millis() - snapshot.lastUpdateMs) / 1000 : 0;
-  char body[840]{};
+  char body[1040]{};
   snprintf(body, sizeof(body),
       "NVS        %s\n"
       "WI-FI      %s  %d dBm\n"
@@ -2041,7 +2066,11 @@ void renderSystemPage() {
       "FAILURES   %u  %s\n"
       "HEAP       %u KB  MIN %u KB\n"
       "BLOCK      %u KB  MIN %u KB\n"
+      "FETCH LOW  %u / %u KB\n"
       "PSRAM      %u KB  MIN %u KB\n"
+      "LVGL       %u / %u KB  MAX %u KB\n"
+      "LVGL FREE  %u KB  BIG %u KB  F%u%%\n"
+      "ADSB STK   %u B FREE\n"
       "AIRPORTS   %s  %u CACHED",
       settings::storageAvailable() ? "READY" : "ERROR",
       wifiConnected ? "ONLINE" : adsb::wifiStatusName(wifiStatus),
@@ -2058,8 +2087,17 @@ void renderSystemPage() {
       (unsigned)(heap_caps_get_largest_free_block(
           MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) / 1024U),
       (unsigned)(diagnostics.minimumLargestInternalBlock / 1024U),
+      (unsigned)(diagnostics.lastFetchMinimumFreeHeap / 1024U),
+      (unsigned)(diagnostics.lastFetchMinimumLargestInternalBlock / 1024U),
       (unsigned)(ESP.getFreePsram() / 1024U),
       (unsigned)(diagnostics.minimumFreePsram / 1024U),
+      (unsigned)((lvMemory.total_size - lvMemory.free_size) / 1024U),
+      (unsigned)(lvMemory.total_size / 1024U),
+      (unsigned)(lvMemory.max_used / 1024U),
+      (unsigned)(lvMemory.free_size / 1024U),
+      (unsigned)(lvMemory.free_biggest_size / 1024U),
+      (unsigned)lvMemory.frag_pct,
+      (unsigned)diagnostics.minimumAdsbTaskStackFreeBytes,
       airportStatus.ready ? "READY" : "OFF",
       (unsigned)airportStatus.cachedCount);
   setLabelTextIfChanged(systemStatusLabel, body);
@@ -3538,6 +3576,20 @@ bool allocateTargetBuffer() {
     free(uiTargets);
     uiTargets = nullptr;
     return false;
+  }
+  if (!airportDirectoryEntries) {
+    airportDirectoryEntries = static_cast<airport_data::NearbyAirport*>(
+        heap_caps_calloc(AIRPORT_DIRECTORY_CAPACITY,
+                         sizeof(airport_data::NearbyAirport),
+                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (airportDirectoryEntries) {
+      Serial.printf("Airport directory entries in PSRAM: %u bytes\n",
+                    (unsigned)(AIRPORT_DIRECTORY_CAPACITY *
+                               sizeof(airport_data::NearbyAirport)));
+    } else {
+      Serial.println(
+          "Airport directory entries unavailable; directory page disabled");
+    }
   }
   if (!airportDirectoryScratch) {
     airportDirectoryScratch = static_cast<airport_data::NearbyAirport*>(

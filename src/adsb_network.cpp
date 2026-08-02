@@ -32,13 +32,34 @@ uint32_t wifiAttempts = 0;
 wl_status_t lastLoggedWifiStatus = WL_IDLE_STATUS;
 
 void logFetchMemory(const char* stage) {
-  app_state::observeMemory();
+  app_state::observeMemory(stage);
   Serial.printf(
       "MEM ADSB %-18s heap=%u block=%u psram=%u\n",
       stage ? stage : "unknown", ESP.getFreeHeap(),
       heap_caps_get_largest_free_block(
           MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
       ESP.getFreePsram());
+}
+
+void printFetchLowWater(const app_state::Diagnostics& diagnostics) {
+  Serial.printf(
+      "MEM ADSB FETCH LOW heap=%u block=%u block-stage=%s "
+      "lifetime-block=%u lifetime-stage=%s task-stack-free=%u\n",
+      diagnostics.lastFetchMinimumFreeHeap,
+      diagnostics.lastFetchMinimumLargestInternalBlock,
+      diagnostics.lastFetchMinimumBlockStage[0]
+          ? diagnostics.lastFetchMinimumBlockStage
+          : "unknown",
+      diagnostics.minimumLargestInternalBlock,
+      diagnostics.minimumBlockStage[0] ? diagnostics.minimumBlockStage
+                                       : "unknown",
+      diagnostics.minimumAdsbTaskStackFreeBytes);
+}
+
+void logFetchLowWater() {
+  app_state::Diagnostics diagnostics;
+  app_state::copyDiagnostics(diagnostics);
+  printFetchLowWater(diagnostics);
 }
 
 void configureTimeSync() {
@@ -279,6 +300,8 @@ void fetchTask(void* parameter) {
     logFetchMemory("task-before-fetch");
     adsb_fetch::Result result = adsb_fetch::fetchAircraft(incoming);
     logFetchMemory("task-after-fetch");
+    app_state::recordAdsbTaskStackFreeBytes(
+        static_cast<uint32_t>(uxTaskGetStackHighWaterMark(nullptr)));
     bool immediateFollowup = false;
 
     if (result.success) {
@@ -291,6 +314,7 @@ void fetchTask(void* parameter) {
             result.durationMs, result.responseBytes, result.receivedCount,
             result.eligibleCount, result.acceptedCount,
             result.capacityDroppedCount);
+        logFetchLowWater();
         outageStartedAt = 0;
         outageRecoveries = 0;
         immediateFollowup = true;
@@ -300,6 +324,7 @@ void fetchTask(void* parameter) {
             result.durationMs, result.responseBytes, result.receivedCount,
             result.eligibleCount, result.acceptedCount,
             result.capacityDroppedCount);
+        logFetchLowWater();
         Serial.printf(
             "Published %u aircraft (%u eligible, %u capacity-dropped) "
             "in %lu ms\n",
@@ -314,6 +339,7 @@ void fetchTask(void* parameter) {
                                     result.responseBytes);
       app_state::Diagnostics diagnostics;
       app_state::copyDiagnostics(diagnostics);
+      printFetchLowWater(diagnostics);
       if (outageStartedAt == 0) outageStartedAt = millis();
       Serial.printf("ADSB fetch failed at %s; consecutive failures=%u\n",
                     app_state::failureStageName(result.failureStage),

@@ -66,7 +66,7 @@ constexpr uint8_t PUBLISH_ALL =
     PUBLISH_STATUS | PUBLISH_TRAFFIC | PUBLISH_TRACKED | PUBLISH_AIRSPACE;
 
 void logMemoryStage(const char* stage) {
-  app_state::observeMemory();
+  app_state::observeMemory(stage);
   Serial.printf(
       "MEM MQTT %-18s heap=%u block=%u psram=%u\n",
       stage ? stage : "unknown", ESP.getFreeHeap(),

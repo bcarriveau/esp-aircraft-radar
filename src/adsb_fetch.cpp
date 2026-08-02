@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 #include <cerrno>
+#include <cstring>
 #include <WiFiClient.h>
 #include <WiFiClientSecure.h>
 #include <esp_crt_bundle.h>
@@ -31,7 +32,7 @@ constexpr uint8_t MAX_NATIVE_ATTEMPTS = 2;
 constexpr uint32_t RETRY_DELAY_MS = 500;
 
 void logMemoryStage(const char* stage) {
-  app_state::observeMemory();
+  app_state::observeMemory(stage);
   Serial.printf(
       "MEM ADSB %-18s heap=%u block=%u psram=%u\n",
       stage ? stage : "unknown", ESP.getFreeHeap(),
@@ -121,14 +122,31 @@ app_state::FetchFailureStage diagnoseSecureConnectFailure(
                       : app_state::FetchFailureStage::TCP;
 }
 
-uint8_t* allocatePayload(size_t capacity) {
-  uint8_t* payload = static_cast<uint8_t*>(heap_caps_malloc(
-      capacity + 1,
-      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  if (!payload) {
-    payload = static_cast<uint8_t*>(malloc(capacity + 1));
+// PSRAM-only allocator for both ADS-B JsonDocuments. The parsed response
+// tree is the significant allocation; keeping the small filter on the same
+// allocator removes the last default-heap allocation from the parse path.
+class PsramAllocator final : public ArduinoJson::Allocator {
+ public:
+  void* allocate(size_t size) override {
+    return heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   }
-  return payload;
+
+  void deallocate(void* ptr) override { heap_caps_free(ptr); }
+
+  void* reallocate(void* ptr, size_t newSize) override {
+    return heap_caps_realloc(ptr, newSize,
+                             MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  }
+};
+
+PsramAllocator psramJsonAllocator;
+
+// Prefer PSRAM. Never fall back to internal malloc - a mid-sized response
+// landing in internal DRAM would damage the largest free block during the
+// highest-pressure stage of the fetch.
+uint8_t* allocatePayload(size_t capacity) {
+  return static_cast<uint8_t*>(heap_caps_malloc(
+      capacity + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
 }
 
 class BundleVerifiedSecureClient final : public WiFiClientSecure {
@@ -549,11 +567,11 @@ bool writeSecureLiteral(WiFiClientSecure& client, const char (&text)[N],
   return writeSecureText(client, text, N - 1, writeStarted, lastProgress);
 }
 
-bool writeFallbackRequest(WiFiClientSecure& client, const String& path) {
+bool writeFallbackRequest(WiFiClientSecure& client, const char* path) {
   const uint32_t writeStarted = millis();
   uint32_t lastProgress = writeStarted;
   return writeSecureLiteral(client, "GET ", writeStarted, lastProgress) &&
-         writeSecureText(client, path.c_str(), path.length(), writeStarted,
+         writeSecureText(client, path, strlen(path), writeStarted,
                          lastProgress) &&
          writeSecureLiteral(client, " HTTP/1.1\r\n", writeStarted,
                             lastProgress) &&
@@ -570,9 +588,9 @@ bool writeFallbackRequest(WiFiClientSecure& client, const String& path) {
                             lastProgress);
 }
 
-AttemptResult fetchAttemptWithSecureClient(const String& path,
-                                             JsonDocument& filter,
-                                             JsonDocument& doc) {
+AttemptResult fetchAttemptWithSecureClient(const char* path,
+                                           JsonDocument& filter,
+                                           JsonDocument& doc) {
   Serial.println(
       "ADSB.fi fallback HTTPS via verified WiFiClientSecure stream");
   BundleVerifiedSecureClient client;
@@ -699,7 +717,7 @@ AttemptResult fetchAttemptWithSecureClient(const String& path,
 // independent verified fallback is invoked at most once for an eligible final
 // native connection or header failure.
 
-AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
+AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
                            JsonDocument& doc, uint8_t attempt) {
   Serial.printf("ADSB.fi native HTTPS attempt %u\n", attempt);
   logMemoryStage("native-start");
@@ -716,9 +734,15 @@ AttemptResult fetchAttempt(const String& path, JsonDocument& filter,
                 serverIp.toString().c_str());
   logMemoryStage("after-dns");
 
-  String url = "https://opendata.adsb.fi" + path;
+  char url[128];
+  const int urlLength =
+      snprintf(url, sizeof(url), "https://opendata.adsb.fi%s", path);
+  if (urlLength < 0 || static_cast<size_t>(urlLength) >= sizeof(url)) {
+    Serial.println("ADSB.fi request URL exceeded fixed buffer");
+    return failed(app_state::FetchFailureStage::HTTP_HEADERS);
+  }
   esp_http_client_config_t config{};
-  config.url = url.c_str();
+  config.url = url;
   config.user_agent = "BILLS-Aircraft-Radar-7in/18";
   config.method = HTTP_METHOD_GET;
   config.timeout_ms = HTTP_NETWORK_TIMEOUT_MS;
@@ -1066,20 +1090,37 @@ Result fetchAircraft(aircraft::Target* out) {
   }
 
   float radiusNm = min(250.0f, (result.requestedRangeMiles / 1.15078f) + 5.0f);
-  String path = "/api/v3/lat/" + String(homeLatitude, 5) +
-                "/lon/" + String(homeLongitude, 5) +
-                "/dist/" + String(radiusNm, 1);
+  // Fixed buffer avoids temporary String allocations on the 15 s hot path.
+  char path[96];
+  const int pathLength = snprintf(
+      path, sizeof(path), "/api/v3/lat/%.5f/lon/%.5f/dist/%.1f",
+      homeLatitude, homeLongitude, radiusNm);
+  if (pathLength < 0 || static_cast<size_t>(pathLength) >= sizeof(path)) {
+    Serial.println("ADSB request path exceeded fixed buffer");
+    result.failureStage = app_state::FetchFailureStage::HTTP_HEADERS;
+    result.durationMs = millis() - fetchStarted;
+    return result;
+  }
   Serial.printf("ADSB request: https://opendata.adsb.fi%s [generation %lu]\n",
-                path.c_str(), (unsigned long)result.requestGeneration);
-  JsonDocument filter;
+                path, (unsigned long)result.requestGeneration);
+  JsonDocument filter(&psramJsonAllocator);
   JsonObject ac = filter["ac"].add<JsonObject>();
   ac["lat"] = true; ac["lon"] = true; ac["flight"] = true; ac["hex"] = true;
   ac["alt_baro"] = true; ac["alt_geom"] = true;
   ac["gs"] = true; ac["track"] = true; ac["t"] = true;
   ac["baro_rate"] = true; ac["r"] = true; ac["ownOp"] = true;
   ac["desc"] = true;
+  if (filter.overflowed()) {
+    Serial.println("ADSB JSON filter PSRAM allocation failed");
+    result.failureStage = app_state::FetchFailureStage::JSON;
+    result.durationMs = millis() - fetchStarted;
+    return result;
+  }
 
-  JsonDocument doc;
+  // Both ArduinoJson documents are PSRAM-only. The response document is the
+  // significant allocation; applying the same policy to the small filter
+  // removes the last default-heap allocation from the fetch parse path.
+  JsonDocument doc(&psramJsonAllocator);
   AttemptResult attemptResult;
   AttemptResult preservedFailure;
   bool fallbackAttempted = false;

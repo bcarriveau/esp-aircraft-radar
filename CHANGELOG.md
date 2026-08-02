@@ -14,19 +14,106 @@ repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 62
-- **Current build marker:** `7IN-20260802-PRODUCT62-AIRPORT-EYE-COVERAGE`
-- **Current branch:** `main`
-- **Product 62 source baseline:** Product 61 `main` commit `5ab7db06de45883eda8e96bd5c8633d2fb63b862`
+- **Current source:** Product 63
+- **Current build marker:** `7IN-20260802-PRODUCT63-MEMORY-PHASE1`
+- **Intended integration branch:** `TEST`
+- **Product 63 source baseline:** Uploaded Product 62 working tree based on `main` commit `2bae5aadeb4207c4c846cdc1f70e52b333b88214`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 62 is the current host-verified source candidate on `main`. It corrects the
-Airports-directory eye coverage mismatch while preserving the 64-row directory
-bound. Product 61 remains the current physically verified known-good release.
+Product 63 is the current host-verified source candidate for the intended `TEST`
+branch. It reduces and instruments internal-memory pressure without changing the
+LVGL pool, task-stack sizes, display path, target capacity, or HTTPS behavior.
+Product 61 remains the current physically verified known-good release.
+
+## Product 63 - 2026-08-02
+
+**Build:** `7IN-20260802-PRODUCT63-MEMORY-PHASE1`  
+**Source baseline:** Uploaded Product 62 working tree based on `main` commit `2bae5aadeb4207c4c846cdc1f70e52b333b88214`  
+**Intended integration branch:** `TEST`  
+**Status:** Focused host-verified memory phase; PlatformIO and physical verification pending
+
+### Diagnosed
+
+- The fixed 128 KiB LVGL pool, 20-scanline RGB bounce buffer, core-0 ADS-B task
+  stack, TLS state, response payload, and ArduinoJson parse tree compete for a
+  limited internal-memory reserve during each HTTPS request.
+- The response payload preferred PSRAM but could fall back to plain `malloc()`,
+  allowing a normal-sized body to consume internal-capable heap during the most
+  memory-sensitive request stage.
+- Both ArduinoJson documents used the default allocator, leaving placement of the
+  filtered ADS-B tree uncontrolled.
+- The 64-entry Airports directory array occupied 3,584 bytes of permanent internal
+  DRAM even though the directory is an optional display feature.
+- Lifetime heap and largest-block minima could not distinguish a brief fetch dip
+  from persistent idle pressure, and the stage responsible for a lower unlabelled
+  sample could be reported incorrectly.
+
+### Changed
+
+- Added one PSRAM-only ArduinoJson allocator and applied it to both the small filter
+  and the main ADS-B response document.
+- Removed the response payload's plain `malloc()` fallback. Payload allocation now
+  fails cleanly at the response-body stage when PSRAM cannot satisfy the bounded
+  request.
+- Replaced the per-fetch `String` path and URL construction with checked 96-byte and
+  128-byte character buffers.
+- Moved the 64-entry Airports directory storage to PSRAM. Allocation failure is
+  nonfatal: only the directory page is disabled while aircraft radar and airport
+  overlay behavior continue.
+- Added fetch-only heap and largest-internal-block minima, lifetime and fetch block
+  stage attribution, and a final per-fetch serial low-water summary.
+- Added core-0 ADS-B task stack free-space tracking.
+- Added LVGL total use, maximum use, free space, largest free block, and fragmentation
+  to the System page together with the latest fetch low-water values.
+- Passed ADS-B and MQTT memory checkpoint labels into the shared diagnostic tracker.
+- Kept the 128 KiB LVGL pool and 16 KiB ADS-B task stack unchanged pending hardware
+  measurements.
+
+### Preserved
+
+- Arduino-ESP32 3.0.7 high-performance XIP/PSRAM configuration, OPI PSRAM, Waveshare
+  RGB timing, DMA, anti-rolling protections, and the 20-scanline bounce buffer.
+- Native ESP-IDF HTTPS preference, verified fallback HTTPS, bounded headers and body,
+  header/idle/total deadlines, 15-second cadence, request serialization, stale-result
+  rejection, Wi-Fi/TLS recovery, and last-good retention.
+- 200-target capacity, PSRAM-backed target snapshots, coherent single-snapshot radar
+  rendering, stable ICAO selection/tracking, range behavior, and MPH display.
+- Product 62 airport-eye retention, bounded 64-row directory behavior, stable airport
+  identifiers, and optional 192-entry directory scratch fallback.
+
+### Validation
+
+- Focused Product 63 memory and airport regression suite passed: 5 tests.
+- Updated stale build-marker assertions in the existing OTA, MQTT, and recovery
+  regression tests to the Product 63 marker.
+- The complete checked-in Python suite passed: 64 tests.
+- `src/app_state.cpp` passed full-file host C++17 syntax checking with
+  `-Wall -Wextra -Werror -pedantic` using focused Arduino/FreeRTOS stubs.
+- The bundled ArduinoJson 7.3.1 PSRAM allocator and filtered parse passed strict
+  C++17 compilation plus AddressSanitizer and UndefinedBehaviorSanitizer.
+- A focused fetch-minimum/stage model passed strict C++17 compilation plus
+  AddressSanitizer and UndefinedBehaviorSanitizer.
+- Changed C++ and header files passed balanced-delimiter, comment, string, character,
+  and trailing-space integrity checks.
+- Static scans found no `HTTPClient::GET()` or `setInsecure()` and confirmed that
+  private `include/config.h` is absent.
+
+### Pending verification
+
+- PlatformIO compile/link and the new linker-map/internal-RAM totals.
+- Upload and confirmation of the Product 63 marker on the 7-inch display.
+- Hardware comparison of current and fetch-low heap/block values before and after the
+  PSRAM allocator change.
+- LVGL maximum use and largest-free-block readings after Tracks with a high aircraft
+  count, Airports, Settings, OTA, and repeated page switching.
+- ADS-B stack free-space readings through native TLS, verified fallback, failures,
+  and hard Wi-Fi recovery before any stack reduction is considered.
+- 15-second ADS-B updates, MQTT operation, OTA, airport directory degraded behavior,
+  touch/page switching, no screen rolling, and extended soak testing.
 
 ## Product 62 - 2026-08-02
 

@@ -45,6 +45,15 @@ struct Diagnostics {
   uint32_t minimumFreeHeap = 0;
   uint32_t minimumLargestInternalBlock = 0;
   uint32_t minimumFreePsram = 0;
+  // Per-fetch lows are reset at beginFetch() and updated only while a fetch is
+  // active. They remain unchanged after the request completes.
+  uint32_t lastFetchMinimumFreeHeap = 0;
+  uint32_t lastFetchMinimumLargestInternalBlock = 0;
+  // Smallest observed free stack space for the core-0 ADS-B task.
+  uint32_t minimumAdsbTaskStackFreeBytes = 0;
+  // Stages that produced the lifetime and most-recent-fetch block minima.
+  char minimumBlockStage[24]{};
+  char lastFetchMinimumBlockStage[24]{};
   uint16_t lastReceivedCount = 0;
   uint16_t lastEligibleCount = 0;
   uint8_t lastAcceptedCount = 0;
@@ -99,7 +108,10 @@ void recordDiscardedResponse(uint32_t durationMs, uint32_t responseBytes,
                              uint8_t acceptedCount,
                              uint16_t capacityDroppedCount);
 void recordNetworkRecovery();
-void observeMemory();
+void recordAdsbTaskStackFreeBytes(uint32_t freeBytes);
+// Optional stage labels identify the source of new lifetime and active-fetch
+// largest-block minima. Unlabelled samples are explicitly recorded as such.
+void observeMemory(const char* stage = nullptr);
 void copyDiagnostics(Diagnostics& diagnostics);
 const char* failureStageName(FetchFailureStage stage);
 

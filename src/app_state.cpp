@@ -1,6 +1,7 @@
 #include "app_state.h"
 
 #include <esp_heap_caps.h>
+#include <string.h>
 
 #include "config.h"
 
@@ -42,11 +43,20 @@ void unlockState(bool locked) {
   if (locked) xSemaphoreGive(stateMutex);
 }
 
-void observeMemoryLocked() {
+void copyMemoryStage(char* destination, size_t capacity,
+                     const char* stage) {
+  if (!destination || capacity == 0) return;
+  const char* value = stage && stage[0] ? stage : "unlabelled";
+  strncpy(destination, value, capacity - 1);
+  destination[capacity - 1] = 0;
+}
+
+void observeMemoryLocked(const char* stage = nullptr) {
   const uint32_t freeHeap = ESP.getFreeHeap();
   const uint32_t largestInternalBlock =
       heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const uint32_t freePsram = ESP.getFreePsram();
+
   if (state.diagnostics.minimumFreeHeap == 0 ||
       freeHeap < state.diagnostics.minimumFreeHeap) {
     state.diagnostics.minimumFreeHeap = freeHeap;
@@ -55,10 +65,28 @@ void observeMemoryLocked() {
       largestInternalBlock <
           state.diagnostics.minimumLargestInternalBlock) {
     state.diagnostics.minimumLargestInternalBlock = largestInternalBlock;
+    copyMemoryStage(state.diagnostics.minimumBlockStage,
+                    sizeof(state.diagnostics.minimumBlockStage), stage);
   }
   if (freePsram > 0 && (state.diagnostics.minimumFreePsram == 0 ||
                        freePsram < state.diagnostics.minimumFreePsram)) {
     state.diagnostics.minimumFreePsram = freePsram;
+  }
+
+  if (!state.fetchInProgress) return;
+
+  if (state.diagnostics.lastFetchMinimumFreeHeap == 0 ||
+      freeHeap < state.diagnostics.lastFetchMinimumFreeHeap) {
+    state.diagnostics.lastFetchMinimumFreeHeap = freeHeap;
+  }
+  if (state.diagnostics.lastFetchMinimumLargestInternalBlock == 0 ||
+      largestInternalBlock <
+          state.diagnostics.lastFetchMinimumLargestInternalBlock) {
+    state.diagnostics.lastFetchMinimumLargestInternalBlock =
+        largestInternalBlock;
+    copyMemoryStage(state.diagnostics.lastFetchMinimumBlockStage,
+                    sizeof(state.diagnostics.lastFetchMinimumBlockStage),
+                    stage);
   }
 }
 
@@ -344,7 +372,12 @@ void beginFetch() {
   state.fetchInProgress = true;
   state.diagnostics.lastAttemptMs = millis();
   ++state.diagnostics.totalAttempts;
-  observeMemoryLocked();
+  // Reset per-fetch lows so the System page can show both lifetime MIN and
+  // the low-water mark of the most recent request.
+  state.diagnostics.lastFetchMinimumFreeHeap = 0;
+  state.diagnostics.lastFetchMinimumLargestInternalBlock = 0;
+  state.diagnostics.lastFetchMinimumBlockStage[0] = 0;
+  observeMemoryLocked("begin-fetch");
   unlockState(locked);
 }
 
@@ -353,6 +386,7 @@ void recordFetchSuccess(uint32_t durationMs, uint32_t responseBytes,
                         uint8_t acceptedCount,
                         uint16_t capacityDroppedCount) {
   bool locked = lockState();
+  observeMemoryLocked("fetch-complete");
   state.fetchInProgress = false;
   state.diagnostics.lastSuccessMs = millis();
   state.diagnostics.lastDurationMs = durationMs;
@@ -363,19 +397,18 @@ void recordFetchSuccess(uint32_t durationMs, uint32_t responseBytes,
   state.diagnostics.lastCapacityDroppedCount = capacityDroppedCount;
   state.diagnostics.consecutiveFailures = 0;
   state.diagnostics.lastFailureStage = FetchFailureStage::NONE;
-  observeMemoryLocked();
   unlockState(locked);
 }
 
 void recordFetchFailure(FetchFailureStage stage, uint32_t durationMs,
                         uint32_t responseBytes) {
   bool locked = lockState();
+  observeMemoryLocked("fetch-complete");
   state.fetchInProgress = false;
   state.diagnostics.lastDurationMs = durationMs;
   state.diagnostics.lastResponseBytes = responseBytes;
   ++state.diagnostics.consecutiveFailures;
   state.diagnostics.lastFailureStage = stage;
-  observeMemoryLocked();
   unlockState(locked);
 }
 
@@ -384,6 +417,7 @@ void recordDiscardedResponse(uint32_t durationMs, uint32_t responseBytes,
                              uint8_t acceptedCount,
                              uint16_t capacityDroppedCount) {
   bool locked = lockState();
+  observeMemoryLocked("fetch-complete");
   state.fetchInProgress = false;
   ++state.diagnostics.discardedResponses;
   state.diagnostics.lastDurationMs = durationMs;
@@ -394,7 +428,6 @@ void recordDiscardedResponse(uint32_t durationMs, uint32_t responseBytes,
   state.diagnostics.lastCapacityDroppedCount = capacityDroppedCount;
   state.diagnostics.consecutiveFailures = 0;
   state.diagnostics.lastFailureStage = FetchFailureStage::NONE;
-  observeMemoryLocked();
   unlockState(locked);
 }
 
@@ -404,9 +437,19 @@ void recordNetworkRecovery() {
   unlockState(locked);
 }
 
-void observeMemory() {
+void recordAdsbTaskStackFreeBytes(uint32_t freeBytes) {
+  if (freeBytes == 0) return;
   bool locked = lockState();
-  observeMemoryLocked();
+  if (state.diagnostics.minimumAdsbTaskStackFreeBytes == 0 ||
+      freeBytes < state.diagnostics.minimumAdsbTaskStackFreeBytes) {
+    state.diagnostics.minimumAdsbTaskStackFreeBytes = freeBytes;
+  }
+  unlockState(locked);
+}
+
+void observeMemory(const char* stage) {
+  bool locked = lockState();
+  observeMemoryLocked(stage);
   unlockState(locked);
 }
 

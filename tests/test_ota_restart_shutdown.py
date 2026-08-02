@@ -10,7 +10,7 @@ MAIN = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
 
 class OtaRestartShutdownTests(unittest.TestCase):
     def test_product_marker(self):
-        self.assertIn("7IN-20260802-PRODUCT61-OTA-SOCKET-PACING", BUILD)
+        self.assertIn("7IN-20260802-PRODUCT63-MEMORY-PHASE1", BUILD)
 
     def test_reset_reason_is_reported_once_at_boot(self):
         self.assertEqual(MAIN.count("esp_reset_reason()"), 1)

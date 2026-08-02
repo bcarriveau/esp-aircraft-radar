@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focused checks for Product 62 airport-directory eye coverage."""
+"""Product 63 checks retaining Product 62 airport eye coverage."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -64,10 +64,15 @@ def main() -> None:
 
     require(
         build,
-        "7IN-20260802-PRODUCT62-AIRPORT-EYE-COVERAGE",
-        "Product 62 build marker",
+        "7IN-20260802-PRODUCT63-MEMORY-PHASE1",
+        "Product 63 build marker",
     )
     require(ui, "AIRPORT_DIRECTORY_CAPACITY = 64", "bounded directory capacity")
+    require(
+        ui,
+        "airport_data::NearbyAirport* airportDirectoryEntries = nullptr",
+        "PSRAM-backed directory entries",
+    )
     require(
         ui,
         "airport_data::NearbyAirport* airportDirectoryScratch = nullptr",
@@ -95,7 +100,12 @@ def main() -> None:
     require(
         ui,
         "Airport directory scratch unavailable; using nearest rows only",
-        "bounded allocation fallback",
+        "bounded scratch fallback",
+    )
+    require(
+        ui,
+        "Airport directory entries unavailable; directory page disabled",
+        "nonfatal directory-storage failure",
     )
 
     update = ui[ui.index("void updateAirportDirectory()") : ui.index(
@@ -106,7 +116,7 @@ def main() -> None:
     assert "HTTPClient::GET" not in ui
     assert "setInsecure" not in ui
 
-    print("Product 62 airport eye-coverage checks passed")
+    print("Product 63 airport eye-coverage checks passed")
 
 
 if __name__ == "__main__":
