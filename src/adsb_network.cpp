@@ -180,6 +180,11 @@ void fetchTask(void* parameter) {
     }
 
     uint32_t commands = takeCommands();
+    if (isMaintenanceRequested()) {
+      // Commands taken concurrently with the hold request are stale for the
+      // exclusive OTA window and must not disconnect Wi-Fi or start a fetch.
+      continue;
+    }
     if (commands & COMMAND_WIFI_RECONNECT) {
       Serial.println("Network task processing WiFi reconnect");
       beginWifiConnection("requested");
@@ -266,8 +271,15 @@ void fetchTask(void* parameter) {
            diagnostics.consecutiveFailures % 3 == 0);
       const bool recoveryDue =
           bodyFailure || linkRecoveryDue || transportRecoveryDue;
+      const bool maintenanceRequestedAfterFetch = isMaintenanceRequested();
+      const bool recoveryDeferredForOta =
+          recoveryDue && maintenanceRequestedAfterFetch;
       bool recoveryConnected = false;
-      if (recoveryDue) {
+      if (recoveryDeferredForOta) {
+        Serial.println(
+            "ADSB recovery deferred: OTA exclusive hold was requested");
+      }
+      if (recoveryDue && !recoveryDeferredForOta) {
         const bool restartRadio = bodyFailure || outageRecoveries > 0;
         Serial.printf(
             "ADSB recovery ladder: %s WiFi after %s failure\n",
@@ -285,7 +297,8 @@ void fetchTask(void* parameter) {
 
       if (outageStartedAt != 0 &&
           millis() - outageStartedAt >= LAST_RESORT_RESTART_MS &&
-          diagnostics.consecutiveFailures >= LAST_RESORT_FAILURE_COUNT) {
+          diagnostics.consecutiveFailures >= LAST_RESORT_FAILURE_COUNT &&
+          !maintenanceRequestedAfterFetch) {
         Serial.println(
             "ADSB recovery ladder exhausted for 30 minutes; requesting "
             "controlled restart");
@@ -430,11 +443,19 @@ void reconnectOrRefresh() {
 }
 
 void requestRefresh() {
+  if (isMaintenanceRequested()) {
+    Serial.println("ADSB refresh ignored during OTA exclusive hold");
+    return;
+  }
   Serial.println("ADSB refresh queued");
   queueCommand(COMMAND_REFRESH);
 }
 
 void requestWifiReconnect() {
+  if (isMaintenanceRequested()) {
+    Serial.println("WiFi reconnect ignored during OTA exclusive hold");
+    return;
+  }
   Serial.println("WiFi reconnect queued for network task");
   queueCommand(COMMAND_WIFI_RECONNECT);
 }
@@ -442,6 +463,7 @@ void requestWifiReconnect() {
 void requestMaintenanceHold() {
   portENTER_CRITICAL(&commandMux);
   maintenanceRequested = true;
+  pendingCommands = 0;
   portEXIT_CRITICAL(&commandMux);
   if (fetchTaskHandle) xTaskNotifyGive(fetchTaskHandle);
 }

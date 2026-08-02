@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <Waveshare_ST7262_LVGL.h>
 
+#include <esp_system.h>
+
 #include "adsb_network.h"
 #include "app_state.h"
 #include "aircraft_data.h"
@@ -20,6 +22,7 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.println("BILLS Aircraft Radar 7-inch bring-up");
+  Serial.printf("Reset reason: %d\n", static_cast<int>(esp_reset_reason()));
   Serial.printf("Build: %s, max targets=%u\n", BUILD_ID,
                 (unsigned)aircraft::MAX_TARGETS);
   Serial.printf("PSRAM: %s, size=%u\n", psramFound() ? "YES" : "NO",

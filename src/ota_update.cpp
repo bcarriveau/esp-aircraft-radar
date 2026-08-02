@@ -5,10 +5,16 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <esp_app_format.h>
+#include <esp_attr.h>
 #include <esp_err.h>
+#include <esp_heap_caps.h>
 #include <esp_ota_ops.h>
 #include <esp_system.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/idf_additions.h>
+#include <freertos/task.h>
 #include <mbedtls/sha256.h>
+#include <xtensa/xtensa_api.h>
 
 #include <algorithm>
 #include <cstring>
@@ -26,6 +32,16 @@ constexpr uint16_t PACKAGE_HEADER_SIZE = 512;
 constexpr uint32_t MINIMUM_FIRMWARE_SIZE = 64U * 1024U;
 constexpr uint32_t PREPARE_TIMEOUT_MS = 45U * 1000U;
 constexpr uint32_t RESTART_DELAY_MS = 1500U;
+constexpr uint32_t RESTART_SETTLE_MS = 500U;
+constexpr uint32_t RESTART_TASK_STACK_BYTES = 4096U;
+constexpr uint32_t RESTART_LOOP_QUIESCE_TIMEOUT_MS = 1000U;
+constexpr BaseType_t RESTART_TASK_CORE = 0;
+constexpr BaseType_t RESTART_LOOP_CORE = 1;
+constexpr UBaseType_t RESTART_TASK_PRIORITY = configMAX_PRIORITIES - 1;
+constexpr char RESTART_TASK_NAME[] = "ota_restart";
+constexpr uint32_t RESTART_LOOP_WAITING = 0;
+constexpr uint32_t RESTART_LOOP_QUIESCED = 1;
+constexpr uint32_t RESTART_LOOP_ABORTED = 2;
 constexpr uint8_t ESP_APPLICATION_MAGIC = 0xE9;
 constexpr uint16_t ESP32_S3_IMAGE_CHIP_ID = 9;
 constexpr char PACKAGE_MAGIC[16] = "BILLS-RADAR-OTA";
@@ -93,9 +109,15 @@ bool routesConfigured = false;
 bool serverRunning = false;
 bool mdnsRunning = false;
 bool stopServerPending = false;
+bool releaseMaintenanceAfterStopPending = false;
+bool exclusiveHoldConfirmed = false;
 uint32_t armedUntilMs = 0;
 uint32_t prepareDeadlineMs = 0;
 uint32_t restartAtMs = 0;
+uint32_t restartExecuteAtMs = 0;
+TaskHandle_t restartTaskHandle = nullptr;
+DRAM_ATTR uint32_t restartLoopState = RESTART_LOOP_WAITING;
+bool restartTaskCreationAttempted = false;
 char accessCode[7]{};
 char statusMessage[128] = "OTA service unavailable";
 
@@ -194,8 +216,9 @@ void failUpload(const char* message, int responseCode = 400) {
   currentState = State::ERROR;
   setMessage(message);
   setUploadResponse(responseCode, message);
-  releaseMaintenanceHold();
   Serial.printf("OTA update failed: %s\n", message ? message : "unknown");
+  Serial.println(
+      "OTA exclusive hold remains active for a bounded retry or cancellation");
 }
 
 void prepareBuildIdentityMatcher() {
@@ -424,6 +447,7 @@ void finishUpload(size_t totalPackageBytes) {
   setMessage("Firmware verified. Radar is restarting.");
   setUploadResponse(200, statusMessage);
   restartAtMs = millis() + RESTART_DELAY_MS;
+  restartExecuteAtMs = 0;
   Serial.printf("OTA update verified: %s (%lu bytes); restart scheduled\n",
                 packageHeader.buildId,
                 static_cast<unsigned long>(packageHeader.firmwareSize));
@@ -510,13 +534,13 @@ void handleCancel() {
     sendJson(409, "An active firmware operation cannot be cancelled");
     return;
   }
-  releaseMaintenanceHold();
   currentState = State::INACTIVE;
   armedUntilMs = 0;
   prepareDeadlineMs = 0;
   accessCode[0] = 0;
   setMessage("Local OTA disabled");
   sendJson(200, statusMessage);
+  releaseMaintenanceAfterStopPending = true;
   stopServerPending = true;
 }
 
@@ -554,6 +578,157 @@ void stopServer() {
     mdnsRunning = false;
   }
   stopServerPending = false;
+}
+
+__attribute__((noinline)) bool IRAM_ATTR parkCoreOneForRestart() {
+  // esp_restart_noos() disables both caches before it resets and stalls the
+  // other CPU. Core 1 must therefore acknowledge only after it is executing
+  // entirely from IRAM with all maskable interrupts disabled.
+  const uint32_t enabledInterrupts = xthal_get_intenable();
+  xt_ints_off(0xFFFFFFFFU);
+  uint32_t expectedState = RESTART_LOOP_WAITING;
+  if (!__atomic_compare_exchange_n(
+          &restartLoopState, &expectedState, RESTART_LOOP_QUIESCED, false,
+          __ATOMIC_RELEASE, __ATOMIC_ACQUIRE)) {
+    xt_ints_on(enabledInterrupts);
+    return false;
+  }
+
+  for (;;) {
+    __asm__ __volatile__("nop");
+  }
+}
+
+void restartTask(void*) {
+  const TickType_t waitStarted = xTaskGetTickCount();
+  const TickType_t waitTicks =
+      pdMS_TO_TICKS(RESTART_LOOP_QUIESCE_TIMEOUT_MS);
+  for (;;) {
+    const uint32_t state =
+        __atomic_load_n(&restartLoopState, __ATOMIC_ACQUIRE);
+    if (state == RESTART_LOOP_QUIESCED) break;
+    if (state == RESTART_LOOP_ABORTED) {
+      restartTaskHandle = nullptr;
+      vTaskDeleteWithCaps(nullptr);
+      return;
+    }
+
+    if (xTaskGetTickCount() - waitStarted >= waitTicks) {
+      uint32_t expectedState = RESTART_LOOP_WAITING;
+      if (__atomic_compare_exchange_n(
+              &restartLoopState, &expectedState, RESTART_LOOP_ABORTED, false,
+              __ATOMIC_RELEASE, __ATOMIC_ACQUIRE)) {
+        restartTaskHandle = nullptr;
+        setMessage(
+            "Firmware verified; loop shutdown failed. Power-cycle the radar.");
+        Serial.println(
+            "OTA restart task stopped: Core-1 loop did not quiesce; firmware "
+            "remains verified; automatic retry disabled");
+        vTaskDeleteWithCaps(nullptr);
+        return;
+      }
+      continue;
+    }
+    vTaskDelay(1);
+  }
+
+  const UBaseType_t stackHighWaterMark =
+      uxTaskGetStackHighWaterMark(nullptr);
+  Serial.printf(
+      "OTA restart task: name=%s core=%d stack-hwm-bytes=%u\n",
+      pcTaskGetName(nullptr), static_cast<int>(xPortGetCoreID()),
+      static_cast<unsigned>(stackHighWaterMark));
+  Serial.flush();
+  esp_restart();
+}
+
+void createRestartTaskOnce() {
+  if (restartTaskCreationAttempted) return;
+  restartTaskCreationAttempted = true;
+
+  const bool heapIntegrityOk = heap_caps_check_integrity_all(true);
+  const size_t freeInternal = heap_caps_get_free_size(
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t largestInternal = heap_caps_get_largest_free_block(
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const UBaseType_t loopStack = uxTaskGetStackHighWaterMark(nullptr);
+  const TaskHandle_t idle0 = xTaskGetIdleTaskHandleForCPU(0);
+  const UBaseType_t idle0Stack =
+      idle0 ? uxTaskGetStackHighWaterMark(idle0) : 0;
+  const TaskHandle_t idle1 = xTaskGetIdleTaskHandleForCPU(1);
+  const UBaseType_t idle1Stack =
+      idle1 ? uxTaskGetStackHighWaterMark(idle1) : 0;
+#if (INCLUDE_xTaskGetHandle == 1)
+  const TaskHandle_t espTimer = xTaskGetHandle("esp_timer");
+  const UBaseType_t espTimerStack =
+      espTimer ? uxTaskGetStackHighWaterMark(espTimer) : 0;
+  const bool espTimerStackAvailable = espTimer != nullptr;
+#else
+  const UBaseType_t espTimerStack = 0;
+  const bool espTimerStackAvailable = false;
+#endif
+  Serial.printf(
+      "OTA restart resources: integrity=%s heap=%u block=%u psram=%u "
+      "loop-stack=%u idle0-stack=%u idle1-stack=%u esp-timer-stack=%u "
+      "esp-timer-available=%s\n",
+      heapIntegrityOk ? "ok" : "FAILED",
+      static_cast<unsigned>(freeInternal),
+      static_cast<unsigned>(largestInternal), ESP.getFreePsram(),
+      static_cast<unsigned>(loopStack), static_cast<unsigned>(idle0Stack),
+      static_cast<unsigned>(idle1Stack),
+      static_cast<unsigned>(espTimerStack),
+      espTimerStackAvailable ? "yes" : "no");
+
+  if (!heapIntegrityOk) {
+    setMessage(
+        "Firmware verified; heap integrity failed. Power-cycle the radar.");
+    Serial.println(
+        "OTA restart task not created: heap integrity failed; firmware "
+        "remains verified; automatic retry disabled");
+    return;
+  }
+
+  if (xPortGetCoreID() != RESTART_LOOP_CORE) {
+    setMessage(
+        "Firmware verified; restart caller core is unsafe. Power-cycle the radar.");
+    Serial.printf(
+        "OTA restart task not created: caller core=%d expected=%d; firmware "
+        "remains verified; automatic retry disabled\n",
+        static_cast<int>(xPortGetCoreID()),
+        static_cast<int>(RESTART_LOOP_CORE));
+    return;
+  }
+  const TaskHandle_t loopTaskHandle = xTaskGetCurrentTaskHandle();
+
+  const BaseType_t result = xTaskCreatePinnedToCoreWithCaps(
+      restartTask, RESTART_TASK_NAME, RESTART_TASK_STACK_BYTES, nullptr,
+      RESTART_TASK_PRIORITY, &restartTaskHandle, RESTART_TASK_CORE,
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if (result != pdPASS) {
+    restartTaskHandle = nullptr;
+    setMessage(
+        "Firmware verified; automatic restart failed. Power-cycle the radar.");
+    Serial.printf(
+        "OTA restart task creation failed: result=%ld; firmware remains "
+        "verified; automatic retry disabled\n",
+        static_cast<long>(result));
+    return;
+  }
+  Serial.printf(
+      "OTA restart task created: name=%s core=%d stack-bytes=%u; "
+      "parking loop name=%s core=%d\n",
+      RESTART_TASK_NAME, static_cast<int>(RESTART_TASK_CORE),
+      static_cast<unsigned>(RESTART_TASK_STACK_BYTES),
+      pcTaskGetName(loopTaskHandle),
+      static_cast<int>(xPortGetCoreID()));
+  Serial.flush();
+
+  if (!parkCoreOneForRestart()) {
+    Serial.println(
+        "OTA restart loop park cancelled: restart task timed out; firmware "
+        "remains verified; automatic retry disabled");
+    return;
+  }
 }
 
 }  // namespace
@@ -605,8 +780,21 @@ bool enable() {
   armedUntilMs = millis() + ENABLE_WINDOW_MS;
   prepareDeadlineMs = 0;
   restartAtMs = 0;
+  restartExecuteAtMs = 0;
+  restartTaskHandle = nullptr;
+  __atomic_store_n(
+      &restartLoopState, RESTART_LOOP_WAITING, __ATOMIC_RELEASE);
+  restartTaskCreationAttempted = false;
+  releaseMaintenanceAfterStopPending = false;
+  exclusiveHoldConfirmed = false;
   currentState = State::ARMED;
-  setMessage("Open the local update page and enter the access code");
+  setMessage("Pausing background network services for OTA");
+
+  // The OTA window owns the network immediately. ADS-B finishes only a request
+  // already in flight, then parks its Core-0 task. MQTT closes its socket and
+  // frees its client and work buffers before any upload is permitted.
+  adsb::requestMaintenanceHold();
+  mqtt_service::requestMaintenanceHold();
 
   if (!serverRunning) {
     server.begin();
@@ -618,14 +806,18 @@ bool enable() {
   }
   Serial.printf("OTA enabled for five minutes: http://%s/update\n",
                 WiFi.localIP().toString().c_str());
+  Serial.println(
+      "OTA exclusive window requested: ADS-B and MQTT are pausing");
   return true;
 }
 
 void disable() {
   if (currentState == State::UPLOADING || currentState == State::SUCCESS) return;
   resetUploadSession();
-  releaseMaintenanceHold();
   stopServer();
+  releaseMaintenanceHold();
+  releaseMaintenanceAfterStopPending = false;
+  exclusiveHoldConfirmed = false;
   armedUntilMs = 0;
   prepareDeadlineMs = 0;
   accessCode[0] = 0;
@@ -642,21 +834,42 @@ bool busy() {
 
 void service() {
   if (serverRunning) server.handleClient();
-  if (stopServerPending) stopServer();
+  if (stopServerPending) {
+    stopServer();
+    if (releaseMaintenanceAfterStopPending) {
+      releaseMaintenanceAfterStopPending = false;
+      releaseMaintenanceHold();
+      exclusiveHoldConfirmed = false;
+      Serial.println(
+          "OTA exclusive hold released after HTTP server and mDNS stopped");
+    }
+  }
 
   const uint32_t now = millis();
-  if (currentState == State::PREPARING && adsb::maintenanceHoldActive() &&
-      mqtt_service::maintenanceHoldActive()) {
+  const bool exclusiveHoldActive =
+      adsb::maintenanceHoldActive() &&
+      mqtt_service::maintenanceHoldActive();
+  if (serverRunning && currentState == State::ARMED &&
+      exclusiveHoldActive && !exclusiveHoldConfirmed) {
+    exclusiveHoldConfirmed = true;
+    setMessage("Background network services paused; OTA window ready");
+    Serial.println(
+        "OTA exclusive window active: ADS-B parked and MQTT resources released");
+  }
+  if (currentState == State::PREPARING && exclusiveHoldActive) {
+    exclusiveHoldConfirmed = true;
     currentState = State::READY;
     setMessage("Radar ready. Upload may begin.");
     Serial.println("OTA network maintenance holds active; upload permitted");
   }
   if ((currentState == State::PREPARING || currentState == State::READY) &&
       prepareDeadlineMs && (int32_t)(now - prepareDeadlineMs) >= 0) {
-    releaseMaintenanceHold();
     currentState = State::ARMED;
     prepareDeadlineMs = 0;
-    setMessage("Upload preparation expired; try again");
+    setMessage(
+        "Upload preparation expired; background services remain paused");
+    Serial.println(
+        "OTA preparation expired; exclusive hold remains active until window close");
   }
   if (serverRunning && currentState != State::UPLOADING &&
       currentState != State::SUCCESS && armedUntilMs &&
@@ -666,17 +879,41 @@ void service() {
   if (serverRunning && currentState != State::UPLOADING &&
       currentState != State::SUCCESS && WiFi.status() != WL_CONNECTED) {
     resetUploadSession();
-    releaseMaintenanceHold();
     stopServer();
+    releaseMaintenanceHold();
+    releaseMaintenanceAfterStopPending = false;
+    exclusiveHoldConfirmed = false;
     armedUntilMs = 0;
+    prepareDeadlineMs = 0;
     currentState = State::ERROR;
     setMessage("OTA disabled because Wi-Fi disconnected");
+    Serial.println(
+        "OTA exclusive hold released after external Wi-Fi disconnect");
   }
   if (restartAtMs && (int32_t)(now - restartAtMs) >= 0) {
-    Serial.println("Restarting into verified OTA firmware");
-    Serial.flush();
-    delay(50);
-    ESP.restart();
+    // The upload response has already had time to reach the browser. Clear the
+    // trigger before touching any network owner so this shutdown path cannot run
+    // twice if a callback or delayed task yields back into the loop.
+    restartAtMs = 0;
+
+    // Keep both maintenance holds active. Shut down the HTTP listener and mDNS
+    // before restarting so neither WebServer nor the TCP/IP event path owns a
+    // live callback or RX buffer while esp_restart() tears the system down.
+    stopServer();
+    armedUntilMs = 0;
+    prepareDeadlineMs = 0;
+    accessCode[0] = 0;
+    restartExecuteAtMs = now + RESTART_SETTLE_MS;
+    Serial.println(
+        "OTA restart shutdown: HTTP server and mDNS stopped; settling network tasks");
+  }
+  if (restartExecuteAtMs &&
+      (int32_t)(now - restartExecuteAtMs) >= 0) {
+    // Clear first, then make the one permitted creation attempt. A failed
+    // allocation leaves the verified boot partition selected and both
+    // maintenance holds active for a safe manual power cycle.
+    restartExecuteAtMs = 0;
+    createRestartTaskOnce();
   }
 }
 

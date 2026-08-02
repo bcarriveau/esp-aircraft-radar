@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260801-PRODUCT57-AIRPORT-DATABASE-SETUP
+7IN-20260802-PRODUCT58-OTA-EXCLUSIVE-HOLD
 ```
 
 Current intended repository branch:
@@ -38,36 +38,33 @@ tag:
 product-15-hardened
 ```
 
-Product 57 retains the Product 56 R6 runtime firmware and adds a guided,
-region-independent airport-database setup workflow. It combines the public
-OurAirports airport and runway datasets, previews the generated region, replaces
-the compiled header atomically, restores the previous header after validation
-failure, and documents clearly when a coordinate change does or does not require a
-new firmware build.
+Product 58 is the current source release. Its exact runtime implementation was
+physically verified across two consecutive OTA cycles before the final Product 58
+marker and documentation promotion. It preserves the Product 57 airport-database
+setup workflow and the Product 56 R6 radar, MQTT, UI,
+display, and networking baseline while making local OTA updates network-exclusive.
+Pressing **ENABLE OTA** immediately parks ADS-B after any in-flight request, tears
+down MQTT and releases its buffers, and suppresses refresh, reconnect, Wi-Fi recovery,
+and fallback-restart commands until OTA is cancelled, expires, loses Wi-Fi, or
+completes. The local HTTP server, mDNS, Wi-Fi station, display, touch, LVGL, and OTA
+status UI remain active because they are required for the update.
 
-Product 56 R5 added an optional Home Assistant MQTT device, dashboard,
-display/range/refresh controls, bounded aircraft telemetry, diagnostics, and
-MQTT-aware OTA coordination. MQTT remains disabled by default and creates no
-client, broker traffic, aircraft snapshot buffer, or JSON buffer until configured
-and enabled from the System page.
+Product 58 also corrects the automatic restart failure that previously occurred when
+Core 1 remained in flash-resident code while the ESP-IDF restart path disabled the
+caches. Core 1 now acknowledges shutdown only after entering a dedicated IRAM park
+with maskable interrupts disabled; a bounded Core-0 restart task then calls the public
+`esp_restart()` API. Two consecutive hardware OTA cycles alternated the application
+partitions, verified the packages, restarted without a Guru Meditation, and booted
+with `Reset reason: 3`. Heap, largest internal block, and PSRAM remained stable across
+both cycles.
 
-Product 56 R1 and R2 hardware logs proved that the native ESP-MQTT task, socket state,
-and persistent allocations fragmented internal RAM enough that later preferred ADS-B
-TLS handshakes failed even when total free heap remained above 50 KB. Product 56 R3
-replaced only that optional MQTT transport with task-free PubSubClient 2.8, streams
-retained payloads from the PSRAM JSON buffer through a 384-byte MQTT packet buffer,
-publishes at most one state message per service interval, and pauses MQTT socket work
-while an ADS-B fetch is active. Extended hardware logging then completed repeated
-preferred native HTTPS/TLS ADS-B cycles with MQTT connected, stable post-request heap
-recovery, and no fallback use, allocation failures, or Wi-Fi recovery.
-
-Product 56 R5 removed the redundant Home Assistant Last Update Age entity while
-retaining the internal LIVE/UPDATING/STALE/OFFLINE state logic, and finalized the
-System Status, Device & Network, and maintenance-control layout for the physical
-800x480 display. The checked-in Product 56 R6 build identity retained that reviewed
-layout. ADS-B HTTPS, TLS verification, deadlines, recovery, 15-second cadence,
-stable-ICAO interaction, target bounds, OTA behavior, panel timing, DMA, OPI PSRAM,
-and the 20-scanline RGB bounce buffer remain unchanged.
+Product 57 added the guided, region-independent airport and runway generator with
+preview, atomic replacement, validation rollback, and relocation documentation.
+Product 56 retains the optional lightweight Home Assistant MQTT integration, bounded
+telemetry, finalized System-page layout, native preferred ADS-B HTTPS transport,
+15-second cadence, stale-response rejection, last-good retention, stable ICAO
+interaction, 200-target bounds, panel timing, DMA, OPI PSRAM, and the 20-scanline
+RGB bounce buffer.
 
 ## Features
 
@@ -224,7 +221,8 @@ Tracked state:
 ### Local firmware updates
 
 - The local HTTP updater is disabled during normal operation and can be armed from
-  the System page for five minutes.
+  the System page for five minutes. Arming immediately claims an exclusive OTA
+  maintenance window rather than waiting for the browser upload to begin.
 - Each arming generates a temporary six-digit access code and displays both the
   numeric-IP update address and `bills-aircraft-radar.local/update` when mDNS starts.
 - PlatformIO automatically creates `firmware.radarota` beside `firmware.bin` after a
@@ -236,14 +234,22 @@ Tracked state:
   SHA-256 digest.
 - Upload data is streamed directly to the inactive OTA partition. No complete
   firmware copy is allocated in heap or PSRAM.
-- The core-0 ADS-B task finishes any active request and acknowledges a maintenance
-  hold before the browser can upload. When MQTT is active, its client is also stopped
-  and its PSRAM snapshot and JSON buffers are released before OTA becomes ready. A
-  failed or cancelled preparation releases both holds and resumes normal operation.
+- As soon as OTA is armed, the core-0 ADS-B task finishes only a request already in
+  flight and then parks. MQTT closes its connection and releases its client, aircraft
+  snapshot, and JSON work buffers. Pending refresh/reconnect work and ADS-B Wi-Fi
+  recovery are suppressed for the complete armed, preparation, retry, upload,
+  verification, and restart lifecycle.
+- Upload or preparation errors keep the exclusive hold active for a bounded retry.
+  Normal ADS-B and MQTT operation resumes only after OTA is cancelled, disabled,
+  expires, or loses Wi-Fi externally; HTTP and mDNS stop before the hold is released.
 - The next boot partition is selected only after package checks, confirmation that
   the declared Product build ID is embedded in the firmware, ESP32-S3 image validation,
   exact-length validation, SHA-256 verification, and `esp_ota_end()` all succeed.
-- Product 54 does not claim signed-firmware authenticity or automatic first-boot
+- Automatic restart uses a bounded internal-stack task on Core 0 and an atomic Core-1
+  acknowledgement from an interrupt-masked IRAM park, preventing Core 1 from fetching
+  flash code after the restart path disables caches. Hardware testing completed two
+  consecutive clean software restarts with `Reset reason: 3`.
+- The updater does not claim signed-firmware authenticity or automatic first-boot
   rollback; those remain separate reliability features.
 
 ### Target capacity
@@ -408,6 +414,9 @@ Run:
 pio check -e waveshare-s3-touch-lcd-7
 python tests/test_airport_database.py
 python tests/test_airport_generator.py
+python tests/test_radar_ota_package.py
+python tests/test_ota_restart_shutdown.py
+python tests/test_ota_exclusive_window.py
 ```
 
 The project passes `cppcheck: --skip-packages`, which keeps static analysis on
@@ -417,7 +426,7 @@ library packages. This avoids false syntax failures in package headers such as
 
 ### 7. Local browser update
 
-Product 54 must first be installed by USB. For later updates:
+An OTA-capable build must be installed by USB once. For later updates:
 
 1. Build the new source and locate `release/firmware.radarota` in the project folder.
 2. On the radar, open **System**, tap **Firmware / OTA**, and enable the five-minute
@@ -489,8 +498,8 @@ Before calling a Product release complete:
 14. Test a successful local browser update and confirm the new build marker after
     restart.
 15. Confirm wrong-code, wrong-extension, mismatched-build, truncated-package, and
-    SHA-mismatch failures leave the current firmware selected and release the ADS-B
-    maintenance hold.
+    SHA-mismatch failures leave the current firmware selected while the exclusive
+    OTA hold remains available for retry until cancellation or expiry.
 16. With MQTT disabled, confirm no broker attempts, MQTT client, or MQTT aircraft
     buffer are reported and normal Product 55 behavior is unchanged.
 17. Enable MQTT and confirm Home Assistant discovery, availability, display power,
@@ -499,8 +508,9 @@ Before calling a Product release complete:
 18. Confirm repeated preferred native HTTPS/TLS ADS-B cycles continue with MQTT
     connected and that free heap and the largest internal block recover after each
     request.
-19. Start OTA with MQTT connected and confirm OTA does not become ready until both
-    ADS-B and MQTT maintenance holds are active; confirm cancellation resumes both.
+19. Enable OTA with MQTT connected and confirm ADS-B parks and MQTT releases its
+    resources immediately for the complete countdown. Confirm cancellation resumes
+    both, then complete two OTA cycles and verify clean `Reset reason: 3` restarts.
 20. Generate a different airport region with synthetic or downloaded data, confirm
     the generic tests pass, then verify the intended regional airports appear.
 21. Complete an extended soak test.
@@ -555,6 +565,10 @@ screenshots are prepared.
 - **Product 57:** Guided regional airport and runway generation, atomic validation
   and rollback, location-independent tests, plain-language setup documentation, and
   Git exclusions for local tooling artifacts.
+- **Product 58:** Physically verified network-exclusive OTA window, immediate ADS-B
+  and MQTT maintenance ownership, suppression of competing Wi-Fi recovery, preserved
+  Product 57 multipart/package writer, and a clean IRAM-safe dual-core restart proven
+  across consecutive alternating-partition updates.
 
 Detailed Product-by-Product history is maintained in `CHANGELOG.md`. Unconfirmed
 older history is not guessed.

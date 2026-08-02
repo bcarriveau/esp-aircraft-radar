@@ -14,20 +14,93 @@ repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 57
-- **Current build marker:** `7IN-20260801-PRODUCT57-AIRPORT-DATABASE-SETUP`
+- **Current source:** Product 58
+- **Current build marker:** `7IN-20260802-PRODUCT58-OTA-EXCLUSIVE-HOLD`
 - **Current branch:** `main`
-- **Product 57 source baseline:** Product 56 R6 at commit `49035a62e4684ef1696fb325fbc12b0a8a53cce7`
+- **Product 58 source baseline:** Product 57 at commit `c30c330ff3182798d690cbd919c322819a2d17f9`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 57 changes the repository setup workflow and Product identity while
-preserving the physically reviewed Product 56 R6 runtime behavior. PlatformIO
-compile/link, generated OTA packaging, upload, and physical confirmation of the
-new Product 57 marker remain user-side.
+Product 58 preserves Product 57's airport-database workflow and working multipart
+OTA package writer, adds exclusive network ownership for the entire OTA window, and
+corrects the dual-core restart sequence. The exact runtime implementation was
+physically verified across two consecutive hardware OTA cycles before the final
+Product 58 marker and documentation promotion. The cycles alternated the application
+partitions, verified the package, restarted without a Guru Meditation, and booted
+with `Reset reason: 3`.
+
+## Product 58 - 2026-08-02
+
+**Build:** `7IN-20260802-PRODUCT58-OTA-EXCLUSIVE-HOLD`  
+**Source baseline:** Product 57 commit `c30c330ff3182798d690cbd919c322819a2d17f9`  
+**Status:** Runtime implementation physically verified across two consecutive OTA cycles; final Product 58 marker rebuild pending
+
+### Changed
+
+- Made the complete five-minute local OTA window network-exclusive from the moment
+  **ENABLE OTA** is pressed rather than waiting for browser preparation.
+- The core-0 ADS-B task now finishes only a request already in flight and then parks
+  for the complete armed, preparation, retry, upload, verification, and restart
+  lifecycle.
+- MQTT closes its socket and releases its client, aircraft snapshot, and JSON work
+  buffers as soon as OTA claims the network.
+- Pending ADS-B refresh and reconnect commands are cleared or ignored while OTA owns
+  the network. An in-flight request that fails after the hold request cannot enter
+  Wi-Fi recovery or request the last-resort fallback restart.
+- Upload and preparation errors retain the exclusive hold for a bounded retry. Normal
+  background networking resumes only after cancellation, local disable, expiry, or
+  an external Wi-Fi disconnect; HTTP and mDNS stop before the hold is released.
+
+### Restart correction
+
+- Corrected the automatic restart crash caused by Core 1 remaining in flash-resident
+  code while the ESP-IDF ESP32-S3 restart path disabled instruction and data caches.
+- Added a dedicated noinline `IRAM_ATTR` Core-1 park routine with maskable interrupts
+  disabled before it atomically acknowledges quiescence.
+- Retained the bounded dedicated Core-0 restart task with an internal 4096-byte stack,
+  one-second acknowledgement timeout, atomic cancellation race protection, and the
+  public `esp_restart()` API.
+- Added reset-reason startup diagnostics so clean software restarts can be
+  distinguished from panic resets.
+
+### Physical verification
+
+- The exact runtime implementation was built and tested before the marker-only Product
+  58 promotion. A normal rebuild is required to generate a Product 58 OTA package.
+- Completed two consecutive browser OTA updates with the Product 57 multipart upload
+  transport, package parser, SHA-256 validation, ESP image validation, inactive-slot
+  writer, and verification path preserved.
+- Confirmed ADS-B entered maintenance hold and MQTT released its resources before
+  each upload was permitted. No ADS-B or MQTT network work competed with the upload.
+- Confirmed the inactive partitions alternated `app1` then `app0` and returned to
+  `app1` for the next cycle.
+- Both updates restarted without a Guru Meditation and the following boots reported
+  `Reset reason: 3`.
+- Pre-restart resources remained stable across the two cycles: approximately 70.4 KB
+  free internal heap, a 51.2 KB largest internal block, and 3.97 MB free PSRAM.
+- Post-restart ADS-B preferred native HTTPS and MQTT startup resumed normally.
+
+### Validation
+
+- 34 focused OTA package, restart, and exclusive-window tests passed before hardware
+  validation.
+- `src/ota_update.cpp` passed strict host C++17 syntax checking with warnings treated
+  as errors.
+- The Product 57 update page, multipart `/upload` handler, package parser, writer, and
+  final verification regions remained unchanged.
+- Static inspection found no `setInsecure()`, blocking `HTTPClient::GET()`, raw upload
+  route, or resumable/chunked browser transport.
+
+### Preserved
+
+- Product 57 airport generation and documentation, Product 56 R6 UI and lightweight
+  MQTT behavior outside OTA, native preferred ADS-B HTTPS, verified fallback,
+  15-second cadence, recovery, stale-response rejection, last-good retention, stable
+  ICAO interaction, 200-target bounds, airport rendering, panel timing, DMA, OPI
+  PSRAM/XIP, LVGL 8.3.11, and the 20-scanline RGB bounce buffer.
 
 ## Product 57 - 2026-08-01
 
