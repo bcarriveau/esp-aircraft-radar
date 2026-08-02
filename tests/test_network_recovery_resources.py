@@ -24,7 +24,7 @@ OTA = read("src/ota_update.cpp")
 class NetworkRecoveryResourceTests(unittest.TestCase):
     def test_product_59_releases_unused_ble_controller_memory(self):
         self.assertIn(
-            "7IN-20260802-PRODUCT60-OTA-PREPARE-IDEMPOTENT", BUILD
+            "7IN-20260802-PRODUCT61-OTA-SOCKET-PACING", BUILD
         )
         self.assertIn("esp_bt_controller_mem_release(ESP_BT_MODE_BLE)", MAIN)
         self.assertIn("MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT", MAIN)

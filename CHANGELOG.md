@@ -14,21 +14,109 @@ repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 60
-- **Current build marker:** `7IN-20260802-PRODUCT60-OTA-PREPARE-IDEMPOTENT`
+- **Current source:** Product 61
+- **Current build marker:** `7IN-20260802-PRODUCT61-OTA-SOCKET-PACING`
 - **Current branch:** `main`
-- **Product 60 source baseline:** Product 59 network-recovery package derived from Product 57 commit `c30c330ff3182798d690cbd919c322819a2d17f9`
+- **Product 61 source baseline:** Product 60 OTA-preparation package derived from Product 57 commit `c30c330ff3182798d690cbd919c322819a2d17f9`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 60 corrects the browser-to-radar OTA preparation handoff while retaining
-Product 59 network recovery and the physically verified Product 58 upload/restart
-implementation. Duplicate or retried preparation requests are now successful and
-side-effect-free in `PREPARING` and `READY`, preventing a lost response from producing
-a false 409 error followed by the 45-second preparation expiry.
+Product 61 is the current physically verified known-good release. It corrects the
+browser-to-radar socket handoff resets while retaining Product 60 idempotent
+preparation, Product 59 network recovery, and the Product 58 upload/restart
+implementation. Browser requests are paced for the Arduino-ESP32 single-client
+`WebServer`, and an upload is retried only when the radar proves that no transfer
+began.
+
+## Product 61 - 2026-08-02
+
+**Build:** `7IN-20260802-PRODUCT61-OTA-SOCKET-PACING`  
+**Source baseline:** Product 60 OTA-preparation package derived from Product 57 commit `c30c330ff3182798d690cbd919c322819a2d17f9`  
+**Status:** Physically verified known-good OTA release
+
+### Diagnosed
+
+- Two Chrome HAR captures reproduced the same rapid socket-handoff failure. The
+  final repeated-click capture contained eight successful `/prepare` responses,
+  eight `/status` attempts, and two `/upload` attempts.
+- Six `/status` connections and the first multipart `/upload` connection failed with
+  `net::ERR_CONNECTION_RESET`. The final 2.4 MB multipart upload then completed
+  successfully without a firmware, hardware, or network configuration change.
+- Successful follow-up requests were launched only about 0.2-2.6 ms after the prior
+  response ended. The failed first upload spent about 80 ms blocked before reset;
+  its HAR timing recorded no connect, send, wait, or receive phase.
+- The resets occurred while the radar was already in its exclusive OTA hold and
+  before firmware writing or reboot. They were not caused by flash activity, package
+  validation, ADS-B TLS memory pressure, MQTT, or an access-code rejection.
+- Every successful JSON response in the final HAR contained two identical
+  `Connection: close` headers: one added by this OTA code and one added automatically
+  by Arduino-ESP32 `WebServer`.
+
+### Changed
+
+- Wait 500 ms after accepted preparation before the first `/status` request.
+- Poll `/status` once per second instead of every 250 ms.
+- Wait 500 ms after `READY` before opening the multipart `/upload` connection.
+- Retry transient `/prepare`, `/status`, and cancel connection failures with at most
+  three attempts and 300/600 ms bounded backoff; ordinary HTTP error responses are
+  not retried.
+- On an upload connection reset, query `/status` and retry the multipart upload once
+  only when the radar is still `READY` and both received and written firmware byte
+  counters remain zero.
+- Refuse an automatic upload retry when any transfer may have started, avoiding a
+  duplicate write or ambiguous inactive-partition state.
+- Expose `received_bytes`, `written_bytes`, and `firmware_bytes` in authenticated
+  status JSON for safe browser recovery and diagnostics.
+- Remove the manually added `Connection: close` response header because
+  Arduino-ESP32 3.0.7 `WebServer` already emits that header.
+
+### Validation
+
+- Added focused regression tests for control-request pacing, bounded network-only
+  retries, zero-byte upload retry gating, status counters, duplicate close-header
+  removal, and preservation of the Product 57 multipart route.
+- The complete checked-in Python suite passed: 62 tests.
+- A Node-based browser simulation passed transient control retry, non-retry of HTTP
+  errors, one safe zero-byte upload retry, and rejection of a retry after any byte
+  was received.
+- `src/ota_update.cpp` passed strict host C++17 syntax checking with
+  `-Wall -Wextra -Werror` using the existing focused Arduino/ESP-IDF stubs.
+- Static checks confirmed the package parser, streamed inactive-slot writer,
+  SHA/image validation, Product 58 exclusive hold, and IRAM restart implementation
+  were not changed.
+
+### Physical verification
+
+- User-side PlatformIO build and Product 61 `.radarota` generation completed.
+- Chrome performed exactly one `POST /prepare` (`202`), one `GET /status` (`200`),
+  and one multipart `POST /upload` (`200`) with no connection reset, browser retry,
+  duplicate preparation, or repeated upload.
+- The measured handoff spacing was about 513 ms from preparation to status and
+  about 517 ms from status to upload.
+- The 2,409,888-byte firmware image was accepted and verified on the inactive OTA
+  partition.
+- The radar stopped HTTP and mDNS, completed the IRAM-safe cross-core restart, and
+  booted with `Reset reason: 3` and the Product 61 marker.
+- ADS-B native HTTPS and MQTT resumed after boot. Subsequent ADS-B responses reached
+  about 82.8 KB and 144 received aircraft without a progressive heap or PSRAM loss.
+- Restart diagnostics reported `integrity=ok`, 71,616 bytes free heap, a 53,236-byte
+  largest internal block, and 3,968,468 bytes free PSRAM.
+- The normal one-click OTA path is therefore physically verified. The forced hard
+  Wi-Fi recovery branch and duplicate preparation retry branch were not separately
+  fault-injected in this final hardware run.
+
+### Preserved
+
+- Product 60 idempotent `/prepare` handling and bounded preparation deadline.
+- Product 59 BLE-memory release, MQTT teardown before hard Wi-Fi recovery, bounded
+  recovery deferral, and OTA/recovery mutual exclusion.
+- Product 58 immediate exclusive OTA hold and physically verified IRAM restart.
+- Product 57 `FormData` multipart transport, package format, streamed writer,
+  certificate-verified ADS-B networking, stable ICAO behavior, display timing, OPI
+  PSRAM/XIP, DMA, and the 20-scanline RGB bounce buffer.
 
 ## Product 60 - 2026-08-02
 

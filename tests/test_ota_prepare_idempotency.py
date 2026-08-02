@@ -10,7 +10,7 @@ BUILD = (ROOT / "include" / "build_info.h").read_text(encoding="utf-8")
 class OtaPrepareIdempotencyTests(unittest.TestCase):
     def test_product_marker(self):
         self.assertIn(
-            "7IN-20260802-PRODUCT60-OTA-PREPARE-IDEMPOTENT", BUILD
+            "7IN-20260802-PRODUCT61-OTA-SOCKET-PACING", BUILD
         )
 
     def test_duplicate_preparing_request_is_successful_and_side_effect_free(self):
@@ -64,12 +64,12 @@ class OtaPrepareIdempotencyTests(unittest.TestCase):
         self.assertEqual(prepare.count("currentState = State::PREPARING;"), 1)
         self.assertEqual(prepare.count("mqtt_service::requestMaintenanceHold();"), 1)
 
-    def test_browser_recovers_when_prepare_response_is_lost(self):
+    def test_browser_retries_lost_prepare_response_safely(self):
         page = OTA[OTA.index("const char UPDATE_PAGE[]") : OTA.index(")HTML\";")]
         self.assertIn("async function prepareUpload()", page)
-        self.assertIn("for(let attempt=0;attempt<2;attempt++)", page)
-        self.assertIn("await call('/status')", page)
-        self.assertIn("j.state==='PREPARING'||j.state==='READY'", page)
+        self.assertIn("return call('/prepare',{method:'POST'},3)", page)
+        self.assertIn("async function call(path,options={},attempts=3)", page)
+        self.assertIn("if(e.httpStatus||attempt+1>=attempts)throw e", page)
         self.assertIn("await prepareUpload();await waitReady();", page)
 
     def test_product57_multipart_upload_transport_remains_unchanged(self):

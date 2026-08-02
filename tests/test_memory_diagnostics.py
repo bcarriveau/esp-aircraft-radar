@@ -16,7 +16,7 @@ def test_product_56_r1_tracks_contiguous_internal_memory() -> None:
     state = read("src/app_state.cpp")
     ui = read("src/ui.cpp")
 
-    assert "7IN-20260802-PRODUCT60-OTA-PREPARE-IDEMPOTENT" in build
+    assert "7IN-20260802-PRODUCT61-OTA-SOCKET-PACING" in build
     assert "minimumLargestInternalBlock" in header
     assert "heap_caps_get_largest_free_block" in state
     assert "MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT" in state

@@ -94,11 +94,14 @@ progress{width:100%;height:20px;margin-top:18px}.status{min-height:54px;margin-t
 <script>
 const code=()=>document.getElementById('code').value.trim();
 const status=document.getElementById('status'), progress=document.getElementById('progress'), install=document.getElementById('install');
-async function call(path,options={}){options.headers=Object.assign({},options.headers||{}, {'X-OTA-Code':code()});const r=await fetch(path,options);const t=await r.text();let j={message:t};try{j=JSON.parse(t)}catch(e){}if(!r.ok)throw new Error(j.message||('HTTP '+r.status));return j}
-async function waitReady(){for(let i=0;i<180;i++){const j=await call('/status');status.textContent=j.message||j.state;if(j.state==='READY')return;if(j.state==='ERROR')throw new Error(j.message);await new Promise(r=>setTimeout(r,250))}throw new Error('Radar did not enter update-ready state')}
-async function prepareUpload(){let lastError;for(let attempt=0;attempt<2;attempt++){try{return await call('/prepare',{method:'POST'})}catch(e){lastError=e;try{const j=await call('/status');if(j.state==='PREPARING'||j.state==='READY')return j}catch(statusError){}if(attempt===0)await new Promise(r=>setTimeout(r,250))}}throw lastError}
-function upload(file){return new Promise((resolve,reject)=>{const x=new XMLHttpRequest();x.open('POST','/upload');x.setRequestHeader('X-OTA-Code',code());x.upload.onprogress=e=>{if(e.lengthComputable)progress.value=Math.round(e.loaded*100/e.total)};x.onload=()=>{let j={message:x.responseText};try{j=JSON.parse(x.responseText)}catch(e){};x.status>=200&&x.status<300?resolve(j):reject(new Error(j.message||('HTTP '+x.status)))};x.onerror=()=>reject(new Error('Upload connection failed'));const f=new FormData();f.append('firmware',file,file.name);x.send(f)})}
-install.onclick=async()=>{const file=document.getElementById('file').files[0];if(!/^\d{6}$/.test(code())){status.textContent='Enter the six-digit access code.';return}if(!file||!file.name.toLowerCase().endsWith('.radarota')){status.textContent='Choose firmware.radarota.';return}install.disabled=true;progress.value=0;try{status.textContent='Waiting for network services to become idle...';await prepareUpload();await waitReady();status.textContent='Uploading and validating firmware...';const j=await upload(file);status.textContent=j.message||'Update complete. Radar is restarting.';progress.value=100}catch(e){status.textContent=e.message}finally{install.disabled=false}};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function callOnce(path,options={}){options.headers=Object.assign({},options.headers||{}, {'X-OTA-Code':code()});options.cache='no-store';const r=await fetch(path,options);const t=await r.text();let j={message:t};try{j=JSON.parse(t)}catch(e){}if(!r.ok){const err=new Error(j.message||('HTTP '+r.status));err.httpStatus=r.status;throw err}return j}
+async function call(path,options={},attempts=3){let lastError;for(let attempt=0;attempt<attempts;attempt++){try{return await callOnce(path,options)}catch(e){lastError=e;if(e.httpStatus||attempt+1>=attempts)throw e;await sleep(300*(attempt+1))}}throw lastError}
+async function waitReady(){await sleep(500);for(let i=0;i<45;i++){const j=await call('/status',{},3);status.textContent=j.message||j.state;if(j.state==='READY')return j;if(j.state==='ERROR')throw new Error(j.message);await sleep(1000)}throw new Error('Radar did not enter update-ready state')}
+async function prepareUpload(){return call('/prepare',{method:'POST'},3)}
+function uploadOnce(file){return new Promise((resolve,reject)=>{const x=new XMLHttpRequest();x.open('POST','/upload');x.setRequestHeader('X-OTA-Code',code());x.upload.onprogress=e=>{if(e.lengthComputable)progress.value=Math.round(e.loaded*100/e.total)};x.onload=()=>{let j={message:x.responseText};try{j=JSON.parse(x.responseText)}catch(e){};x.status>=200&&x.status<300?resolve(j):reject(new Error(j.message||('HTTP '+x.status)))};x.onerror=()=>reject(new Error('Upload connection reset'));const f=new FormData();f.append('firmware',file,file.name);x.send(f)})}
+async function upload(file){let lastError;for(let attempt=0;attempt<2;attempt++){try{return await uploadOnce(file)}catch(e){lastError=e;if(attempt>0)break;await sleep(500);const j=await call('/status',{},3);const received=Number(j.received_bytes||0),written=Number(j.written_bytes||0);if(j.state!=='READY'||received!==0||written!==0)throw new Error('Upload connection lost after transfer may have started; check radar status before retrying.');status.textContent='Upload connection reset before transfer; retrying once...';progress.value=0;await sleep(500)}}throw lastError}
+install.onclick=async()=>{const file=document.getElementById('file').files[0];if(!/^\d{6}$/.test(code())){status.textContent='Enter the six-digit access code.';return}if(!file||!file.name.toLowerCase().endsWith('.radarota')){status.textContent='Choose firmware.radarota.';return}install.disabled=true;progress.value=0;try{status.textContent='Waiting for network services to become idle...';await prepareUpload();await waitReady();status.textContent='Uploading and validating firmware...';await sleep(500);const j=await upload(file);status.textContent=j.message||'Update complete. Radar is restarting.';progress.value=100}catch(e){status.textContent=e.message}finally{install.disabled=false}};
 document.getElementById('cancel').onclick=async()=>{try{const j=await call('/cancel',{method:'POST'});status.textContent=j.message}catch(e){status.textContent=e.message}};
 </script></main></body></html>
 )HTML";
@@ -166,11 +169,18 @@ void sendJson(int code, const char* message) {
       : 0;
   snprintf(body, sizeof(body),
            "{\"state\":\"%s\",\"message\":\"%s\","
-           "\"progress\":%u,\"build\":\"%s\"}",
+           "\"progress\":%u,\"received_bytes\":%lu,"
+           "\"written_bytes\":%lu,\"firmware_bytes\":%lu,"
+           "\"build\":\"%s\"}",
            stateName(currentState), message ? message : statusMessage,
-           static_cast<unsigned>(progress), BUILD_ID);
+           static_cast<unsigned>(progress),
+           static_cast<unsigned long>(payloadReceived),
+           static_cast<unsigned long>(payloadWritten),
+           static_cast<unsigned long>(packageHeader.firmwareSize), BUILD_ID);
   server.sendHeader("Cache-Control", "no-store");
-  server.sendHeader("Connection", "close");
+  // Arduino-ESP32 WebServer already adds exactly one Connection: close header.
+  // Adding another duplicates the header and makes Chrome's short control-request
+  // handoff less deterministic on this single-client embedded server.
   server.send(code, "application/json", body);
 }
 

@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260802-PRODUCT60-OTA-PREPARE-IDEMPOTENT
+7IN-20260802-PRODUCT61-OTA-SOCKET-PACING
 ```
 
 Current intended repository branch:
@@ -38,26 +38,37 @@ tag:
 product-15-hardened
 ```
 
-Product 60 is the current source release. It fixes the OTA preparation handoff
-without changing the verified firmware upload transport or restart path. A repeated
-`POST /prepare` is now idempotent while the radar is already `PREPARING` or `READY`,
-so a lost HTTP response, browser retry, or second click cannot turn a successfully
-accepted preparation into the misleading `OTA service is not available for
-preparation` error. The browser also checks `/status` and performs one bounded retry
-when the first preparation response is lost.
+Product 61 is the current physically verified known-good release. Earlier Chrome
+HAR captures showed rapid follow-up connections receiving
+`net::ERR_CONNECTION_RESET` from the single-client Arduino `WebServer` before
+firmware upload or flash writing began. One repeated-click capture recorded six
+failed `/status` connections and one failed multipart `/upload`; the next 2.4 MB
+upload succeeded without any firmware, hardware, or network configuration change.
+Every successful response also contained two identical `Connection: close` headers.
 
-Product 60 retains Product 59's unused BLE-memory release, acknowledged Core-1 MQTT
-teardown before hard Wi-Fi recovery, and atomic exclusion between OTA and radio
-recovery. It also preserves Product 58's physically verified Product 57 multipart
-upload transport, hardware-bound package validation, inactive-partition writer,
-immediate ADS-B/MQTT exclusive hold, and IRAM-safe Core-1 restart.
+Product 61 spaces the browser control-request handoffs, reduces status polling to one
+request per second, and retries transient control resets with bounded backoff. A lost
+upload connection is retried only once and only after `/status` confirms the radar is
+still `READY` with zero firmware bytes received and written. JSON status responses
+expose those transfer counters, and the duplicate application-added `Connection:
+close` header is removed because Arduino-ESP32 already adds it.
 
-The Product 58 runtime was physically verified across two consecutive browser OTA
-cycles. The cycles alternated application partitions, verified both packages,
-restarted without a Guru Meditation, and booted with `Reset reason: 3`; heap, largest
-internal block, and PSRAM remained stable. Product 59's recovery additions and the
-Product 60 preparation correction still require a normal PlatformIO build and
-hardware confirmation before they are declared physically verified.
+Physical verification on the 7-inch radar completed the intended one-click sequence
+with exactly one `POST /prepare` (`202`), one `GET /status` (`200`), and one multipart
+`POST /upload` (`200`). The HAR recorded no reset, retry, duplicate preparation, or
+repeated upload. The browser left about 513 ms between preparation and status and
+about 517 ms between status and upload. The 2,409,888-byte firmware image verified,
+the radar restarted cleanly with `Reset reason: 3`, booted the Product 61 marker, and
+resumed native ADS-B HTTPS and MQTT operation. Restart diagnostics reported intact
+heap, a 53,236-byte largest internal block, and about 3.97 MB free PSRAM.
+
+Product 61 retains Product 60's idempotent `/prepare`, Product 59's unused BLE-memory
+release and acknowledged MQTT teardown before hard Wi-Fi recovery, and Product 58's
+Product 57 multipart upload writer, exclusive ADS-B/MQTT hold, hardware-bound
+validation, inactive-partition writer, and IRAM-safe restart. The normal one-click
+OTA path, exclusive hold, package write/verification, restart, and post-boot service
+recovery are physically verified. The forced hard-Wi-Fi-recovery branch and duplicate
+preparation retry branch were not separately fault-injected during this final test.
 
 Product 57 added the guided, region-independent airport and runway generator with
 preview, atomic replacement, validation rollback, and relocation documentation.
@@ -519,7 +530,10 @@ Before calling a Product release complete:
     restarts and reconnects.
 22. Confirm enabling OTA during a hard recovery is rejected with a retry message,
     while enabling OTA first prevents the hard recovery from starting.
-23. Complete an extended soak test.
+23. From Chrome or Edge, select the package and press **PREPARE & INSTALL** once.
+    Confirm the page reaches upload without manual retries, the serial log reports one
+    upload start, and no `/status` or `/upload` connection-reset error appears.
+24. Complete an extended soak test.
 
 ## Screenshots
 
@@ -581,6 +595,9 @@ screenshots are prepared.
 - **Product 60:** Idempotent OTA preparation requests plus bounded browser recovery
   when the first `/prepare` response is lost, while preserving the Product 57
   multipart upload writer and Product 58 restart implementation.
+- **Product 61:** HAR-confirmed single-client socket pacing, bounded control-request
+  retries, safe zero-byte-only upload retry, transfer counters, and removal of the
+  duplicate `Connection: close` header.
 
 Detailed Product-by-Product history is maintained in `CHANGELOG.md`. Unconfirmed
 older history is not guessed.
