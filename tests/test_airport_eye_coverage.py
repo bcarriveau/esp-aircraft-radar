@@ -64,7 +64,7 @@ def main() -> None:
 
     require(
         build,
-        "7IN-20260802-PRODUCT64-MEMORY-PHASE2",
+        "7IN-20260802-PRODUCT65-RADAR-FRAME-CADENCE",
         "Product 64 build marker",
     )
     require(ui, "AIRPORT_DIRECTORY_CAPACITY = 64", "bounded directory capacity")

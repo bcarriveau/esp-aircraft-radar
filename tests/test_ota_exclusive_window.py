@@ -11,7 +11,7 @@ BUILD = (ROOT / "include" / "build_info.h").read_text(encoding="utf-8")
 class OtaExclusiveWindowTests(unittest.TestCase):
     def test_product_marker(self):
         self.assertIn(
-            "7IN-20260802-PRODUCT64-MEMORY-PHASE2", BUILD
+            "7IN-20260802-PRODUCT65-RADAR-FRAME-CADENCE", BUILD
         )
 
     def test_enable_claims_network_before_starting_http_server(self):

@@ -55,9 +55,19 @@ struct HitResult {
   bool selected = false;
 };
 
+struct PerformanceStats {
+  uint32_t lastRenderUs = 0;
+  uint32_t maximumRenderUs = 0;
+  uint32_t lastFrameGapMs = 0;
+  uint32_t maximumFrameGapMs = 0;
+  uint32_t staticLayerRebuilds = 0;
+  bool staticLayerCached = false;
+};
+
 bool allocateWorkingBuffers();
 void configure(const View& view);
 bool render(aircraft::Target* workTargets, const char* selectedHex);
+void copyPerformanceStats(PerformanceStats& stats);
 bool hitTest(int canvasX, int canvasY, HitResult& result);
 bool airportLabelCount(uint8_t rangeIndex, uint8_t labelMask,
                        uint16_t& count);

@@ -8,7 +8,7 @@ BUILD = (ROOT / "include" / "build_info.h").read_text(encoding="utf-8")
 
 class OtaSocketPacingTests(unittest.TestCase):
     def test_product_marker(self):
-        self.assertIn("7IN-20260802-PRODUCT64-MEMORY-PHASE2", BUILD)
+        self.assertIn("7IN-20260802-PRODUCT65-RADAR-FRAME-CADENCE", BUILD)
 
     def test_control_requests_have_bounded_network_retries(self):
         page = OTA[OTA.index("const char UPDATE_PAGE[]") : OTA.index(")HTML\";")]

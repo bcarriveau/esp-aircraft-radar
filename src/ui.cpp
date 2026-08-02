@@ -2040,6 +2040,8 @@ void renderSystemPage() {
   airport_data::copyStatus(airportStatus);
   lv_mem_monitor_t lvMemory{};
   lv_mem_monitor(&lvMemory);
+  radar::PerformanceStats radarPerformance{};
+  radar::copyPerformanceStats(radarPerformance);
 
   setTracksVisible(false);
   setAirspaceVisible(false);
@@ -2071,6 +2073,7 @@ void renderSystemPage() {
       "PSRAM      %u KB  MIN %u KB\n"
       "LVGL       %u / %u KB  MAX %u KB\n"
       "LVGL FREE  %u KB  BIG %u KB  F%u%%\n"
+      "RADAR      %lu / %lu ms  GAP %lu ms\n"
       "ADSB STK   %u B FREE\n"
       "AIRPORTS   %s  %u CACHED",
       settings::storageAvailable() ? "READY" : "ERROR",
@@ -2098,6 +2101,9 @@ void renderSystemPage() {
       (unsigned)(lvMemory.free_size / 1024U),
       (unsigned)(lvMemory.free_biggest_size / 1024U),
       (unsigned)lvMemory.frag_pct,
+      (unsigned long)((radarPerformance.lastRenderUs + 500U) / 1000U),
+      (unsigned long)((radarPerformance.maximumRenderUs + 500U) / 1000U),
+      (unsigned long)radarPerformance.maximumFrameGapMs,
       (unsigned)diagnostics.minimumAdsbTaskStackFreeBytes,
       airportStatus.ready ? "READY" : "OFF",
       (unsigned)airportStatus.cachedCount);

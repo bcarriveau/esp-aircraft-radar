@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260802-PRODUCT64-MEMORY-PHASE2
+7IN-20260802-PRODUCT65-RADAR-FRAME-CADENCE
 ```
 
 Current intended repository branch:
@@ -38,28 +38,31 @@ tag:
 product-15-hardened
 ```
 
-Product 64 is the current source candidate on `main`, built directly on the
-hardware-tested Product 63 commit `cf8504fb68b069fce096187b3f3012bdacee4866`.
-It keeps the Product 63 PSRAM-only ADS-B JSON and response-body protections,
-reduces the measured core-0 ADS-B task stack from 16 KiB to 12 KiB, and preserves
-the 128 KiB LVGL pool until broader location and full-table testing justifies any
-reduction.
+Product 65 is the current source candidate on `main`, built from the exact
+hardware-tested Product 64 replacement source. It keeps the Product 63 PSRAM-only
+ADS-B JSON and response-body protections, Product 64's measured 12 KiB core-0 ADS-B
+task stack, and the unchanged 128 KiB LVGL pool.
 
-Product 64 also records the active fetch stage so periodic low-water samples taken
-inside the blocking TLS handshake are attributed to `tls-handshake` instead of
-`unlabelled`. The existing Firmware / OTA action has moved from the bottom of the
-System Status card to the top-right of the System page header, leaving all status
-rows unobstructed while preserving the same OTA behavior.
+Product 65 makes radar motion elapsed-time based and reduces repeated canvas work.
+The fixed grid and configured airport layer are cached in an optional 309,600-byte
+PSRAM buffer and rebuilt only after a range, location, airport-setting, or temporary
+airport-focus change. Sparse frames restore only the prior sweep, contacts, and tags;
+dense frames use one bounded copy of the cached base. If the optional cache cannot be
+allocated, the established full-frame renderer remains available.
 
-Product 63 hardware logs showed internal heap and largest-block recovery after every
-request, with idle values around 70-73 KiB heap and 55-57 KiB largest block. The
-observed low point remained inside native TLS at roughly 8-12 KiB largest block;
-JSON parsing and response-payload storage no longer reduced internal memory. The
-System page reported about 31 KiB LVGL free, a 29 KiB largest LVGL block, 6 percent
-fragmentation, and approximately 11.4 KiB unused ADS-B stack. Those measurements
-support the 4 KiB stack reduction but do not yet justify reducing the LVGL pool.
+Product 64 hardware logs confirmed that the stack reduction increased the steady
+largest internal block to about 61 KiB with MQTT connected, while repeated native
+HTTPS requests still recovered fully after each fetch. The deepest supplied native
+TLS sample retained about 14 KiB as the largest internal block, and the 12 KiB ADS-B
+task stack retained about 7.4 KiB free. The logs also tied the visible radar slowdown
+at data age 12-13 seconds to the approximately 2.7-second HTTPS request window.
 
-Product 64 retains Product 62's bounded 64-row airport eye-coverage fix, Product
+Product 65 adds current/maximum radar-render duration and maximum active frame-gap
+diagnostics to the System page. It does not alter ADS-B cadence, HTTPS behavior,
+MQTT, target capacity, selection/tracking, panel timing, DMA, or the 20-scanline RGB
+bounce buffer.
+
+Product 65 retains Product 62's bounded 64-row airport eye-coverage fix, Product
 61's OTA socket pacing, Product 60's idempotent `/prepare`, Product 59's unused
 BLE-memory release and acknowledged MQTT teardown before hard Wi-Fi recovery, and
 Product 58's network-exclusive OTA window and IRAM-safe restart.
@@ -135,8 +138,9 @@ Tracked state:
   20/40/80-mile symbol and label controls, `AUTO / SHOW / HIDE` preferences,
   current-label eye indicators retained for every airport label actually rendered,
   and `SHOW ON RADAR` range selection.
-- **System:** A tall status card for build, memory, connectivity, and airport
-  diagnostics; a separate Device & Network form; a two-row retry/reconnect/MQTT/reset
+- **System:** A tall status card for build, memory, connectivity, airport, and radar
+  frame-cadence diagnostics; a separate Device & Network form; a two-row
+  retry/reconnect/MQTT/reset
   control card; and a dedicated local firmware-update overlay.
 - **Home Assistant:** Optional MQTT discovery, backlight/range/refresh controls,
   bounded tracked/nearest/airspace telemetry, diagnostics, and a supplied dashboard
@@ -154,6 +158,9 @@ Tracked state:
 - Airport identifiers use fixed positions for each radar range and are drawn before
   airport symbols, aircraft contacts, and aircraft tags. Moving traffic can cover
   them but cannot make them jump or blink.
+- The radar grid and configured airport layer use an optional PSRAM static cache.
+  The cache is invalidated only by range, location, airport-setting, or temporary
+  airport-focus changes; allocation failure preserves the full-frame fallback.
 - Airport symbols are drawn below aircraft; aircraft contacts and all aircraft
   labels retain priority.
 - The Airports directory remains deterministically bounded at 64 rows. It retains
@@ -191,6 +198,10 @@ Tracked state:
 - Range and location changes increment a request generation.
 - Obsolete responses cannot overwrite a newer range or location selection.
 - Radar rendering uses one coherent target snapshot per frame.
+- Sweep angle advances from elapsed milliseconds rather than completed-frame count,
+  preserving rotational speed when a frame is delayed.
+- Sparse frames restore only prior dynamic radar regions; dense frames use one
+  bounded cached-base copy instead of recalculating static airports every frame.
 - LVGL labels and page content update only when their underlying versions change.
 - Aircraft selection and tracking use stable ICAO hex values, never array
   positions.
@@ -608,6 +619,12 @@ screenshots are prepared.
   storage, removed hot-path `String` construction, moved the 64-entry airport
   directory array to optional PSRAM, and added fetch, LVGL-pool, and ADS-B stack
   low-water diagnostics without changing pool or task sizes.
+- **Product 64:** Reduced the hardware-measured ADS-B task stack to 12 KiB,
+  attributed handshake low-water samples to `tls-handshake`, and moved Firmware /
+  OTA into the System-page header without reducing the LVGL pool.
+- **Product 65:** Made the sweep elapsed-time based, cached the static grid/airport
+  layer in optional PSRAM, restored bounded dynamic regions between sparse frames,
+  and added radar render/gap diagnostics without touching networking or display DMA.
 
 Detailed Product-by-Product history is maintained in `CHANGELOG.md`. Unconfirmed
 older history is not guessed.

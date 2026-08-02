@@ -14,29 +14,107 @@ repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 64
-- **Current build marker:** `7IN-20260802-PRODUCT64-MEMORY-PHASE2`
+- **Current source:** Product 65
+- **Current build marker:** `7IN-20260802-PRODUCT65-RADAR-FRAME-CADENCE`
 - **Intended integration branch:** `main`
-- **Product 64 source baseline:** Product 63 `main` commit `cf8504fb68b069fce096187b3f3012bdacee4866`
+- **Product 65 source baseline:** Hardware-tested Product 64 replacement source built from Product 63 `main` commit `cf8504fb68b069fce096187b3f3012bdacee4866`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 64 is the current focused source candidate on `main`. Product 63 was
-physically exercised with native HTTPS, MQTT connected, 120-plus retained aircraft,
-and the new System-page memory diagnostics. Its internal heap and largest block
-recovered after each request; the remaining 8-12 KiB trough was captured during
-native TLS, while JSON and response-payload work stayed in PSRAM. Product 64 uses
-that evidence for a bounded stack reduction and leaves LVGL at 128 KiB.
+Product 65 is the current focused source candidate on `main`. Product 64 was
+physically exercised through repeated native HTTPS requests with MQTT connected and
+roughly 127-133 retained aircraft. Idle internal heap and largest block returned to
+about 77 KiB and 61 KiB after every request; the deepest supplied native TLS sample
+retained about 14 KiB as the largest block, and the 12 KiB ADS-B task stack retained
+about 7.4 KiB free. Product 65 addresses the separately observed radar-frame slowdown
+during that TLS window without altering networking.
+
+## Product 65 - 2026-08-02
+
+**Build:** `7IN-20260802-PRODUCT65-RADAR-FRAME-CADENCE`  
+**Source baseline:** Exact hardware-tested Product 64 replacement source  
+**Intended integration branch:** `main`  
+**Status:** Focused host-verified radar cadence update; PlatformIO and Product 65 hardware verification pending
+
+### Diagnosed
+
+- The sweep advanced by a fixed 2.2 degrees only after each completed radar frame.
+  Frames delayed during the native TLS window therefore made the sweep visibly slow.
+- Aircraft projection already used elapsed data age, so delayed frames displayed
+  larger position jumps and made aircraft bitmaps, dots, and labels appear jerky.
+- The renderer rebuilt the fixed grid, airport cache selection, airport-label
+  collision placement, and airport symbols every 80 ms even though those elements
+  change only after range, location, airport-setting, or focus changes.
+- Product 64 logs tied the visible slowdown at approximately 12-13 seconds of data
+  age to the 15-second start-to-start request cadence and the roughly 2.7-second
+  HTTPS request duration.
+
+### Changed
+
+- Replaced frame-count sweep movement with a 27.5-degree-per-second elapsed-time
+  calculation, preserving the established approximately 13.1-second revolution.
+- Added an optional 309,600-byte PSRAM cache for the fixed radar grid and configured
+  airport layer. Cache allocation failure is nonfatal and retains the established
+  full-frame renderer.
+- Rebuilds the cached layer only after range generation, location/airport settings,
+  or temporary airport focus changes and expiry.
+- Sparse frames restore only the prior sweep lines, contact regions, and aircraft-tag
+  rectangles from the cached base before drawing the new coherent frame.
+- Dense frames above the bounded 64-contact threshold use one full cached-base copy,
+  avoiding thousands of small restores while still skipping all airport selection,
+  collision, text, and symbol recalculation.
+- Added System-page radar diagnostics showing the last/maximum renderer duration and
+  maximum active radar-frame gap. Page changes longer than one second are excluded
+  from the active-gap maximum.
+
+### Preserved
+
+- One coherent aircraft snapshot per frame, stable ICAO hit testing, selected/tracked
+  priority, collision-aware labels, outward auto-zoom, and MPH display.
+- Product 64's 12 KiB core-0 ADS-B stack and explicit TLS stage attribution.
+- Native ESP-IDF HTTPS preference, verified fallback, all framing and deadline rules,
+  15-second cadence, request serialization, stale rejection, recovery, and last-good
+  retention.
+- The 128 KiB LVGL pool, 20-scanline RGB bounce buffer, panel timing, DMA, OPI PSRAM,
+  and Arduino-ESP32 3.0.7 high-performance XIP/PSRAM configuration.
+- Airport capacities, settings, focus behavior, visible-label reporting, directory
+  eye indicators, and optional-subsystem failure behavior.
+
+### Validation
+
+- Complete checked-in Python suite passed: 69 tests.
+- Focused Product 65 tests cover elapsed-time sweep movement, optional PSRAM cache,
+  sparse/dense restore selection, airport-layer invalidation, diagnostics, unchanged
+  LVGL size, and unchanged 20-scanline bounce buffer.
+- Full `radar_renderer.cpp` host syntax check passed with strict warnings except one
+  pre-existing LVGL opacity enum warning in unchanged airport-label code.
+- Focused elapsed-time and bounded-restore models passed under ASan and UBSan.
+- Static scans confirm no `HTTPClient::GET()`, no `setInsecure()`, no capacity change,
+  and no private `include/config.h` in the delivery.
+- PlatformIO compile/link, linker memory totals, upload, and physical testing were not
+  run here.
+
+### Pending verification
+
+- Confirm the Product 65 marker after user-side PlatformIO build and upload.
+- Confirm the sweep retains its normal speed and aircraft motion is visibly steadier
+  while DATA AGE moves through 12-15 seconds and native TLS is active.
+- Exercise 20/40/80-mile ranges, selected/tracked aircraft, radar taps, airport focus,
+  airport setting changes, location changes, and cache invalidation.
+- Confirm startup reports the optional 309,600-byte radar static base cache in PSRAM
+  and that post-fetch PSRAM returns to a stable baseline.
+- Compare the System-page `RADAR` last/max render time and maximum frame gap before,
+  during, and after repeated HTTPS requests.
 
 ## Product 64 - 2026-08-02
 
 **Build:** `7IN-20260802-PRODUCT64-MEMORY-PHASE2`  
 **Source baseline:** Product 63 `main` commit `cf8504fb68b069fce096187b3f3012bdacee4866`  
 **Intended integration branch:** `main`  
-**Status:** Focused host-verified Phase 2; PlatformIO and Product 64 hardware verification pending
+**Status:** Hardware-verified native HTTPS memory path; fallback, OTA, and extended soak verification pending
 
 ### Hardware evidence from Product 63
 
@@ -93,17 +171,19 @@ that evidence for a bounded stack reduction and leaves LVGL at 128 KiB.
 - PlatformIO compile/link, linker memory totals, upload, and physical testing were
   not run here.
 
-### Pending verification
+### Hardware verification
 
-- Confirm the Product 64 marker after user-side PlatformIO build and upload.
-- Exercise native and fallback HTTPS, TLS failures, Wi-Fi recovery, MQTT, OTA, and
-  maximum-size aircraft responses while watching `ADSB STK`.
-- Confirm the new fetch-low stage reports `tls-handshake` for the deepest TLS sample.
-- Confirm the Firmware / OTA button is fully visible at the top-right and all System
-  Status rows remain readable.
-- Keep LVGL at 128 KiB until 200 Tracks rows, 64 airport rows, dense-location data,
-  long airport names, all pages, and repeated switching show adequate worst-case
-  headroom.
+- Product 64 booted with the expected build marker and 200-target capacity.
+- After MQTT connected, repeated native HTTPS requests returned to approximately
+  77 KiB free heap and a 61 KiB largest internal block with no progressive loss.
+- Native TLS fetch lows ranged from approximately 14-19 KiB largest internal block;
+  the deepest periodic sample was correctly attributed to `tls-handshake`.
+- The reduced 12 KiB ADS-B task stack retained approximately 7.4 KiB free on the
+  supplied repeated native-success path.
+- JSON completion and transport release restored internal memory, while PSRAM
+  returned to the same post-fetch baseline.
+- Fallback HTTPS, fault recovery, OTA, and long-duration soak behavior remain to be
+  verified separately.
 
 ## Product 63 - 2026-08-02
 

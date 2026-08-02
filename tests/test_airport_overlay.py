@@ -91,7 +91,7 @@ def main() -> None:
     ui = (ROOT / "src" / "ui.cpp").read_text(encoding="utf-8")
     main_cpp = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
 
-    require(build, "7IN-20260802-PRODUCT64-MEMORY-PHASE2",
+    require(build, "7IN-20260802-PRODUCT65-RADAR-FRAME-CADENCE",
             "Product 64 marker")
     require(ui, '{"RADAR", "TRACKS", "AIRSPACE", "AIRPORTS", "SYSTEM"}',
             "five-tab navigation")
