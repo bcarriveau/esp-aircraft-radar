@@ -1994,8 +1994,8 @@ bool render(aircraft::Target* workTargets, const char* selectedHex,
         (unsigned long)performanceStats.fullCacheFallbacks,
         (unsigned long)freeHeap, (unsigned long)largestBlock);
     Serial.printf(
-        "RADAR GAP MAX idle=%lu dns=%lu tls=%lu body=%lu json=%lu "
-        "publish=%lu cache=%lu other=%lu ms\n",
+        "RADAR GAP MAX idle=%lu dns=%lu tls=%lu body=%lu jsond=%lu "
+        "jsonx=%lu publish=%lu cache=%lu mqtt=%lu diag=%lu other=%lu ms\n",
         (unsigned long)performanceStats.maximumFrameGapByStage[
             static_cast<size_t>(app_state::ActivityStage::IDLE)],
         (unsigned long)performanceStats.maximumFrameGapByStage[
@@ -2005,11 +2005,18 @@ bool render(aircraft::Target* workTargets, const char* selectedHex,
         (unsigned long)performanceStats.maximumFrameGapByStage[
             static_cast<size_t>(app_state::ActivityStage::RESPONSE_BODY)],
         (unsigned long)performanceStats.maximumFrameGapByStage[
-            static_cast<size_t>(app_state::ActivityStage::JSON)],
+            static_cast<size_t>(
+                app_state::ActivityStage::JSON_DESERIALIZE)],
+        (unsigned long)performanceStats.maximumFrameGapByStage[
+            static_cast<size_t>(app_state::ActivityStage::JSON_EXTRACT)],
         (unsigned long)performanceStats.maximumFrameGapByStage[
             static_cast<size_t>(app_state::ActivityStage::PUBLISH)],
         (unsigned long)performanceStats.maximumFrameGapByStage[
             static_cast<size_t>(app_state::ActivityStage::RADAR_CACHE)],
+        (unsigned long)performanceStats.maximumFrameGapByStage[
+            static_cast<size_t>(app_state::ActivityStage::MQTT)],
+        (unsigned long)performanceStats.maximumFrameGapByStage[
+            static_cast<size_t>(app_state::ActivityStage::DIAGNOSTICS)],
         (unsigned long)performanceStats.maximumFrameGapByStage[
             static_cast<size_t>(app_state::ActivityStage::OTHER)]);
   }

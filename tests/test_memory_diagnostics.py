@@ -16,7 +16,7 @@ def test_product_64_memory_marker_and_system_diagnostics() -> None:
     state = read("src/app_state.cpp")
     ui = read("src/ui.cpp")
 
-    assert "7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION" in build
+    assert "7IN-20260802-PRODUCT68-FETCH-CONTENTION" in build
     assert "lastFetchMinimumFreeHeap" in header
     assert "lastFetchMinimumLargestInternalBlock" in header
     assert "lastFetchMinimumBlockStage" in header
@@ -81,13 +81,15 @@ def test_memory_stage_attribution_covers_fetch_and_mqtt() -> None:
         "headers-complete",
         "payload-ready",
         "transport-released",
+        "json-deserialized",
+        "json-extract",
         "json-complete",
         "fallback-start",
         "fallback-tls",
         "fallback-headers",
         "fallback-payload",
         "fallback-release",
-        "fallback-json",
+        "fallback-json-deserialized",
     ):
         assert f'logMemoryStage("{stage}")' in fetch
 
@@ -99,6 +101,7 @@ def test_memory_stage_attribution_covers_fetch_and_mqtt() -> None:
     assert "recordAdsbTaskStackFreeBytes" in network
     assert "uxTaskGetStackHighWaterMark(nullptr)" in network
     assert "MEM ADSB FETCH LOW" in network
+    assert "ADSB_VERBOSE_FETCH_LOGGING" in network
 
 
 def test_phase2_stack_bound_and_active_fetch_stage_tracking() -> None:

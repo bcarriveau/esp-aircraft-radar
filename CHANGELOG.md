@@ -14,22 +14,78 @@ repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current source:** Product 67
-- **Current build marker:** `7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION`
+- **Current source:** Product 68
+- **Current build marker:** `7IN-20260802-PRODUCT68-FETCH-CONTENTION`
 - **Intended integration branch:** `main`
-- **Product 67 source baseline:** Exact hardware-tested Product 66 replacement source; repository ancestry reaches Product 63 `main` commit `cf8504fb68b069fce096187b3f3012bdacee4866`
+- **Product 68 source baseline:** Exact hardware-tested Product 67 replacement source; repository ancestry reaches Product 63 `main` commit `cf8504fb68b069fce096187b3f3012bdacee4866`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD, GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 67 is the current focused source candidate for `main`, built from the exact
-Product 66 files that were physically exercised. Product 66 removed the dense full-
-canvas copy and kept normal render work inside the 80 ms budget, while the remaining
-visible jerk correlated with frame-start gaps up to 201 ms. Product 67 adds bounded
-cross-core stage attribution only so the next device log can identify whether those
-gaps belong to DNS, TLS, body reception, JSON, publication, cache work, or idle time.
+Product 68 is the current focused source candidate for `main`, built from the exact
+Product 67 files that were physically exercised. Product 67 logs showed repeating
+fetch-associated frame gaps up to 174 ms during TLS, 122 ms during body reception,
+and 180 ms during the combined JSON stage; publication and radar-cache work did not
+produce the recurring hitch. Product 68 removes routine per-stage success logging,
+splits JSON deserialization from extraction, adds bounded extraction yields, and
+separately attributes MQTT and diagnostic-output gaps.
+
+## Product 68 - 2026-08-02
+
+### Reduce ADS-B fetch contention
+
+**Build:** `7IN-20260802-PRODUCT68-FETCH-CONTENTION`  
+**Source baseline:** Exact hardware-tested Product 67 replacement source  
+**Intended integration branch:** `main`  
+**Status:** Focused host-verified candidate; PlatformIO and device validation pending
+
+- Normal successful ADS-B requests now produce one bounded completion summary instead
+  of the repeated request, DNS, TLS, HTTP, response, JSON, and memory-progress lines.
+- Kept detailed per-stage transport and memory logging available only when a local
+  diagnostic build defines `ADSB_VERBOSE_FETCH_LOGGING=1`.
+- Preserved all failure, retry, fallback, and recovery diagnostics needed to classify
+  actual transport errors.
+- Measures JSON deserialization and aircraft extraction separately in microseconds and
+  reports both values in the completion summary.
+- Yields one scheduler tick after every 16 received aircraft during extraction, adding
+  at most 12 bounded yields at the 200-target source capacity while retaining the
+  complete private incoming snapshot until publication.
+- Split radar-gap attribution into JSON deserialization and JSON extraction, and added
+  separate MQTT and diagnostic-output categories.
+- Records MQTT service windows only when they last at least 2 ms so ordinary no-op
+  service checks do not displace meaningful activity from the bounded history.
+- Preserved Product 66 dirty-region rendering, elapsed-time sweep, single coherent
+  snapshot, Product 63 PSRAM-only payload/JSON policy, native/fallback HTTPS behavior,
+  15-second cadence, response deadlines/framing, 128 KiB LVGL pool, 12 KiB ADS-B task
+  stack, panel timing, DMA, 20-scanline bounce buffer, target capacity, and stable ICAO
+  interaction.
+
+### Validation
+
+- Complete checked-in Python suite passed: 81 tests.
+- Compile-time diagnostic-policy header compiled with strict warnings in both default
+  and `ADSB_VERBOSE_FETCH_LOGGING=1` modes.
+- Focused ASan/UBSan model passed for expanded stage classification and bounded
+  extraction-yield counts from 0 through the 200-record capacity.
+- Strict format checking passed for the new ADS-B summary and expanded `RADAR GAP MAX`
+  lines.
+- Static checks confirm no `HTTPClient::GET()`, `setInsecure()`, internal response-body
+  fallback, credential file, target-capacity change, LVGL-size change, task-stack
+  change, panel-timing change, or bounce-buffer change.
+- PlatformIO compile/link, firmware upload, final linker totals, and physical Product
+  68 testing were not run here.
+
+### Pending verification
+
+- Confirm the Product 68 marker at boot.
+- Compare `RADAR GAP MAX ... jsond=... jsonx=... mqtt=... diag=...` through several
+  80-mile fetches with roughly 100-200 retained aircraft.
+- Confirm the normal fetch path prints one `ADSB OK` summary and no per-stage success
+  lines.
+- Confirm sweep, dots, aircraft bitmaps, labels, selection/tracking, ranges, MQTT, OTA,
+  memory recovery, touch, and no screen rolling remain unchanged.
 
 ## Product 67 - 2026-08-02
 
@@ -38,7 +94,7 @@ gaps belong to DNS, TLS, body reception, JSON, publication, cache work, or idle 
 **Build:** `7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION`  
 **Source baseline:** Exact hardware-tested Product 66 replacement source  
 **Intended integration branch:** `main`  
-**Status:** Focused host-verified diagnostic candidate; PlatformIO and device validation pending
+**Status:** Physically tested diagnostic build; superseded by Product 68 candidate
 
 - Added a fixed 16-entry activity-window history in app state for diagnostic use only.
 - Classified native DNS, native/fallback TLS handshake, response-body reception,
@@ -71,15 +127,18 @@ gaps belong to DNS, TLS, body reception, JSON, publication, cache work, or idle 
 - PlatformIO compile/link, firmware upload, final linker totals, and physical Product
   67 testing were not run here.
 
-### Pending verification
+### Physical verification
 
-- Confirm the Product 67 marker at boot.
-- Let the radar run at 80 miles through several fetches and capture both `RADAR PERF`
-  and `RADAR GAP MAX` lines.
-- Compare the maximum `tls`, `body`, `publish`, `cache`, and `idle` values to identify
-  the actual source of the previously observed 201 ms gap.
-- Confirm radar motion, selection/tracking, ranges, MQTT, OTA, memory recovery, touch,
-  and no screen rolling remain unchanged.
+- Device boot confirmed `7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION`.
+- At approximately 130 retained aircraft, normal radar renders remained around
+  14-16 ms with a measured maximum near 53 ms.
+- Maximum fetch-associated gaps were 174 ms for TLS, 122 ms for response-body work,
+  and 180 ms for the combined JSON stage; publication and cache maxima remained zero
+  in the captured run.
+- A one-time 213 ms `idle` maximum appeared after MQTT startup, motivating the separate
+  MQTT category in Product 68.
+- Heap, largest internal block, PSRAM, and ADS-B task-stack headroom recovered
+  consistently after repeated requests.
 
 ## Product 66 - 2026-08-02
 

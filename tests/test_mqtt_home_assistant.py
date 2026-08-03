@@ -23,7 +23,7 @@ def test_product_56_mqtt_is_optional_bounded_and_isolated() -> None:
     display_power = read("src/display_power.cpp")
     platformio = read("platformio.ini")
 
-    assert "7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION" in build
+    assert "7IN-20260802-PRODUCT68-FETCH-CONTENTION" in build
     assert "INACTIVE = 0" in mqtt_header
     assert "State::DISABLED" not in mqtt and "State::DISABLED" not in ui
     assert "#define MQTT_ENABLED_DEFAULT 0" in config

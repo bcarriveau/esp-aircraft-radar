@@ -11,6 +11,7 @@
 #include <esp_http_client.h>
 
 #include "adsb_network.h"
+#include "adsb_diagnostics.h"
 #include "config.h"
 #include "settings.h"
 
@@ -31,9 +32,29 @@ constexpr size_t MAX_CHUNK_FRAMING_BYTES = 16384;
 constexpr uint8_t MAX_NATIVE_ATTEMPTS = 2;
 constexpr uint32_t RETRY_DELAY_MS = 500;
 
+uint32_t verboseDiagnosticUs = 0;
+
+#if ADSB_VERBOSE_FETCH_LOGGING
+#define ADSB_VERBOSE_PRINTF(...) \
+  do { \
+    const uint32_t logStartedUs = micros(); \
+    Serial.printf(__VA_ARGS__); \
+    verboseDiagnosticUs += micros() - logStartedUs; \
+  } while (0)
+#define ADSB_VERBOSE_PRINTLN(text) \
+  do { \
+    const uint32_t logStartedUs = micros(); \
+    Serial.println(text); \
+    verboseDiagnosticUs += micros() - logStartedUs; \
+  } while (0)
+#else
+#define ADSB_VERBOSE_PRINTF(...) do { } while (0)
+#define ADSB_VERBOSE_PRINTLN(text) do { } while (0)
+#endif
+
 void logMemoryStage(const char* stage) {
   app_state::observeFetchMemory(stage);
-  Serial.printf(
+  ADSB_VERBOSE_PRINTF(
       "MEM ADSB %-18s heap=%u block=%u psram=%u\n",
       stage ? stage : "unknown", ESP.getFreeHeap(),
       heap_caps_get_largest_free_block(
@@ -48,6 +69,7 @@ struct AttemptResult {
   app_state::FetchFailureStage failureStage =
       app_state::FetchFailureStage::NONE;
   uint32_t responseBytes = 0;
+  uint32_t jsonDeserializeUs = 0;
 };
 
 void waitForNativeRetry(uint8_t attempt) {
@@ -591,7 +613,7 @@ bool writeFallbackRequest(WiFiClientSecure& client, const char* path) {
 AttemptResult fetchAttemptWithSecureClient(const char* path,
                                            JsonDocument& filter,
                                            JsonDocument& doc) {
-  Serial.println(
+  ADSB_VERBOSE_PRINTLN(
       "ADSB.fi fallback HTTPS via verified WiFiClientSecure stream");
   BundleVerifiedSecureClient client;
   client.useDefaultCaBundle();
@@ -684,16 +706,18 @@ AttemptResult fetchAttemptWithSecureClient(const char* path,
   }
 
   payload[received] = 0;
-  Serial.printf(
+  ADSB_VERBOSE_PRINTF(
       "ADSB.fi fallback response complete: %u bytes in %lu ms, chunked=%s\n",
       (unsigned)received, (unsigned long)(millis() - responseStarted),
       headers.chunked ? "yes" : "no");
 
   doc.clear();
+  const uint32_t deserializeStartedUs = micros();
   DeserializationError error = deserializeJson(
       doc, payload, received, DeserializationOption::Filter(filter));
+  const uint32_t deserializeUs = micros() - deserializeStartedUs;
   free(payload);
-  logMemoryStage("fallback-json");
+  logMemoryStage("fallback-json-deserialized");
   if (error) {
     Serial.printf("ADSB.fi fallback JSON error: %s\n", error.c_str());
     return failed(app_state::FetchFailureStage::JSON, received);
@@ -708,6 +732,7 @@ AttemptResult fetchAttemptWithSecureClient(const char* path,
   AttemptResult result;
   result.success = true;
   result.responseBytes = received;
+  result.jsonDeserializeUs = deserializeUs;
   return result;
 }
 
@@ -719,9 +744,9 @@ AttemptResult fetchAttemptWithSecureClient(const char* path,
 
 AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
                            JsonDocument& doc, uint8_t attempt) {
-  Serial.printf("ADSB.fi native HTTPS attempt %u\n", attempt);
+  ADSB_VERBOSE_PRINTF("ADSB.fi native HTTPS attempt %u\n", attempt);
   logMemoryStage("native-start");
-  Serial.printf("ADSB RSSI: %d dBm\n", WiFi.RSSI());
+  ADSB_VERBOSE_PRINTF("ADSB RSSI: %d dBm\n", WiFi.RSSI());
 
   // Resolve for each attempt. A failed Cloudflare edge is never pinned across
   // both retries, and the address remains available for TCP-vs-TLS diagnosis.
@@ -730,8 +755,8 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
     Serial.println("ADSB DNS failed: opendata.adsb.fi");
     return failed(app_state::FetchFailureStage::DNS);
   }
-  Serial.printf("ADSB DNS attempt %u: opendata.adsb.fi -> %s\n", attempt,
-                serverIp.toString().c_str());
+  ADSB_VERBOSE_PRINTF("ADSB DNS attempt %u: opendata.adsb.fi -> %s\n",
+                      attempt, serverIp.toString().c_str());
   logMemoryStage("after-dns");
 
   char url[128];
@@ -789,8 +814,8 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
         stage == app_state::FetchFailureStage::TLS;
     return failed(stage, 0, fallbackEligible);
   }
-  Serial.printf("ADSB.fi native TLS connected in %lu ms\n",
-                (unsigned long)(millis() - connectStarted));
+  ADSB_VERBOSE_PRINTF("ADSB.fi native TLS connected in %lu ms\n",
+                      (unsigned long)(millis() - connectStarted));
   logMemoryStage("tls-connected");
   const bool clientOpened = true;
 
@@ -824,8 +849,9 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
   }
   const size_t capacity =
       lengthKnown ? static_cast<size_t>(headerLength) : MAX_RESPONSE_BYTES;
-  Serial.printf("ADSB.fi HTTP 200, content length: %lld, chunked: %s\n",
-                static_cast<long long>(headerLength), chunked ? "yes" : "no");
+  ADSB_VERBOSE_PRINTF(
+      "ADSB.fi HTTP 200, content length: %lld, chunked: %s\n",
+      static_cast<long long>(headerLength), chunked ? "yes" : "no");
   logMemoryStage("headers-complete");
 
   uint8_t* payload = allocatePayload(capacity);
@@ -911,15 +937,17 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
         stage == app_state::FetchFailureStage::RESPONSE_BODY;
     return failed(stage, received, false, bodyTransportFailure);
   }
-  Serial.printf("ADSB.fi response complete: %u bytes in %lu ms\n",
-                (unsigned)received,
-                (unsigned long)(millis() - readStarted));
+  ADSB_VERBOSE_PRINTF("ADSB.fi response complete: %u bytes in %lu ms\n",
+                      (unsigned)received,
+                      (unsigned long)(millis() - readStarted));
 
   doc.clear();
+  const uint32_t deserializeStartedUs = micros();
   DeserializationError error = deserializeJson(
       doc, payload, received, DeserializationOption::Filter(filter));
+  const uint32_t deserializeUs = micros() - deserializeStartedUs;
   free(payload);
-  logMemoryStage("json-complete");
+  logMemoryStage("json-deserialized");
   if (error) {
     Serial.printf("ADSB.fi JSON error: %s\n", error.c_str());
     return failed(app_state::FetchFailureStage::JSON, received);
@@ -932,7 +960,10 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
   AttemptResult result;
   result.success = true;
   result.responseBytes = received;
-  if (result.success && attempt > 1) Serial.println("ADSB.fi retry succeeded");
+  result.jsonDeserializeUs = deserializeUs;
+  if (result.success && attempt > 1) {
+    ADSB_VERBOSE_PRINTLN("ADSB.fi retry succeeded");
+  }
   return result;
 }
 
@@ -959,14 +990,17 @@ void parseAircraft(JsonDocument& doc, float requestedRangeMiles,
                    double homeLatitude, double homeLongitude,
                    aircraft::Target* out, uint8_t& outCount,
                    uint16_t& receivedCount, uint16_t& eligibleCount,
-                   uint16_t& capacityDroppedCount) {
+                   uint16_t& capacityDroppedCount,
+                   uint16_t& extractionYieldCount) {
   outCount = 0;
   eligibleCount = 0;
   capacityDroppedCount = 0;
+  extractionYieldCount = 0;
   JsonArray aircraftJson = doc["ac"].as<JsonArray>();
   receivedCount = aircraftJson.size();
-  Serial.printf("ADSB JSON parsed: %u aircraft received, overflow=%s\n",
-                (unsigned)receivedCount, doc.overflowed() ? "YES" : "no");
+  ADSB_VERBOSE_PRINTF(
+      "ADSB JSON parsed: %u aircraft received, overflow=%s\n",
+      (unsigned)receivedCount, doc.overflowed() ? "YES" : "no");
 
   char trackedHex[7]{};
   const bool trackingActive =
@@ -978,7 +1012,16 @@ void parseAircraft(JsonDocument& doc, float requestedRangeMiles,
   uint16_t missingPosition = 0;
   uint16_t onGround = 0;
   uint16_t outsideRange = 0;
+  uint16_t processedSinceYield = 0;
   for (JsonObject plane : aircraftJson) {
+    if (++processedSinceYield >=
+        adsb_diagnostics::EXTRACTION_YIELD_INTERVAL) {
+      processedSinceYield = 0;
+      ++extractionYieldCount;
+      // One bounded scheduler tick every 16 records reduces PSRAM/cache-bus
+      // contention without publishing a partial aircraft snapshot.
+      delay(1);
+    }
     if (plane["lat"].isNull() || plane["lon"].isNull()) {
       ++missingPosition;
       continue;
@@ -1062,7 +1105,7 @@ void parseAircraft(JsonDocument& doc, float requestedRangeMiles,
   capacityDroppedCount = eligibleCount > outCount
                              ? eligibleCount - outCount
                              : 0;
-  Serial.printf(
+  ADSB_VERBOSE_PRINTF(
       "ADSB accepted=%u eligible=%u capacity-dropped=%u "
       "missing-position=%u ground=%u outside-range=%u tracked-forced=%s\n",
       (unsigned)outCount, (unsigned)eligibleCount,
@@ -1075,6 +1118,7 @@ void parseAircraft(JsonDocument& doc, float requestedRangeMiles,
 
 Result fetchAircraft(aircraft::Target* out) {
   Result result;
+  verboseDiagnosticUs = 0;
   const uint32_t fetchStarted = millis();
   result.requestGeneration = app_state::rangeGeneration();
   result.requestedRangeMiles = app_state::radarRangeMiles();
@@ -1102,8 +1146,9 @@ Result fetchAircraft(aircraft::Target* out) {
     result.durationMs = millis() - fetchStarted;
     return result;
   }
-  Serial.printf("ADSB request: https://opendata.adsb.fi%s [generation %lu]\n",
-                path, (unsigned long)result.requestGeneration);
+  ADSB_VERBOSE_PRINTF(
+      "ADSB request: https://opendata.adsb.fi%s [generation %lu]\n",
+      path, (unsigned long)result.requestGeneration);
   JsonDocument filter(&psramJsonAllocator);
   JsonObject ac = filter["ac"].add<JsonObject>();
   ac["lat"] = true; ac["lon"] = true; ac["flight"] = true; ac["hex"] = true;
@@ -1178,12 +1223,20 @@ Result fetchAircraft(aircraft::Target* out) {
         nativeAttemptsUsed,
         fallbackAttempted ? " and one fallback" : "",
         app_state::failureStageName(result.failureStage));
+    result.verboseDiagnosticUs = verboseDiagnosticUs;
     return result;
   }
 
+  result.jsonDeserializeUs = attemptResult.jsonDeserializeUs;
+  logMemoryStage("json-extract");
+  const uint32_t extractStartedUs = micros();
   parseAircraft(doc, result.requestedRangeMiles, homeLatitude, homeLongitude,
                 out, result.acceptedCount, result.receivedCount,
-                result.eligibleCount, result.capacityDroppedCount);
+                result.eligibleCount, result.capacityDroppedCount,
+                result.extractionYieldCount);
+  result.jsonExtractUs = micros() - extractStartedUs;
+  logMemoryStage("json-complete");
+  result.verboseDiagnosticUs = verboseDiagnosticUs;
   result.success = true;
   result.failureStage = app_state::FetchFailureStage::NONE;
   result.durationMs = millis() - fetchStarted;

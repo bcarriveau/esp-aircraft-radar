@@ -14,7 +14,7 @@ def test_product67_marker_and_scope():
     lv_conf = (ROOT / "include/lv_conf.h").read_text(encoding="utf-8")
     panel = (ROOT / "include/waveshare_panel_board.h").read_text(encoding="utf-8")
 
-    assert "7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION" in build
+    assert "7IN-20260802-PRODUCT68-FETCH-CONTENTION" in build
     assert "SWEEP_DEGREES_PER_SECOND = 27.5f" in renderer
     assert "elapsedMs * (SWEEP_DEGREES_PER_SECOND / 1000.0f)" in renderer
     assert "sweepDegrees + 2.2f" not in renderer

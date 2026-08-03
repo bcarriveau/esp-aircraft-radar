@@ -3,6 +3,7 @@
 #include <esp_heap_caps.h>
 
 #include "adsb_fetch.h"
+#include "adsb_diagnostics.h"
 #include "app_state.h"
 #include "config.h"
 #include "network_reconnect_logic.h"
@@ -34,14 +35,17 @@ wl_status_t lastLoggedWifiStatus = WL_IDLE_STATUS;
 
 void logFetchMemory(const char* stage) {
   app_state::observeFetchMemory(stage);
+#if ADSB_VERBOSE_FETCH_LOGGING
   Serial.printf(
       "MEM ADSB %-18s heap=%u block=%u psram=%u\n",
       stage ? stage : "unknown", ESP.getFreeHeap(),
       heap_caps_get_largest_free_block(
           MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
       ESP.getFreePsram());
+#endif
 }
 
+#if ADSB_VERBOSE_FETCH_LOGGING
 void printFetchLowWater(const app_state::Diagnostics& diagnostics) {
   Serial.printf(
       "MEM ADSB FETCH LOW heap=%u block=%u block-stage=%s "
@@ -56,11 +60,39 @@ void printFetchLowWater(const app_state::Diagnostics& diagnostics) {
                                        : "unknown",
       diagnostics.minimumAdsbTaskStackFreeBytes);
 }
+#endif
 
 void logFetchLowWater() {
+#if ADSB_VERBOSE_FETCH_LOGGING
   app_state::Diagnostics diagnostics;
   app_state::copyDiagnostics(diagnostics);
   printFetchLowWater(diagnostics);
+#endif
+}
+
+void printFetchSummary(const char* outcome, const adsb_fetch::Result& result,
+                       const app_state::Diagnostics& diagnostics) {
+  const uint32_t logStartedMs = millis();
+  Serial.printf(
+      "ADSB %s accepted=%u received=%u eligible=%u dropped=%u "
+      "bytes=%lu total=%lums json=%lu/%luus yields=%u "
+      "low=%lu/%lu@%s stack=%lu vlog=%luus\n",
+      outcome ? outcome : "UNKNOWN", (unsigned)result.acceptedCount,
+      (unsigned)result.receivedCount, (unsigned)result.eligibleCount,
+      (unsigned)result.capacityDroppedCount,
+      (unsigned long)result.responseBytes,
+      (unsigned long)result.durationMs,
+      (unsigned long)result.jsonDeserializeUs,
+      (unsigned long)result.jsonExtractUs,
+      (unsigned)result.extractionYieldCount,
+      (unsigned long)diagnostics.lastFetchMinimumFreeHeap,
+      (unsigned long)diagnostics.lastFetchMinimumLargestInternalBlock,
+      diagnostics.lastFetchMinimumBlockStage[0]
+          ? diagnostics.lastFetchMinimumBlockStage : "unknown",
+      (unsigned long)diagnostics.minimumAdsbTaskStackFreeBytes,
+      (unsigned long)result.verboseDiagnosticUs);
+  app_state::recordActivityWindow(app_state::ActivityStage::DIAGNOSTICS,
+                                  logStartedMs, millis());
 }
 
 void configureTimeSync() {
@@ -316,6 +348,9 @@ void fetchTask(void* parameter) {
             result.eligibleCount, result.acceptedCount,
             result.capacityDroppedCount);
         logFetchLowWater();
+        app_state::Diagnostics diagnostics;
+        app_state::copyDiagnostics(diagnostics);
+        printFetchSummary("STALE", result, diagnostics);
         outageStartedAt = 0;
         outageRecoveries = 0;
         immediateFollowup = true;
@@ -326,12 +361,9 @@ void fetchTask(void* parameter) {
             result.eligibleCount, result.acceptedCount,
             result.capacityDroppedCount);
         logFetchLowWater();
-        Serial.printf(
-            "Published %u aircraft (%u eligible, %u capacity-dropped) "
-            "in %lu ms\n",
-            (unsigned)result.acceptedCount, (unsigned)result.eligibleCount,
-            (unsigned)result.capacityDroppedCount,
-            (unsigned long)result.durationMs);
+        app_state::Diagnostics diagnostics;
+        app_state::copyDiagnostics(diagnostics);
+        printFetchSummary("OK", result, diagnostics);
         outageStartedAt = 0;
         outageRecoveries = 0;
       }
@@ -340,7 +372,10 @@ void fetchTask(void* parameter) {
                                     result.responseBytes);
       app_state::Diagnostics diagnostics;
       app_state::copyDiagnostics(diagnostics);
+#if ADSB_VERBOSE_FETCH_LOGGING
       printFetchLowWater(diagnostics);
+#endif
+      printFetchSummary("FAIL", result, diagnostics);
       if (outageStartedAt == 0) outageStartedAt = millis();
       Serial.printf("ADSB fetch failed at %s; consecutive failures=%u\n",
                     app_state::failureStageName(result.failureStage),

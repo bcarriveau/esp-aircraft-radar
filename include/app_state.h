@@ -29,9 +29,12 @@ enum class ActivityStage : uint8_t {
   DNS,
   TLS_HANDSHAKE,
   RESPONSE_BODY,
-  JSON,
+  JSON_DESERIALIZE,
+  JSON_EXTRACT,
   PUBLISH,
   RADAR_CACHE,
+  MQTT,
+  DIAGNOSTICS,
   OTHER,
   COUNT
 };

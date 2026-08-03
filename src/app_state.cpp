@@ -128,8 +128,14 @@ ActivityStage activityStageForFetchLabel(const char* stage) {
     return ActivityStage::RESPONSE_BODY;
   }
   if (strcmp(stage, "transport-released") == 0 ||
-      strcmp(stage, "fallback-release") == 0) {
-    return ActivityStage::JSON;
+      strcmp(stage, "fallback-release") == 0 ||
+      strcmp(stage, "json-deserialized") == 0 ||
+      strcmp(stage, "fallback-json-deserialized") == 0) {
+    return ActivityStage::JSON_DESERIALIZE;
+  }
+  if (strcmp(stage, "json-extract") == 0 ||
+      strcmp(stage, "json-complete") == 0) {
+    return ActivityStage::JSON_EXTRACT;
   }
   return ActivityStage::OTHER;
 }
@@ -627,9 +633,12 @@ const char* activityStageName(ActivityStage stage) {
     case ActivityStage::DNS: return "dns";
     case ActivityStage::TLS_HANDSHAKE: return "tls";
     case ActivityStage::RESPONSE_BODY: return "body";
-    case ActivityStage::JSON: return "json";
+    case ActivityStage::JSON_DESERIALIZE: return "json-d";
+    case ActivityStage::JSON_EXTRACT: return "json-x";
     case ActivityStage::PUBLISH: return "publish";
     case ActivityStage::RADAR_CACHE: return "cache";
+    case ActivityStage::MQTT: return "mqtt";
+    case ActivityStage::DIAGNOSTICS: return "diag";
     case ActivityStage::OTHER: return "other";
     default: return "unknown";
   }

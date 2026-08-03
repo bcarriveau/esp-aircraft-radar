@@ -9,11 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_product67_gap_categories_and_ring_are_bounded():
     header = (ROOT / "include/app_state.h").read_text(encoding="utf-8")
     source = (ROOT / "src/app_state.cpp").read_text(encoding="utf-8")
-    assert "7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION" in (
+    assert "7IN-20260802-PRODUCT68-FETCH-CONTENTION" in (
         ROOT / "include/build_info.h").read_text(encoding="utf-8")
     assert "enum class ActivityStage" in header
     for name in ("IDLE", "DNS", "TLS_HANDSHAKE", "RESPONSE_BODY",
-                 "JSON", "PUBLISH", "RADAR_CACHE", "OTHER", "COUNT"):
+                 "JSON_DESERIALIZE", "JSON_EXTRACT", "PUBLISH", "RADAR_CACHE", "MQTT", "DIAGNOSTICS", "OTHER", "COUNT"):
         assert name in header
     assert "ACTIVITY_WINDOW_CAPACITY = 16" in source
     assert "ActivityWindow activityWindows[ACTIVITY_WINDOW_CAPACITY]" in source
@@ -28,8 +28,9 @@ def test_fetch_labels_map_to_expected_runtime_windows():
         '"fallback-start"': "ActivityStage::TLS_HANDSHAKE",
         '"payload-ready"': "ActivityStage::RESPONSE_BODY",
         '"fallback-payload"': "ActivityStage::RESPONSE_BODY",
-        '"transport-released"': "ActivityStage::JSON",
-        '"fallback-release"': "ActivityStage::JSON",
+        '"transport-released"': "ActivityStage::JSON_DESERIALIZE",
+        '"fallback-release"': "ActivityStage::JSON_DESERIALIZE",
+        '"json-extract"': "ActivityStage::JSON_EXTRACT",
     }
     for label, stage in expected.items():
         assert label in source
@@ -44,7 +45,7 @@ def test_frame_gap_stats_include_stage_specific_maxima():
     assert "maximumFrameGapStage" in header
     assert "dominantActivityStage(lastRenderStartedMs" in source
     assert "RADAR GAP MAX idle=" in source
-    assert "publish=%lu cache=%lu other=%lu ms" in source
+    assert "mqtt=%lu diag=%lu other=%lu ms" in source
     assert "G%lu %s" in ui
 
 

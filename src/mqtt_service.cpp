@@ -43,6 +43,23 @@ constexpr uint32_t MQTT_RECONNECT_MS = 30000;
 constexpr uint16_t MQTT_PACKET_BUFFER_BYTES = 384;
 constexpr uint16_t MQTT_KEEPALIVE_SECONDS = 60;
 constexpr uint16_t MQTT_SOCKET_TIMEOUT_SECONDS = 2;
+constexpr uint32_t MQTT_ACTIVITY_MIN_MS = 2;
+
+class ActivityWindowScope {
+ public:
+  explicit ActivityWindowScope(app_state::ActivityStage stage)
+      : stage_(stage), startedMs_(millis()) {}
+  ~ActivityWindowScope() {
+    const uint32_t endedMs = millis();
+    if (endedMs - startedMs_ >= MQTT_ACTIVITY_MIN_MS) {
+      app_state::recordActivityWindow(stage_, startedMs_, endedMs);
+    }
+  }
+
+ private:
+  app_state::ActivityStage stage_;
+  uint32_t startedMs_;
+};
 constexpr size_t MQTT_WRITE_CHUNK_BYTES = 512;
 constexpr uint16_t STATE_BUFFER_BYTES = 4096;
 constexpr uint8_t NEAREST_COUNT = 5;
@@ -1301,6 +1318,7 @@ void service() {
 
   if (now - lastServiceMs < SERVICE_INTERVAL_MS) return;
   lastServiceMs = now;
+  ActivityWindowScope activityWindow(app_state::ActivityStage::MQTT);
 
   bool fetchRequestedByCommand = false;
   if (localMaintenanceRequested || !localDesiredEnabled) {

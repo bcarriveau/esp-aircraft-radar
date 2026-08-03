@@ -22,7 +22,7 @@ Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current source build marker:
 
 ```text
-7IN-20260802-PRODUCT67-RADAR-GAP-ATTRIBUTION
+7IN-20260802-PRODUCT68-FETCH-CONTENTION
 ```
 
 Current intended repository branch:
@@ -38,11 +38,11 @@ tag:
 product-15-hardened
 ```
 
-Product 67 is the current focused source candidate for `main`, built from the exact
-hardware-tested Product 66 replacement source. It keeps Product 63's PSRAM-only ADS-B
+Product 68 is the current focused source candidate for `main`, built from the exact
+hardware-tested Product 67 replacement source. It keeps Product 63's PSRAM-only ADS-B
 JSON and response-body protections, Product 64's measured 12 KiB core-0 ADS-B task
-stack, the unchanged 128 KiB LVGL pool, and Product 65's elapsed-time radar sweep and
-optional 309,600-byte PSRAM static radar/airport cache.
+stack, the unchanged 128 KiB LVGL pool, and Product 66's elapsed-time sweep with
+bounded dirty-region restoration.
 
 Product 65 made the sweep and aircraft motion visibly better, but dense 40/80-mile
 frames still restored the complete 430 x 360 cached layer every 80 ms. With roughly
@@ -57,18 +57,24 @@ showed normal render times around 14-26 ms, a worst observed render under 61 ms,
 201 ms. That proved the renderer itself fits inside the 80 ms budget and narrowed the
 remaining visible jerk to scheduling delays around other activity.
 
-Product 67 adds bounded diagnostic-only gap attribution. A 16-entry cross-core
-activity history classifies each active radar-frame interval as idle, DNS, TLS
-handshake, response body, JSON, target publication, radar-cache work, or other. The
-existing `RADAR PERF` line now reports the last and lifetime-maximum gap stages, and a
-second `RADAR GAP MAX` line reports the maximum gap seen in each category. The System
-page shows the stage associated with the lifetime maximum gap. Cache rebuild logs now
-include their measured duration.
+Product 67 added bounded diagnostic-only gap attribution. Physical logs with roughly
+130 retained aircraft showed the renderer itself remaining inside budget while the
+largest repeating fetch-associated frame gaps occurred during TLS and JSON work.
+The one-time 213 ms `idle` maximum appeared immediately after MQTT startup, while
+publication and radar-cache work did not produce the repeating hitch.
 
-Product 67 does not alter radar drawing, sweep timing, dirty-region behavior, ADS-B
-cadence, HTTPS transport, MQTT, target capacity, selection/tracking, airport
-capacities, panel timing, DMA, the 128 KiB LVGL pool, the 12 KiB ADS-B stack, or the
-20-scanline RGB bounce buffer.
+Product 68 reduces avoidable fetch contention without changing transport behavior.
+Normal builds now emit one bounded ADS-B completion summary instead of many per-stage
+success and memory lines; the detailed lines remain available with the compile-time
+`ADSB_VERBOSE_FETCH_LOGGING=1` diagnostic option. JSON deserialization and target
+extraction are timed separately, extraction yields one scheduler tick after each 16
+records, and radar-gap attribution now separates JSON deserialization, JSON
+extraction, MQTT work, and diagnostic output.
+
+Product 68 does not alter radar drawing, sweep timing, dirty-region behavior, ADS-B
+cadence, native/fallback HTTPS decisions, response framing, target publication,
+capacity, selection/tracking, airport capacities, panel timing, DMA, the 128 KiB LVGL
+pool, the 12 KiB ADS-B stack, or the 20-scanline RGB bounce buffer.
 
 Product 67 retains Product 62's bounded 64-row airport eye-coverage fix, Product
 61's OTA socket pacing, Product 60's idempotent `/prepare`, Product 59's unused

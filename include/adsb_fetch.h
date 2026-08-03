@@ -19,6 +19,10 @@ struct Result {
   uint16_t eligibleCount = 0;
   uint8_t acceptedCount = 0;
   uint16_t capacityDroppedCount = 0;
+  uint16_t extractionYieldCount = 0;
+  uint32_t jsonDeserializeUs = 0;
+  uint32_t jsonExtractUs = 0;
+  uint32_t verboseDiagnosticUs = 0;
   float requestedRangeMiles = 0;
 };
 
