@@ -52,7 +52,7 @@ int main() {
   assert(!packageLayoutValid(64U * 1024U + 511U, 64U * 1024U));
   assert(!packageLayoutValid(8U * 1024U * 1024U + 1U,
                              8U * 1024U * 1024U - 511U));
-  assert(assetNameValid("waveshare-esp32-s3-touch-lcd-7-product-72.radarota"));
+  assert(assetNameValid("waveshare-esp32-s3-touch-lcd-7-product-73.radarota"));
   assert(!assetNameValid("firmware.bin"));
 
   char host[96];

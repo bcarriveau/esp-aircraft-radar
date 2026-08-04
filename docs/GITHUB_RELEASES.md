@@ -1,38 +1,34 @@
-# Stable GitHub Release format
+# Stable GitHub release and on-device installation
 
-Product 72 corrects ESP-IDF request transmission for GitHub's long signed
-release-asset redirects on top of the Product 71 response-header fix, Product 70
-bounded release checker, and physically exercised Product 69 ADS-B transport. It
-checks release metadata only. Firmware installation remains the existing local
-browser OTA.
+Product 73 extends the Product 72 bounded GitHub release checker with an explicit,
+user-confirmed remote installation path. The existing local browser OTA remains
+available and retains priority as the recovery and manual installation method.
+No update is downloaded or installed automatically.
 
-## Runtime behavior
+## Release discovery
 
-No new task, timer callback, animation, or background polling loop is created.
-The existing Core-0 ADS-B owner may claim one disposable GitHub check only after
-a successful current-generation ADS-B fetch and only when all normal network
-owners are serialized.
+The existing Core-0 ADS-B owner may claim a disposable metadata check only after
+a successful current-generation ADS-B publication and while the established
+network serialization is active.
 
 Automatic checks require:
 
 - at least five stable minutes since boot
-- no completed automatic or manual attempt within approximately 24 hours
+- no completed attempt within approximately 24 hours
 - a successful current-generation ADS-B fetch
 - at least eight seconds before the next fixed 15-second ADS-B start
 - connected Wi-Fi with no recovery in progress
 - local browser OTA inactive
 - MQTT not starting, connecting, stopping, or in maintenance
 
-The System-page **CHECK NOW** action bypasses only the five-minute and 24-hour
-timers. It still waits for the next successful ADS-B cycle and all safety gates.
-The UI and serial log identify queued, checking, deferred, aborted, current,
-available, no-release, and failed states.
+**CHECK NOW** bypasses only the five-minute and 24-hour timers. It still uses all
+network and cadence safety gates.
 
-A claimed check has:
+A metadata check has:
 
 - a six-second absolute ceiling
 - a 2.5-second connect/header ceiling reduced by remaining total budget
-- a 1.5-second response-body idle ceiling
+- a 1.5-second body-idle ceiling
 - a 1.5-second guard before the next ADS-B poll
 - at most three HTTPS redirects
 - a 2048-byte manifest body limit
@@ -40,106 +36,143 @@ A claimed check has:
 - a 4095-character redirect URL limit
 - a URL-sized ESP-IDF transmit buffer from 1024 through 4607 bytes
 
-ESP-IDF must assemble the complete request target in `buffer_size_tx`. Product 72
-right-sizes that internal transmit buffer from the already validated URL length
-and reserves 512 bytes for the request-line suffix and bounded request headers.
-Short GitHub requests keep a 1024-byte minimum; the longest accepted redirect is
-bounded to a 4607-byte transmit allocation.
+## Explicit installation flow
 
-The header callback keeps only bounded framing fields and the redirect URL in
-PSRAM. It accepts GitHub's larger streamed security/cache header set, while still
-rejecting oversized aggregate headers, oversized redirects, conflicting
-Content-Length values, repeated or non-chunked Transfer-Encoding, and combined
-Content-Length plus Transfer-Encoding. Serial diagnostics name the exact rejected
-condition instead of collapsing every case into one generic header error.
+A compatible newer release enables **DOWNLOAD & INSTALL**. The first tap arms a
+15-second **CONFIRM INSTALL** state. A second tap queues installation for the next
+successful current-generation ADS-B cycle. **LATER** only closes the detail panel
+and performs no network or persistent action.
 
-MQTT service calls are skipped only while the disposable check owns the network.
-The check is claimed while the existing ADS-B exclusion is still active, so no
-MQTT socket operation can enter between ADS-B and GitHub. The normal ADS-B
-`fetchInProgress` state is not faked, so the radar does not show a false
-UPDATING state.
+Before opening the firmware asset, Product 73 downloads and validates the stable
+manifest again. The retained release identity includes:
 
-A range refresh, Wi-Fi reconnect, or browser OTA request aborts the check at the
-next bounded transport boundary. A user-requested CHECK NOW is requeued after a
-safe command/OTA abort and resumes at the next eligible ADS-B window. Automatic
-checks simply remain due. Command/OTA aborts do not increment ADS-B failures,
-change recovery counters, clear last-good aircraft, or consume the 24-hour check
-allowance. A true timeout, HTTP error, invalid manifest, or transport failure is
-recorded as a completed attempt and is throttled.
+- numeric Product version
+- build ID
+- package size
+- firmware size
+- package SHA-256
+- firmware SHA-256
 
-## Release identity
+If any retained identity value changed, the install is cancelled, the newly
+validated release is shown, and another confirmation is required. Update cache
+schema 3 stores this identity; older cache formats are ignored.
 
-Publish a normal, non-draft, non-prerelease GitHub Release with matching names:
+## Remote package transport
+
+The installer constructs only the deterministic asset URL declared by the
+validated manifest. Transport uses native ESP-IDF HTTPS with the certificate
+bundle and hostname validation. Redirects must remain HTTPS and are restricted
+to:
+
+- `github.com`
+- `objects.githubusercontent.com`
+- `release-assets.githubusercontent.com`
+
+The package transport has:
+
+- maximum three redirects
+- 4095-character URL ceiling
+- URL-sized 1024–4607-byte transmit buffer
+- 16384-byte aggregate streamed-header ceiling
+- strict rejection of conflicting Content-Length and Transfer-Encoding
+- exact manifest package length when Content-Length is present
+- 4096-byte PSRAM receive buffer
+- 1024-byte internal-RAM flash-write staging buffer
+- eight-second connect/header ceiling per request
+- fifteen-second body-idle ceiling
+- three-minute absolute installation ceiling
+
+The full package is never allocated in RAM. The HTTPS receive buffer remains in
+PSRAM, but every `esp_ota_write()` source is copied into internal RAM first because
+flash operations can make external RAM unavailable while cache access is paused.
+
+## Package verification and partition selection
+
+The installer accepts only the generated Bill's Radar `.radarota` format:
+
+- magic `BILLS-RADAR-OTA`
+- format version 1
+- 512-byte package header
+- hardware `WAVESHARE-ESP32-S3-LCD-7`
+- exact build ID from the fresh manifest
+- exact firmware size and firmware digest from the fresh manifest
+
+While streaming, it verifies:
+
+- complete package SHA-256
+- complete firmware SHA-256
+- exact received and written byte counts
+- ESP application image magic
+- ESP32-S3 image chip identifier
+- declared build ID embedded in the firmware payload
+- ESP-IDF image finalization through `esp_ota_end()`
+
+The inactive partition is selected with `esp_ota_set_boot_partition()` only after
+all transport, package, image, size, build, and digest checks succeed. Any earlier
+failure aborts the active OTA handle and leaves the current boot partition active.
+
+## Ownership, cancellation, and restart
+
+The existing Core-0 ADS-B task performs the intentional installation, so no later
+ADS-B request can overlap it. MQTT service remains gated for the installation and
+restart handoff. The last-good aircraft snapshot remains displayed.
+
+Cancellation is checked between bounded 4096-byte transport blocks; each flash
+call inside a block is independently bounded to 1024 bytes. User cancellation, range/reconnect commands, or local browser OTA stop the
+remote operation at the next bounded point. Local browser OTA retains priority.
+Wi-Fi loss, transport failure, timeout, framing failure, validation failure, or
+flash failure is reported as an installation failure.
+
+After a completely verified write, Product 73 mirrors the hardened local-OTA
+restart design: Core 1 settles network activity, creates a high-priority Core-0
+restart task from internal RAM, and parks Core 1 in IRAM before `esp_restart()`.
+If the restart handoff cannot be completed, the verified boot partition remains
+selected and the display directs the user to power-cycle the radar.
+
+## Release identity and required assets
+
+Publish a normal, non-draft, non-prerelease release with matching names:
 
 ```text
-Tag:          product-72
-Release name: Product 72
+Tag:          product-73
+Release name: Product 73
 Channel:      stable
 ```
 
-The firmware compares the numeric `version_code`; it never orders build-marker
-strings alphabetically.
-
-## Required assets
-
-PlatformIO's existing post-build script creates all three files:
+PlatformIO's existing post-build hook creates:
 
 ```text
 release/firmware.radarota
-release/waveshare-esp32-s3-touch-lcd-7-product-72.radarota
+release/waveshare-esp32-s3-touch-lcd-7-product-73.radarota
 release/waveshare-esp32-s3-touch-lcd-7.manifest.json
 ```
 
-Attach the versioned `.radarota` and fixed-name manifest to the Product 72 GitHub
+Attach the fixed-name manifest and the Product 73 versioned package to the GitHub
 Release. `release/firmware.radarota` remains the local browser-install fallback.
 Do not rename or hand-edit generated assets.
 
-## Manifest contract
-
-The manifest is compact ASCII JSON, schema 1, and at most 2048 bytes. It contains:
-
-- exact release tag
-- exact hardware identifier
-- stable channel
-- monotonic numeric Product version
-- readable Product label
-- embedded build ID
-- exact firmware asset name
-- package and firmware sizes
-- package and firmware SHA-256 digests
-- minimum supported updater version
-- bounded plain-text release summary
-
-The radar rejects unknown schemas, other hardware, other channels, inconsistent
-Product fields, unsupported updater versions, oversized values, invalid digests,
-ambiguous HTTP framing, non-HTTPS URLs, URL user information, explicit ports,
-unsafe redirect hosts, and excessive redirects.
-
-## User interface
-
-The System page contains a real **CHECK NOW** button. Pressing it queues one check
-and reports why it is waiting when a safety gate is active. A compatible newer
-stable release shows one static green download icon in the header. Tapping the
-icon opens release details. **LATER** only closes the detail view; it performs no
-network or NVS operation and leaves an available-update icon visible.
-
-Direct GitHub download and flash installation are intentionally absent. Use the
-existing **FIRMWARE / OTA** page to install a downloaded `.radarota` file.
-
-## Publishing checklist
-
-1. Build the exact intended Product 72 source with the user-side PlatformIO environment.
-2. Confirm `7IN-20260803-PRODUCT72-GITHUB-TX-BUFFER-FIX` at boot.
-3. Run the checked-in host tests.
-4. Confirm `release/firmware.radarota` still installs through local browser OTA.
-5. Create a normal published `product-72` GitHub Release.
-6. Attach the generated fixed manifest and Product 72 versioned package.
-7. To test the green indicator, later publish a compatible Product 73 release.
-8. Do not publish packages for other hardware under these asset names.
+The manifest remains compact ASCII JSON, schema 1, and at most 2048 bytes. It
+contains the exact tag, hardware, stable channel, numeric version, readable
+label, build ID, asset name, package/firmware sizes and SHA-256 digests, minimum
+updater version, and bounded release notes.
 
 ## Authenticity boundary
 
-Verified TLS and SHA-256 protect against transport corruption, truncation, and
-accidental mismatch. Because the manifest and firmware are published together,
-the hashes are not independent protection against compromise of the repository
-or publishing account. Public-key package signing remains separate future work.
+Verified TLS and both SHA-256 checks protect against corruption, truncation, and
+accidental asset mismatch. Because the manifest and package are published under
+the same repository account, their hashes are not independent protection against
+repository or publishing-account compromise. Public-key package signing remains
+a separate future hardening phase.
+
+## Publishing and physical verification
+
+1. Build the exact intended Product 73 source and confirm
+   `7IN-20260804-PRODUCT73-GITHUB-OTA-INSTALL` at boot.
+2. Confirm the existing local browser OTA still accepts the generated local
+   fallback package.
+3. Publish Product 73 only after local installation and normal radar regression
+   checks pass.
+4. Exercise remote installation with a later compatible Product release, because
+   the installed Product 73 must see a numerically newer manifest.
+5. Verify confirmation expiry, cancellation, manifest-change rejection, package
+   progress, automatic restart, boot marker, network recovery, and soak behavior.

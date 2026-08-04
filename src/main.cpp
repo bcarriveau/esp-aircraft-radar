@@ -122,6 +122,7 @@ void loop() {
 
   uint32_t now = millis();
   adsb::service();
+  update_manager::service();
   if (!update_manager::networkCheckInProgress()) {
     mqtt_service::service();
   }

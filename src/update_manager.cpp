@@ -8,6 +8,8 @@
 #include <esp_err.h>
 #include <esp_heap_caps.h>
 #include <esp_http_client.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include <algorithm>
 #include <cerrno>
@@ -19,6 +21,7 @@
 #include "adsb_network.h"
 #include "app_state.h"
 #include "build_info.h"
+#include "github_ota_installer.h"
 #include "mqtt_service.h"
 #include "ota_update.h"
 #include "update_policy.h"
@@ -29,7 +32,7 @@ namespace {
 constexpr char NVS_NAMESPACE[] = "radar_update";
 constexpr char NVS_KEY[] = "state";
 constexpr uint32_t STORED_MAGIC = 0x55504454UL;  // UPDT
-constexpr uint16_t STORED_SCHEMA = 2;
+constexpr uint16_t STORED_SCHEMA = 3;
 constexpr uint32_t VALID_EPOCH_MINIMUM = 1700000000UL;
 constexpr uint32_t CHECK_TOTAL_TIMEOUT_MS = 6000UL;
 constexpr uint32_t HTTP_CONNECT_TIMEOUT_MS = 2500UL;
@@ -57,6 +60,10 @@ struct StoredState {
   uint32_t lastAttemptEpoch = 0;
   uint32_t lastSuccessEpoch = 0;
   uint32_t remoteVersionCode = 0;
+  uint32_t remotePackageSize = 0;
+  uint32_t remoteFirmwareSize = 0;
+  uint8_t remotePackageSha256[32]{};
+  uint8_t remoteFirmwareSha256[32]{};
   uint8_t lastResult = static_cast<uint8_t>(CheckResult::NEVER);
   uint8_t updateAvailable = 0;
   uint8_t attemptedWithoutTime = 0;
@@ -68,7 +75,7 @@ struct StoredState {
 };
 #pragma pack(pop)
 
-static_assert(sizeof(StoredState) == 440,
+static_assert(sizeof(StoredState) == 512,
               "Update-check NVS state layout changed");
 
 enum class HeaderFailure : uint8_t {
@@ -95,6 +102,38 @@ struct HttpResponse {
   uint8_t* body = nullptr;
   size_t length = 0;
   char releaseTag[64]{};
+};
+
+struct ReleaseMetadata {
+  uint32_t versionCode = 0;
+  uint32_t packageSize = 0;
+  uint32_t firmwareSize = 0;
+  char tag[64]{};
+  char versionLabel[32]{};
+  char buildId[96]{};
+  char asset[128]{};
+  char notes[192]{};
+  uint8_t packageSha256[32]{};
+  uint8_t firmwareSha256[32]{};
+};
+
+class MetadataGuard {
+ public:
+  MetadataGuard() {
+    metadata_ = static_cast<ReleaseMetadata*>(heap_caps_malloc(
+        sizeof(ReleaseMetadata), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (metadata_) new (metadata_) ReleaseMetadata{};
+  }
+  ~MetadataGuard() {
+    if (metadata_) {
+      metadata_->~ReleaseMetadata();
+      heap_caps_free(metadata_);
+    }
+  }
+  ReleaseMetadata* get() const { return metadata_; }
+
+ private:
+  ReleaseMetadata* metadata_ = nullptr;
 };
 
 struct HttpWorkspace {
@@ -150,7 +189,9 @@ uint32_t lastAttemptUptimeMs = 0;
 uint32_t preparedCheckDeadlineMs = 0;
 bool preparedCheckReady = false;
 bool preparedCheckManual = false;
+bool preparedInstall = false;
 bool abortRequested = false;
+uint8_t lastInstallProgressPercent = 0;
 
 enum class DeferredReason : uint8_t {
   NONE = 0,
@@ -197,6 +238,30 @@ bool isLowerHexDigest(const char* digest) {
   return update_policy::lowerHexDigest(digest);
 }
 
+bool decodeLowerHexDigest(const char* digest, uint8_t* output,
+                          size_t outputLength) {
+  if (!output || outputLength != 32U || !isLowerHexDigest(digest)) {
+    return false;
+  }
+  for (size_t index = 0; index < outputLength; ++index) {
+    const char high = digest[index * 2U];
+    const char low = digest[index * 2U + 1U];
+    const uint8_t highValue = static_cast<uint8_t>(
+        high <= '9' ? high - '0' : high - 'a' + 10);
+    const uint8_t lowValue = static_cast<uint8_t>(
+        low <= '9' ? low - '0' : low - 'a' + 10);
+    output[index] = static_cast<uint8_t>((highValue << 4U) | lowValue);
+  }
+  return true;
+}
+
+bool binaryDigestPresent(const uint8_t* digest, size_t length) {
+  if (!digest || length == 0) return false;
+  uint8_t combined = 0;
+  for (size_t index = 0; index < length; ++index) combined |= digest[index];
+  return combined != 0;
+}
+
 bool isSafeText(const char* text, size_t maximumLength, bool allowEmpty) {
   return update_policy::boundedPrintableAscii(text, maximumLength, allowEmpty);
 }
@@ -208,7 +273,12 @@ void copyText(char* destination, size_t capacity, const char* source) {
 
 void clearRelease(Status& status) {
   status.updateAvailable = false;
+  status.installQueued = false;
   status.remoteVersionCode = 0;
+  status.remotePackageSize = 0;
+  status.remoteFirmwareSize = 0;
+  memset(status.remotePackageSha256, 0, sizeof(status.remotePackageSha256));
+  memset(status.remoteFirmwareSha256, 0, sizeof(status.remoteFirmwareSha256));
   status.remoteVersionLabel[0] = 0;
   status.remoteBuildId[0] = 0;
   status.notes[0] = 0;
@@ -300,6 +370,12 @@ StoredState toStored(const Status& status) {
   stored.lastAttemptEpoch = status.lastAttemptEpoch;
   stored.lastSuccessEpoch = status.lastSuccessEpoch;
   stored.remoteVersionCode = status.remoteVersionCode;
+  stored.remotePackageSize = status.remotePackageSize;
+  stored.remoteFirmwareSize = status.remoteFirmwareSize;
+  memcpy(stored.remotePackageSha256, status.remotePackageSha256,
+         sizeof(stored.remotePackageSha256));
+  memcpy(stored.remoteFirmwareSha256, status.remoteFirmwareSha256,
+         sizeof(stored.remoteFirmwareSha256));
   stored.lastResult = static_cast<uint8_t>(status.lastResult);
   stored.updateAvailable = status.updateAvailable ? 1 : 0;
   stored.attemptedWithoutTime = persistedAttemptWithoutTime ? 1 : 0;
@@ -318,6 +394,16 @@ bool storedStateValid(const StoredState& stored) {
       stored.updateAvailable > 1 || stored.attemptedWithoutTime > 1) {
     return false;
   }
+  if (stored.updateAvailable &&
+      (stored.remoteVersionCode == 0 ||
+       !update_policy::packageLayoutValid(stored.remotePackageSize,
+                                          stored.remoteFirmwareSize) ||
+       !binaryDigestPresent(stored.remotePackageSha256,
+                            sizeof(stored.remotePackageSha256)) ||
+       !binaryDigestPresent(stored.remoteFirmwareSha256,
+                            sizeof(stored.remoteFirmwareSha256)))) {
+    return false;
+  }
   return isNullTerminated(stored.remoteVersionLabel,
                           sizeof(stored.remoteVersionLabel)) &&
          isNullTerminated(stored.remoteBuildId,
@@ -332,6 +418,12 @@ Status fromStored(const StoredState& stored) {
   status.lastAttemptEpoch = stored.lastAttemptEpoch;
   status.lastSuccessEpoch = stored.lastSuccessEpoch;
   status.remoteVersionCode = stored.remoteVersionCode;
+  status.remotePackageSize = stored.remotePackageSize;
+  status.remoteFirmwareSize = stored.remoteFirmwareSize;
+  memcpy(status.remotePackageSha256, stored.remotePackageSha256,
+         sizeof(status.remotePackageSha256));
+  memcpy(status.remoteFirmwareSha256, stored.remoteFirmwareSha256,
+         sizeof(status.remoteFirmwareSha256));
   status.lastResult = static_cast<CheckResult>(stored.lastResult);
   if (status.lastResult == CheckResult::QUEUED ||
       status.lastResult == CheckResult::CHECKING ||
@@ -340,9 +432,21 @@ Status fromStored(const StoredState& stored) {
   }
   status.checking = false;
   status.manualQueued = false;
+  status.installQueued = false;
+  status.installing = false;
+  status.installResult = InstallResult::IDLE;
+  status.installProgressPercent = 0;
+  status.installReceivedBytes = 0;
+  status.installPackageBytes = 0;
   status.updateAvailable =
       stored.updateAvailable != 0 &&
-      stored.remoteVersionCode > FIRMWARE_VERSION_CODE;
+      stored.remoteVersionCode > FIRMWARE_VERSION_CODE &&
+      update_policy::packageLayoutValid(status.remotePackageSize,
+                                        status.remoteFirmwareSize) &&
+      binaryDigestPresent(status.remotePackageSha256,
+                          sizeof(status.remotePackageSha256)) &&
+      binaryDigestPresent(status.remoteFirmwareSha256,
+                          sizeof(status.remoteFirmwareSha256));
   memcpy(status.remoteVersionLabel, stored.remoteVersionLabel,
          sizeof(status.remoteVersionLabel));
   memcpy(status.remoteBuildId, stored.remoteBuildId,
@@ -902,8 +1006,8 @@ void finishNoUpdate(Status status, CheckResult result, const char* message) {
 }
 
 bool validateManifest(JsonDocument& manifest, const char* releaseTag,
-                      Status& status, char* failure,
-                      size_t failureCapacity) {
+                      Status& status, ReleaseMetadata* metadata,
+                      char* failure, size_t failureCapacity) {
   const uint32_t schema = manifest["schema"] | 0U;
   const char* tag = manifest["tag"] | "";
   const char* hardware = manifest["hardware"] | "";
@@ -970,11 +1074,72 @@ bool validateManifest(JsonDocument& manifest, const char* releaseTag,
     return false;
   }
 
+  uint8_t packageDigest[32]{};
+  uint8_t firmwareDigest[32]{};
+  if (!decodeLowerHexDigest(packageSha, packageDigest,
+                            sizeof(packageDigest)) ||
+      !decodeLowerHexDigest(firmwareSha, firmwareDigest,
+                            sizeof(firmwareDigest))) {
+    copyText(failure, failureCapacity,
+             "Release manifest SHA-256 fields are invalid");
+    return false;
+  }
+
   status.remoteVersionCode = versionCode;
+  status.remotePackageSize = packageSize;
+  status.remoteFirmwareSize = firmwareSize;
+  memcpy(status.remotePackageSha256, packageDigest,
+         sizeof(status.remotePackageSha256));
+  memcpy(status.remoteFirmwareSha256, firmwareDigest,
+         sizeof(status.remoteFirmwareSha256));
   copyText(status.remoteVersionLabel, sizeof(status.remoteVersionLabel),
            versionLabel);
   copyText(status.remoteBuildId, sizeof(status.remoteBuildId), buildId);
   copyText(status.notes, sizeof(status.notes), notes);
+  if (metadata) {
+    metadata->versionCode = versionCode;
+    metadata->packageSize = packageSize;
+    metadata->firmwareSize = firmwareSize;
+    copyText(metadata->tag, sizeof(metadata->tag), tag);
+    copyText(metadata->versionLabel, sizeof(metadata->versionLabel),
+             versionLabel);
+    copyText(metadata->buildId, sizeof(metadata->buildId), buildId);
+    copyText(metadata->asset, sizeof(metadata->asset), asset);
+    copyText(metadata->notes, sizeof(metadata->notes), notes);
+    memcpy(metadata->packageSha256, packageDigest,
+           sizeof(metadata->packageSha256));
+    memcpy(metadata->firmwareSha256, firmwareDigest,
+           sizeof(metadata->firmwareSha256));
+  }
+  return true;
+}
+
+bool parseValidatedManifest(HttpResponse& response, Status& status,
+                            ReleaseMetadata* metadata, char* failure,
+                            size_t failureCapacity) {
+  JsonDocument filter(&psramAllocator);
+  const char* fields[] = {
+      "schema", "tag", "hardware", "channel", "version_code",
+      "version_label", "build_id", "asset", "package_size",
+      "package_sha256", "firmware_size", "firmware_sha256",
+      "min_updater", "notes"};
+  for (const char* field : fields) filter[field] = true;
+  JsonDocument manifest(&psramAllocator);
+  const DeserializationError error = deserializeJson(
+      manifest, response.body, response.length,
+      DeserializationOption::Filter(filter));
+  char releaseTag[sizeof(response.releaseTag)]{};
+  copyText(releaseTag, sizeof(releaseTag), response.releaseTag);
+  freeResponse(response);
+  if (error || manifest.overflowed() ||
+      !validateManifest(manifest, releaseTag, status, metadata,
+                        failure, failureCapacity)) {
+    if (!failure[0]) {
+      copyText(failure, failureCapacity,
+               "Release manifest JSON was invalid");
+    }
+    return false;
+  }
   return true;
 }
 
@@ -1009,30 +1174,20 @@ void performCheck(uint32_t checkDeadlineMs, bool manual) {
     return;
   }
 
-  JsonDocument filter(&psramAllocator);
-  const char* fields[] = {
-      "schema", "tag", "hardware", "channel", "version_code",
-      "version_label", "build_id", "asset", "package_size",
-      "package_sha256", "firmware_size", "firmware_sha256",
-      "min_updater", "notes"};
-  for (const char* field : fields) filter[field] = true;
-  JsonDocument manifest(&psramAllocator);
-  const DeserializationError error = deserializeJson(
-      manifest, response.body, response.length,
-      DeserializationOption::Filter(filter));
-  char releaseTag[sizeof(response.releaseTag)]{};
-  copyText(releaseTag, sizeof(releaseTag), response.releaseTag);
-  freeResponse(response);
-  if (error || manifest.overflowed() ||
-      !validateManifest(manifest, releaseTag, status, failure,
-                        sizeof(failure))) {
-    finishFailure(status, failure[0] ? failure
-                                     : "Release manifest JSON was invalid");
+  if (!parseValidatedManifest(response, status, nullptr, failure,
+                              sizeof(failure))) {
+    finishFailure(status, failure);
     return;
   }
 
   status.checking = false;
   status.manualQueued = false;
+  status.installQueued = false;
+  status.installing = false;
+  status.installResult = InstallResult::IDLE;
+  status.installProgressPercent = 0;
+  status.installReceivedBytes = 0;
+  status.installPackageBytes = 0;
   status.lastSuccessEpoch = currentEpoch();
   commitAttemptTimestamp(status);
   const update_policy::VersionRelation relation =
@@ -1058,6 +1213,202 @@ void performCheck(uint32_t checkDeadlineMs, bool manual) {
                 manual ? "manual" : "automatic", status.message);
 }
 
+bool installCancelRequested() {
+  return abortWasRequested();
+}
+
+void installProgress(uint32_t receivedBytes, uint32_t packageBytes) {
+  Status status = snapshotStatus();
+  if (!status.installing) return;
+  const uint8_t percent = packageBytes
+      ? static_cast<uint8_t>(std::min<uint32_t>(
+            100U, (receivedBytes * 100U) / packageBytes))
+      : 0;
+  if (percent == lastInstallProgressPercent &&
+      receivedBytes != packageBytes) {
+    return;
+  }
+  lastInstallProgressPercent = percent;
+  status.installReceivedBytes = receivedBytes;
+  status.installPackageBytes = packageBytes;
+  status.installProgressPercent = percent;
+  status.installResult = InstallResult::DOWNLOADING;
+  snprintf(status.message, sizeof(status.message),
+           "Downloading verified firmware: %u%%",
+           static_cast<unsigned>(percent));
+  publishStatus(status);
+}
+
+void finishInstall(Status status, InstallResult result, const char* message) {
+  clearAbortRequest();
+  status.installing = false;
+  status.installQueued = false;
+  status.installResult = result;
+  copyText(status.message, sizeof(status.message), message);
+  publishStatus(status);
+  Serial.printf("GitHub remote install %s: %s\n",
+                installResultName(result), status.message);
+}
+
+void performInstall(uint32_t manifestDeadlineMs) {
+  Status status = snapshotStatus();
+  if (!status.installing) return;
+
+  MetadataGuard metadataGuard;
+  ReleaseMetadata* metadata = metadataGuard.get();
+  if (!metadata) {
+    finishInstall(status, InstallResult::FAILED,
+                  "Release metadata PSRAM allocation failed");
+    return;
+  }
+
+  char failure[128]{};
+  HttpResponse response;
+  bool yielded = false;
+  if (!httpGetManifest(manifestDeadlineMs, response, failure,
+                       sizeof(failure), yielded)) {
+    finishInstall(status,
+                  yielded ? InstallResult::CANCELLED
+                          : InstallResult::FAILED,
+                  failure);
+    return;
+  }
+  if (response.statusCode != 200) {
+    const int statusCode = response.statusCode;
+    freeResponse(response);
+    if (statusCode == 404) {
+      clearAbortRequest();
+      status.installing = false;
+      status.installQueued = false;
+      status.installResult = InstallResult::CANCELLED;
+      clearRelease(status);
+      copyText(status.message, sizeof(status.message),
+               "Stable release was removed; run CHECK NOW before installing");
+      publishStatus(status);
+      persist(status);
+      Serial.println(
+          "GitHub remote install cancelled: stable release was removed");
+      return;
+    }
+    snprintf(failure, sizeof(failure),
+             "GitHub release manifest returned HTTP %d", statusCode);
+    finishInstall(status, InstallResult::FAILED, failure);
+    return;
+  }
+
+  Status freshStatus = status;
+  if (!parseValidatedManifest(response, freshStatus, metadata, failure,
+                              sizeof(failure))) {
+    finishInstall(status, InstallResult::FAILED, failure);
+    return;
+  }
+  if (update_policy::compareVersion(metadata->versionCode,
+                                    FIRMWARE_VERSION_CODE) !=
+          update_policy::VersionRelation::NEWER) {
+    clearAbortRequest();
+    freshStatus.installing = false;
+    freshStatus.installQueued = false;
+    freshStatus.installResult = InstallResult::CANCELLED;
+    clearRelease(freshStatus);
+    copyText(freshStatus.message, sizeof(freshStatus.message),
+             "Stable release is no longer newer; run CHECK NOW again");
+    publishStatus(freshStatus);
+    persist(freshStatus);
+    Serial.println(
+        "GitHub remote install cancelled: stable release is no longer newer");
+    return;
+  }
+  if (metadata->versionCode != status.remoteVersionCode ||
+      metadata->packageSize != status.remotePackageSize ||
+      metadata->firmwareSize != status.remoteFirmwareSize ||
+      strcmp(metadata->buildId, status.remoteBuildId) != 0 ||
+      memcmp(metadata->packageSha256, status.remotePackageSha256,
+             sizeof(metadata->packageSha256)) != 0 ||
+      memcmp(metadata->firmwareSha256, status.remoteFirmwareSha256,
+             sizeof(metadata->firmwareSha256)) != 0) {
+    freshStatus.installing = false;
+    freshStatus.installQueued = false;
+    freshStatus.installResult = InstallResult::CANCELLED;
+    freshStatus.updateAvailable = true;
+    copyText(freshStatus.message, sizeof(freshStatus.message),
+             "Stable release changed; review it and confirm install again");
+    publishStatus(freshStatus);
+    persist(freshStatus);
+    Serial.println(
+        "GitHub remote install cancelled: stable release changed after confirmation");
+    return;
+  }
+
+  github_ota_installer::Release release;
+  copyText(release.tag, sizeof(release.tag), metadata->tag);
+  copyText(release.asset, sizeof(release.asset), metadata->asset);
+  copyText(release.buildId, sizeof(release.buildId), metadata->buildId);
+  release.packageSize = metadata->packageSize;
+  release.firmwareSize = metadata->firmwareSize;
+  memcpy(release.packageSha256, metadata->packageSha256,
+         sizeof(release.packageSha256));
+  memcpy(release.firmwareSha256, metadata->firmwareSha256,
+         sizeof(release.firmwareSha256));
+
+  clearAbortRequest();
+  lastInstallProgressPercent = 0;
+  status = freshStatus;
+  status.installing = true;
+  status.installQueued = false;
+  status.installResult = InstallResult::DOWNLOADING;
+  status.installProgressPercent = 0;
+  status.installReceivedBytes = 0;
+  status.installPackageBytes = release.packageSize;
+  copyText(status.message, sizeof(status.message),
+           "Downloading and verifying the confirmed GitHub release");
+  publishStatus(status);
+  Serial.printf(
+      "GitHub remote install starting: %s package=%lu firmware=%lu\n",
+      release.buildId, static_cast<unsigned long>(release.packageSize),
+      static_cast<unsigned long>(release.firmwareSize));
+
+  const github_ota_installer::Result result = github_ota_installer::install(
+      release, installCancelRequested, installProgress,
+      failure, sizeof(failure));
+  status = snapshotStatus();
+  if (result == github_ota_installer::Result::CANCELLED) {
+    finishInstall(status, InstallResult::CANCELLED, failure);
+    return;
+  }
+  if (result == github_ota_installer::Result::FAILED) {
+    finishInstall(status, InstallResult::FAILED, failure);
+    return;
+  }
+
+  status.installing = true;
+  status.installQueued = false;
+  status.installResult = InstallResult::RESTARTING;
+  status.installProgressPercent = 100;
+  status.installReceivedBytes = release.packageSize;
+  status.installPackageBytes = release.packageSize;
+  copyText(status.message, sizeof(status.message),
+           "Firmware verified; restarting the radar");
+  publishStatus(status);
+
+  // Keep the Core-0 ADS-B owner parked and MQTT gated while Core 1 performs the
+  // hardened restart handoff. A restart failure returns control so the UI can
+  // instruct the user to power-cycle the already verified image.
+  while (github_ota_installer::restartState() ==
+         github_ota_installer::RestartState::PENDING) {
+    vTaskDelay(pdMS_TO_TICKS(25));
+  }
+  if (github_ota_installer::restartState() ==
+      github_ota_installer::RestartState::FAILED) {
+    char restartMessage[128]{};
+    github_ota_installer::copyRestartMessage(
+        restartMessage, sizeof(restartMessage));
+    status = snapshotStatus();
+    finishInstall(status, InstallResult::RESTART_FAILED,
+                  restartMessage[0] ? restartMessage
+                                    : "Firmware verified; power-cycle the radar");
+  }
+}
+
 }  // namespace
 
 bool begin() {
@@ -1068,7 +1419,9 @@ bool begin() {
   preparedCheckDeadlineMs = 0;
   preparedCheckReady = false;
   preparedCheckManual = false;
+  preparedInstall = false;
   abortRequested = false;
+  lastInstallProgressPercent = 0;
   lastDeferredReason = DeferredReason::NONE;
   lastDeferredWasManual = false;
 
@@ -1090,20 +1443,30 @@ bool begin() {
         currentStatus.initialized = true;
       } else if (storedLength > 0) {
         Serial.println(
-            "GitHub update cache ignored: incompatible pre-Product-70 schema");
+            "GitHub update cache ignored: incompatible pre-Product-73 schema");
       }
     } else if (storedLength > 0) {
       Serial.println(
-          "GitHub update cache ignored: incompatible pre-Product-70 size");
+          "GitHub update cache ignored: incompatible pre-Product-73 size");
     }
   }
   currentStatus.checking = false;
   currentStatus.manualQueued = false;
+  currentStatus.installQueued = false;
+  currentStatus.installing = false;
+  currentStatus.installResult = InstallResult::IDLE;
+  currentStatus.installProgressPercent = 0;
+  currentStatus.installReceivedBytes = 0;
+  currentStatus.installPackageBytes = 0;
   currentStatus.statusVersion = 1;
   Serial.println(
       "GitHub update checker ready: automatic 5-minute/24-hour schedule; "
       "manual CHECK NOW enabled");
   return persistenceReady;
+}
+
+void service() {
+  github_ota_installer::serviceRestart();
 }
 
 bool requestManualCheck() {
@@ -1112,8 +1475,9 @@ bool requestManualCheck() {
     Serial.println("GitHub update CHECK NOW rejected: manager unavailable");
     return false;
   }
-  if (status.checking) {
-    Serial.println("GitHub update CHECK NOW ignored: check already running");
+  if (status.checking || status.installing || status.installQueued) {
+    Serial.println(
+        "GitHub update CHECK NOW ignored: update operation already active");
     return false;
   }
   if (status.manualQueued) {
@@ -1121,6 +1485,10 @@ bool requestManualCheck() {
     return true;
   }
 
+  status.installResult = InstallResult::IDLE;
+  status.installProgressPercent = 0;
+  status.installReceivedBytes = 0;
+  status.installPackageBytes = 0;
   status.manualQueued = true;
   status.lastResult = CheckResult::QUEUED;
   copyText(status.message, sizeof(status.message),
@@ -1131,16 +1499,63 @@ bool requestManualCheck() {
   return true;
 }
 
-bool prepareAfterSuccessfulAdsb(uint32_t nextAdsbPollAtMs) {
+bool requestInstall() {
   Status status = snapshotStatus();
-  if (!status.initialized || status.checking) return false;
-
-  const bool manual = status.manualQueued;
-  if (!manual && !automaticCheckDue(status)) {
-    const DeferredReason scheduleReason = automaticWaitReason(status);
-    logDeferred(scheduleReason, false);
+  if (!status.initialized || !status.updateAvailable ||
+      status.remoteVersionCode <= FIRMWARE_VERSION_CODE ||
+      !update_policy::packageLayoutValid(status.remotePackageSize,
+                                         status.remoteFirmwareSize) ||
+      !binaryDigestPresent(status.remotePackageSha256,
+                           sizeof(status.remotePackageSha256)) ||
+      !binaryDigestPresent(status.remoteFirmwareSha256,
+                           sizeof(status.remoteFirmwareSha256))) {
+    Serial.println(
+        "GitHub remote install rejected: no validated newer release");
     return false;
   }
+  if (status.checking || status.manualQueued || status.installing) {
+    Serial.println(
+        "GitHub remote install rejected: another update operation is active");
+    return false;
+  }
+  if (status.installQueued) {
+    Serial.println("GitHub remote install already queued");
+    return true;
+  }
+  clearAbortRequest();
+  status.installQueued = true;
+  status.installResult = InstallResult::QUEUED;
+  status.installProgressPercent = 0;
+  status.installReceivedBytes = 0;
+  status.installPackageBytes = 0;
+  copyText(status.message, sizeof(status.message),
+           "Install queued; waiting for the next successful ADS-B cycle");
+  publishStatus(status);
+  Serial.println(
+      "GitHub remote install queued; awaiting successful ADS-B cycle");
+  return true;
+}
+
+void requestInstallAbort() {
+  Status status = snapshotStatus();
+  if (status.installQueued && !status.installing) {
+    status.installQueued = false;
+    status.installResult = InstallResult::CANCELLED;
+    copyText(status.message, sizeof(status.message),
+             "Remote installation cancelled before download");
+    publishStatus(status);
+    Serial.println("GitHub remote install queue cancelled");
+    return;
+  }
+  if (status.installing) {
+    requestAbort();
+    Serial.println("GitHub remote install cancellation requested");
+  }
+}
+
+bool prepareAfterSuccessfulAdsb(uint32_t nextAdsbPollAtMs) {
+  Status status = snapshotStatus();
+  if (!status.initialized || status.checking || status.installing) return false;
 
   DeferredReason reason = DeferredReason::NONE;
   if (WiFi.status() != WL_CONNECTED) {
@@ -1156,6 +1571,47 @@ bool prepareAfterSuccessfulAdsb(uint32_t nextAdsbPollAtMs) {
   }
 
   const uint32_t now = millis();
+  if (status.installQueued) {
+    if (reason != DeferredReason::NONE) {
+      char message[sizeof(status.message)]{};
+      snprintf(message, sizeof(message), "INSTALL queued: %s",
+               deferredReasonName(reason));
+      if (strcmp(status.message, message) != 0) {
+        copyText(status.message, sizeof(status.message), message);
+        publishStatus(status);
+      }
+      Serial.printf("GitHub remote install deferred: %s\n",
+                    deferredReasonName(reason));
+      return false;
+    }
+
+    preparedCheckDeadlineMs = now + CHECK_TOTAL_TIMEOUT_MS;
+    preparedCheckReady = true;
+    preparedCheckManual = false;
+    preparedInstall = true;
+    clearAbortRequest();
+    status.installQueued = false;
+    status.installing = true;
+    status.installResult = InstallResult::VERIFYING;
+    status.installProgressPercent = 0;
+    status.installReceivedBytes = 0;
+    status.installPackageBytes = 0;
+    copyText(status.message, sizeof(status.message),
+             "Rechecking the confirmed stable release before installation");
+    publishStatus(status);
+    Serial.printf(
+        "GitHub remote install starting: manifest budget=%lu ms\n",
+        static_cast<unsigned long>(
+            remainingToDeadline(preparedCheckDeadlineMs)));
+    return true;
+  }
+
+  const bool manual = status.manualQueued;
+  if (!manual && !automaticCheckDue(status)) {
+    const DeferredReason scheduleReason = automaticWaitReason(status);
+    logDeferred(scheduleReason, false);
+    return false;
+  }
   if (reason == DeferredReason::NONE &&
       !update_policy::enoughSlack(now, nextAdsbPollAtMs,
                                   MINIMUM_ADSB_SLACK_MS)) {
@@ -1171,9 +1627,14 @@ bool prepareAfterSuccessfulAdsb(uint32_t nextAdsbPollAtMs) {
       now, nextAdsbPollAtMs, CHECK_TOTAL_TIMEOUT_MS, ADSB_POLL_GUARD_MS);
   preparedCheckReady = true;
   preparedCheckManual = manual;
+  preparedInstall = false;
   clearAbortRequest();
   status.checking = true;
   status.manualQueued = false;
+  status.installResult = InstallResult::IDLE;
+  status.installProgressPercent = 0;
+  status.installReceivedBytes = 0;
+  status.installPackageBytes = 0;
   status.lastResult = CheckResult::CHECKING;
   copyText(status.message, sizeof(status.message),
            manual ? "Running CHECK NOW against stable GitHub release"
@@ -1191,27 +1652,32 @@ void performPreparedCheck() {
   if (!preparedCheckReady) return;
   const uint32_t deadline = preparedCheckDeadlineMs;
   const bool manual = preparedCheckManual;
+  const bool install = preparedInstall;
   preparedCheckReady = false;
   preparedCheckManual = false;
+  preparedInstall = false;
   if (!networkCheckInProgress()) return;
 
   const uint32_t activityStarted = millis();
-  performCheck(deadline, manual);
+  if (install) performInstall(deadline);
+  else performCheck(deadline, manual);
   app_state::recordActivityWindow(app_state::ActivityStage::OTHER,
                                   activityStarted, millis());
 }
 
 void requestAbort() {
   portENTER_CRITICAL(&statusMux);
-  if (currentStatus.checking) abortRequested = true;
+  if (currentStatus.checking || currentStatus.installing) {
+    abortRequested = true;
+  }
   portEXIT_CRITICAL(&statusMux);
 }
 
 bool networkCheckInProgress() {
   portENTER_CRITICAL(&statusMux);
-  const bool checking = currentStatus.checking;
+  const bool active = currentStatus.checking || currentStatus.installing;
   portEXIT_CRITICAL(&statusMux);
-  return checking;
+  return active;
 }
 
 void copyStatus(Status& status) {
@@ -1230,6 +1696,20 @@ const char* checkResultName(CheckResult result) {
     case CheckResult::NO_RELEASE: return "NO RELEASE";
     case CheckResult::ABORTED: return "ABORTED";
     case CheckResult::FAILED: return "FAILED";
+    default: return "UNKNOWN";
+  }
+}
+
+const char* installResultName(InstallResult result) {
+  switch (result) {
+    case InstallResult::IDLE: return "IDLE";
+    case InstallResult::QUEUED: return "QUEUED";
+    case InstallResult::VERIFYING: return "VERIFYING";
+    case InstallResult::DOWNLOADING: return "DOWNLOADING";
+    case InstallResult::RESTARTING: return "RESTARTING";
+    case InstallResult::CANCELLED: return "CANCELLED";
+    case InstallResult::FAILED: return "FAILED";
+    case InstallResult::RESTART_FAILED: return "RESTART FAILED";
     default: return "UNKNOWN";
   }
 }

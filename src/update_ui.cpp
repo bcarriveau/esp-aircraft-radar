@@ -25,8 +25,11 @@ lv_obj_t* messageLabel = nullptr;
 lv_obj_t* notesLabel = nullptr;
 lv_obj_t* checkNowButton = nullptr;
 lv_obj_t* checkNowLabel = nullptr;
+lv_obj_t* installButton = nullptr;
+lv_obj_t* installLabel = nullptr;
 lv_obj_t* laterButton = nullptr;
 uint32_t renderedStatusVersion = UINT32_MAX;
+uint32_t installConfirmUntilMs = 0;
 
 inline lv_color_t rgb(uint8_t red, uint8_t green, uint8_t blue) {
   return lv_color_make(red, green, blue);
@@ -92,6 +95,20 @@ void formatEpoch(uint32_t epoch, char* output, size_t capacity) {
   strftime(output, capacity, "%b %d, %Y  %I:%M %p", &local);
 }
 
+void formatBytes(uint32_t bytes, char* output, size_t capacity) {
+  if (!output || capacity == 0) return;
+  if (bytes >= 1024U * 1024U) {
+    snprintf(output, capacity, "%.2f MB",
+             static_cast<double>(bytes) / (1024.0 * 1024.0));
+  } else if (bytes >= 1024U) {
+    snprintf(output, capacity, "%.1f KB",
+             static_cast<double>(bytes) / 1024.0);
+  } else {
+    snprintf(output, capacity, "%lu B",
+             static_cast<unsigned long>(bytes));
+  }
+}
+
 void showDetails() {
   if (!detailPanel) return;
   if (systemButton) lv_event_send(systemButton, LV_EVENT_CLICKED, nullptr);
@@ -117,6 +134,31 @@ void navigationEvent(lv_event_t* event) {
 
 void checkNowEvent(lv_event_t*) {
   update_manager::requestManualCheck();
+}
+
+void installEvent(lv_event_t*) {
+  update_manager::Status status;
+  update_manager::copyStatus(status);
+  if (status.installQueued || status.installing) {
+    if (status.installResult != update_manager::InstallResult::RESTARTING) {
+      update_manager::requestInstallAbort();
+    }
+    installConfirmUntilMs = 0;
+    renderedStatusVersion = UINT32_MAX;
+    return;
+  }
+  if (!status.updateAvailable) return;
+
+  const uint32_t now = millis();
+  if (!installConfirmUntilMs ||
+      static_cast<int32_t>(now - installConfirmUntilMs) >= 0) {
+    installConfirmUntilMs = now + 15000U;
+    setLabelTextIfChanged(installLabel, "CONFIRM INSTALL");
+    lv_obj_center(installLabel);
+    return;
+  }
+  installConfirmUntilMs = 0;
+  update_manager::requestInstall();
 }
 
 void laterEvent(lv_event_t*) {
@@ -194,7 +236,7 @@ bool build() {
   makeLabel(detailPanel, "SOFTWARE UPDATE", &lv_font_montserrat_28,
             rgb(63, 255, 155), 12, 7);
   makeLabel(detailPanel,
-            "Stable GitHub Release check — install through local FIRMWARE / OTA",
+            "Verified GitHub release — download and install on this radar",
             &lv_font_montserrat_12, rgb(100, 170, 180), 12, 45);
 
   installedLabel = makeLabel(detailPanel, "INSTALLED", &lv_font_montserrat_16,
@@ -224,6 +266,18 @@ bool build() {
   lv_obj_set_style_text_font(checkNowLabel, &lv_font_montserrat_14, 0);
   lv_obj_center(checkNowLabel);
 
+  installButton = lv_btn_create(detailPanel);
+  lv_obj_set_size(installButton, 210, 40);
+  lv_obj_set_pos(installButton, 190, 280);
+  lv_obj_set_style_bg_color(installButton, rgb(24, 128, 84), 0);
+  lv_obj_set_style_radius(installButton, 6, 0);
+  lv_obj_add_event_cb(installButton, installEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  installLabel = lv_label_create(installButton);
+  lv_label_set_text(installLabel, "DOWNLOAD & INSTALL");
+  lv_obj_set_style_text_font(installLabel, &lv_font_montserrat_14, 0);
+  lv_obj_center(installLabel);
+
   laterButton = lv_btn_create(detailPanel);
   lv_obj_set_size(laterButton, 150, 40);
   lv_obj_set_pos(laterButton, 572, 280);
@@ -240,14 +294,25 @@ bool build() {
   return true;
 }
 
-void update(uint32_t) {
+void update(uint32_t now) {
   if (!headerButton || !systemSummaryButton || !detailPanel) return;
   update_manager::Status status;
   update_manager::copyStatus(status);
-  if (status.statusVersion == renderedStatusVersion) return;
+
+  bool confirmationChanged = false;
+  if (installConfirmUntilMs &&
+      (static_cast<int32_t>(now - installConfirmUntilMs) >= 0 ||
+       !status.updateAvailable || status.installQueued || status.installing)) {
+    installConfirmUntilMs = 0;
+    confirmationChanged = true;
+  }
+  if (status.statusVersion == renderedStatusVersion &&
+      !confirmationChanged) {
+    return;
+  }
   renderedStatusVersion = status.statusVersion;
 
-  if (status.updateAvailable) {
+  if (status.updateAvailable || status.installing || status.installQueued) {
     lv_obj_clear_flag(headerButton, LV_OBJ_FLAG_HIDDEN);
   } else {
     lv_obj_add_flag(headerButton, LV_OBJ_FLAG_HIDDEN);
@@ -258,38 +323,77 @@ void update(uint32_t) {
       status.lastResult == update_manager::CheckResult::ABORTED;
   const bool queued = status.manualQueued ||
       status.lastResult == update_manager::CheckResult::QUEUED;
+  const bool installFailed =
+      status.installResult == update_manager::InstallResult::FAILED ||
+      status.installResult == update_manager::InstallResult::RESTART_FAILED;
+  const bool installActive = status.installQueued || status.installing;
+
   lv_obj_set_style_bg_color(
       systemSummaryButton,
-      status.updateAvailable ? rgb(24, 128, 84)
-                             : (failed || aborted ? rgb(126, 76, 34)
-                                                 : rgb(20, 68, 82)),
+      installFailed ? rgb(126, 76, 34)
+                    : (installActive || status.updateAvailable
+                           ? rgb(24, 128, 84)
+                           : (failed || aborted ? rgb(126, 76, 34)
+                                               : rgb(20, 68, 82))),
       0);
-  setLabelTextIfChanged(
-      systemSummaryLabel,
-      status.checking ? "CHECKING..."
-                      : (queued ? "CHECK QUEUED"
-                                : (status.updateAvailable ? "UPDATE READY"
-                                  : (failed ? "CHECK FAILED"
-                                            : "UPDATE CHECK"))));
+  char summary[32];
+  if (status.installing &&
+      status.installResult == update_manager::InstallResult::DOWNLOADING) {
+    snprintf(summary, sizeof(summary), "INSTALL %u%%",
+             static_cast<unsigned>(status.installProgressPercent));
+  } else {
+    snprintf(summary, sizeof(summary), "%s",
+             status.installing ? "INSTALLING..."
+             : (status.installQueued ? "INSTALL QUEUED"
+             : (status.checking ? "CHECKING..."
+             : (queued ? "CHECK QUEUED"
+             : (status.updateAvailable ? "UPDATE READY"
+             : (failed ? "CHECK FAILED" : "UPDATE CHECK"))))));
+  }
+  setLabelTextIfChanged(systemSummaryLabel, summary);
   lv_obj_center(systemSummaryLabel);
 
   if (checkNowButton && checkNowLabel) {
-    const bool checkButtonDisabled = status.checking || queued;
-    if (checkButtonDisabled) {
-      lv_obj_add_state(checkNowButton, LV_STATE_DISABLED);
-    } else {
-      lv_obj_clear_state(checkNowButton, LV_STATE_DISABLED);
-    }
+    const bool checkButtonDisabled =
+        status.checking || queued || status.installing || status.installQueued;
+    if (checkButtonDisabled) lv_obj_add_state(checkNowButton, LV_STATE_DISABLED);
+    else lv_obj_clear_state(checkNowButton, LV_STATE_DISABLED);
     lv_obj_set_style_opa(checkNowButton,
                          checkButtonDisabled ? LV_OPA_60 : LV_OPA_COVER, 0);
     setLabelTextIfChanged(checkNowLabel,
                           status.checking ? "CHECKING..."
-                                          : (queued ? "QUEUED..."
-                                                    : "CHECK NOW"));
+                          : (queued ? "QUEUED..." : "CHECK NOW"));
     lv_obj_center(checkNowLabel);
   }
 
-  char text[192];
+  if (installButton && installLabel) {
+    const bool restarting =
+        status.installResult == update_manager::InstallResult::RESTARTING;
+    const bool installEnabled =
+        status.updateAvailable || status.installQueued || status.installing;
+    if (!installEnabled || restarting) {
+      lv_obj_add_state(installButton, LV_STATE_DISABLED);
+    } else {
+      lv_obj_clear_state(installButton, LV_STATE_DISABLED);
+    }
+    lv_obj_set_style_opa(installButton,
+                         (!installEnabled || restarting)
+                             ? LV_OPA_60 : LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(
+        installButton,
+        status.installQueued || status.installing
+            ? rgb(145, 72, 42) : rgb(24, 128, 84), 0);
+    const char* installText = "DOWNLOAD & INSTALL";
+    if (restarting) installText = "RESTARTING...";
+    else if (status.installQueued || status.installing)
+      installText = "CANCEL INSTALL";
+    else if (installConfirmUntilMs)
+      installText = "CONFIRM INSTALL";
+    setLabelTextIfChanged(installLabel, installText);
+    lv_obj_center(installLabel);
+  }
+
+  char text[256];
   snprintf(text, sizeof(text), "INSTALLED     %s\n%s",
            FIRMWARE_VERSION_LABEL, BUILD_ID);
   setLabelTextIfChanged(installedLabel, text);
@@ -302,28 +406,51 @@ void update(uint32_t) {
   }
   setLabelTextIfChanged(availableLabel, text);
 
-  char checked[48];
-  formatEpoch(status.lastSuccessEpoch, checked, sizeof(checked));
-  snprintf(text, sizeof(text), "LAST SUCCESSFUL CHECK     %s", checked);
+  if (status.installing || status.installQueued ||
+      status.installResult == update_manager::InstallResult::FAILED ||
+      status.installResult == update_manager::InstallResult::CANCELLED ||
+      status.installResult == update_manager::InstallResult::RESTART_FAILED) {
+    char received[32];
+    char total[32];
+    formatBytes(status.installReceivedBytes, received, sizeof(received));
+    formatBytes(status.installPackageBytes, total, sizeof(total));
+    snprintf(text, sizeof(text), "INSTALL     %s     %u%%     %s / %s",
+             update_manager::installResultName(status.installResult),
+             static_cast<unsigned>(status.installProgressPercent),
+             received, total);
+  } else {
+    char checked[48];
+    formatEpoch(status.lastSuccessEpoch, checked, sizeof(checked));
+    snprintf(text, sizeof(text), "LAST SUCCESSFUL CHECK     %s", checked);
+  }
   setLabelTextIfChanged(lastCheckLabel, text);
 
-  snprintf(text, sizeof(text), "%s: %s",
-           update_manager::checkResultName(status.lastResult),
-           status.message[0] ? status.message : "No update-check result");
+  if (status.installResult != update_manager::InstallResult::IDLE) {
+    snprintf(text, sizeof(text), "%s: %s",
+             update_manager::installResultName(status.installResult),
+             status.message[0] ? status.message : "No installation result");
+  } else {
+    snprintf(text, sizeof(text), "%s: %s",
+             update_manager::checkResultName(status.lastResult),
+             status.message[0] ? status.message : "No update-check result");
+  }
   setLabelTextIfChanged(messageLabel, text);
-  lv_obj_set_style_text_color(messageLabel,
-      failed || aborted ? rgb(255, 175, 90)
-                        : (status.updateAvailable ? rgb(120, 240, 155)
-                                                  : rgb(110, 220, 255)), 0);
+  lv_obj_set_style_text_color(
+      messageLabel,
+      installFailed || failed || aborted
+          ? rgb(255, 175, 90)
+          : ((status.updateAvailable || status.installing)
+                 ? rgb(120, 240, 155) : rgb(110, 220, 255)), 0);
 
   setLabelTextIfChanged(
       notesLabel,
       status.updateAvailable && status.notes[0]
           ? status.notes
-          : "Automatic checks wait five stable minutes and then run at most once "
-            "per 24 hours. CHECK NOW bypasses those timers but still waits for a "
-            "successful ADS-B cycle with safe cadence slack. GitHub checks yield "
-            "to local OTA, Wi-Fi recovery, MQTT transitions, and radar commands.");
+          : "CHECK NOW verifies the latest stable release. DOWNLOAD & INSTALL "
+            "requires a second confirmation, checks the manifest again, streams "
+            "the exact .radarota package into the inactive partition, validates "
+            "both SHA-256 digests and the embedded build ID, then restarts. The "
+            "local browser FIRMWARE / OTA path remains available for recovery.");
 }
 
 }  // namespace update_ui

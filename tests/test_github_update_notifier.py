@@ -20,14 +20,14 @@ def git_blob_sha(data: bytes) -> str:
 
 
 class GithubUpdateNotifierTests(unittest.TestCase):
-    def test_build_identity_is_product_72_and_hardware_specific(self) -> None:
+    def test_build_identity_is_product_73_and_hardware_specific(self) -> None:
         build = read("include/build_info.h")
-        self.assertIn("FIRMWARE_VERSION_CODE = 72", build)
-        self.assertIn('FIRMWARE_VERSION_LABEL = "Product 72"', build)
+        self.assertIn("FIRMWARE_VERSION_CODE = 73", build)
+        self.assertIn('FIRMWARE_VERSION_LABEL = "Product 73"', build)
         self.assertIn('"waveshare-esp32-s3-touch-lcd-7"', build)
         self.assertIn('FIRMWARE_RELEASE_CHANNEL = "stable"', build)
-        self.assertIn("7IN-20260803-PRODUCT72-GITHUB-TX-BUFFER-FIX", build)
-        self.assertIn("a52ee1cd39f1d39182730418de7192b9779a4307", build)
+        self.assertIn("7IN-20260804-PRODUCT73-GITHUB-OTA-INSTALL", build)
+        self.assertIn("f999347897185d41761dc6c896229e002cb7482f", build)
 
     def test_check_has_no_task_or_forbidden_transport(self) -> None:
         source = read("src/update_manager.cpp")
@@ -104,10 +104,13 @@ class GithubUpdateNotifierTests(unittest.TestCase):
         self.assertIn('lv_label_set_text(checkNowLabel, "CHECK NOW")', ui)
         self.assertIn("successful ADS-B cycle", source)
 
-    def test_failed_product_69_cache_cannot_throttle_product_70(self) -> None:
+    def test_older_cache_cannot_authorize_product_73_install(self) -> None:
         source = read("src/update_manager.cpp")
-        self.assertIn("STORED_SCHEMA = 2", source)
-        self.assertIn("incompatible pre-Product-70 schema", source)
+        self.assertIn("STORED_SCHEMA = 3", source)
+        self.assertIn("sizeof(StoredState) == 512", source)
+        self.assertIn("remotePackageSha256[32]", source)
+        self.assertIn("remoteFirmwareSha256[32]", source)
+        self.assertIn("incompatible pre-Product-73 schema", source)
         self.assertNotIn("setAttemptTimestamp(status)", source)
         prepare = source[source.index("bool prepareAfterSuccessfulAdsb") :]
         self.assertNotIn("commitAttemptTimestamp(status)", prepare.split("void performPreparedCheck", 1)[0])
@@ -207,6 +210,7 @@ class GithubUpdateNotifierTests(unittest.TestCase):
             '  }\n',
             "",
         )
+        restored = restored.replace("  update_manager::service();\n", "")
         restored = restored.replace(
             "  if (!update_manager::networkCheckInProgress()) {\n"
             "    mqtt_service::service();\n"
@@ -235,17 +239,62 @@ class GithubUpdateNotifierTests(unittest.TestCase):
         for forbidden in ("request", "http", "WiFi", "persist"):
             self.assertNotIn(forbidden, later.group("body"))
 
+    def test_remote_install_is_explicit_streamed_and_verified(self) -> None:
+        header = read("include/update_manager.h")
+        manager = read("src/update_manager.cpp")
+        installer = read("src/github_ota_installer.cpp")
+        ui = read("src/update_ui.cpp")
+        main = read("src/main.cpp")
+        self.assertIn("bool requestInstall();", header)
+        self.assertIn("void requestInstallAbort();", header)
+        self.assertIn("Stable release changed; review it", manager)
+        self.assertIn("metadata->packageSize != status.remotePackageSize", manager)
+        self.assertIn("metadata->firmwareSize != status.remoteFirmwareSize", manager)
+        self.assertIn("status.remotePackageSha256", manager)
+        self.assertIn("status.remoteFirmwareSha256", manager)
+        self.assertIn("github_ota_installer::install", manager)
+        self.assertIn("DOWNLOAD & INSTALL", ui)
+        self.assertIn("CONFIRM INSTALL", ui)
+        self.assertIn("update_manager::service();", main)
+        self.assertIn("esp_ota_begin", installer)
+        self.assertIn("esp_ota_write", installer)
+        self.assertIn("esp_ota_end", installer)
+        self.assertIn("esp_ota_set_boot_partition", installer)
+        self.assertIn("mbedtls_sha256_update", installer)
+        self.assertIn("packageSha256", installer)
+        self.assertIn("firmwareSha256", installer)
+        self.assertIn("buildIdSeen", installer)
+        self.assertIn("MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT", installer)
+        self.assertIn("DOWNLOAD_BUFFER_BYTES = 4096U", installer)
+        self.assertNotIn("HTTPClient", installer)
+        self.assertNotIn("WiFiClientSecure", installer)
+        self.assertNotIn("setInsecure", installer)
+        self.assertNotIn("String ", installer)
+
+    def test_remote_install_preserves_local_ota_priority_and_bounds(self) -> None:
+        installer = read("src/github_ota_installer.cpp")
+        manager = read("src/update_manager.cpp")
+        self.assertIn("ota_update::busy()", installer)
+        self.assertIn("localOta.serverRunning", installer)
+        self.assertIn("MAX_REDIRECTS = 3", installer)
+        self.assertIn("INSTALL_TOTAL_TIMEOUT_MS = 3UL * 60UL * 1000UL", installer)
+        self.assertIn("HTTP_BODY_IDLE_TIMEOUT_MS = 15000UL", installer)
+        self.assertIn("parseAllowedHttpsUrl", installer)
+        self.assertIn("esp_crt_bundle_attach", installer)
+        self.assertIn("skip_cert_common_name_check = false", installer)
+        self.assertIn("requestAbort();", manager)
+        self.assertIn("currentStatus.installing", manager)
+        self.assertIn("networkCheckInProgress", manager)
+
     def test_credentials_capacity_and_forbidden_apis_are_untouched(self) -> None:
         changed_production = (
             "include/build_info.h",
             "include/update_manager.h",
-            "include/update_policy.h",
-            "include/update_ui.h",
+            "include/github_ota_installer.h",
             "src/main.cpp",
-            "src/adsb_network.cpp",
             "src/update_manager.cpp",
+            "src/github_ota_installer.cpp",
             "src/update_ui.cpp",
-            "scripts/build_radar_ota.py",
             "docs/GITHUB_RELEASES.md",
         )
         for path in changed_production:

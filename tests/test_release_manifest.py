@@ -82,7 +82,7 @@ class ReleaseManifestTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "build_info.h"
             path.write_text(
-                original.replace('"Product 72"', '"Product 71"'),
+                original.replace('"Product 73"', '"Product 72"'),
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(ValueError, "does not match"):
