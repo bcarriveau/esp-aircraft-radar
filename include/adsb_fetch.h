@@ -10,6 +10,8 @@ namespace adsb_fetch {
 
 struct Result {
   bool success = false;
+  bool cancelled = false;
+  bool transportBudgetExhausted = false;
   app_state::FetchFailureStage failureStage =
       app_state::FetchFailureStage::NONE;
   uint32_t durationMs = 0;

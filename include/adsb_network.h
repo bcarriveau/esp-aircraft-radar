@@ -19,8 +19,13 @@ void requestWifiReconnect();
 // restarting the station radio. Core 1 must avoid OTA/Wi-Fi calls in this window.
 bool wifiOperationInProgress();
 
+// Read-only cancellation signal used by the serialized fetch owner. It
+// becomes true when local OTA requests exclusive network maintenance.
+bool fetchAbortRequested();
+
 // Coordinates exclusive flash-update maintenance with the core-0 network task.
-// A requested hold is acknowledged only after any active ADS-B request finishes.
+// Active transport checks the cancellation signal between bounded blocking
+// calls, then acknowledges the hold without recording an ADS-B failure.
 // Returns false only when a hard Wi-Fi recovery already owns the network.
 bool requestMaintenanceHold();
 bool maintenanceHoldActive();

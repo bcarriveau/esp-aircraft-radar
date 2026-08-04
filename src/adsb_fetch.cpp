@@ -11,6 +11,7 @@
 #include <esp_http_client.h>
 
 #include "adsb_network.h"
+#include "adsb_transport_policy.h"
 #include "adsb_diagnostics.h"
 #include "config.h"
 #include "settings.h"
@@ -18,19 +19,13 @@
 namespace adsb_fetch {
 namespace {
 
-constexpr uint32_t HTTP_NETWORK_TIMEOUT_MS = 15000;
-constexpr uint32_t BODY_READ_TIMEOUT_MS = 3000;
-constexpr uint32_t TCP_PROBE_TIMEOUT_MS = 3000;
-constexpr uint32_t IDLE_TIMEOUT_MS = 12000;
-constexpr uint32_t TOTAL_TIMEOUT_MS = 45000;
-constexpr uint32_t TRANSPORT_RELEASE_DELAY_MS = 250;
-constexpr uint32_t FALLBACK_START_DELAY_MS = 750;
+namespace policy = adsb_transport_policy;
+
 constexpr size_t MAX_RESPONSE_BYTES = 250000;
 constexpr size_t MAX_HTTP_HEADER_BYTES = 8192;
 constexpr size_t MAX_HTTP_LINE_BYTES = 512;
 constexpr size_t MAX_CHUNK_FRAMING_BYTES = 16384;
 constexpr uint8_t MAX_NATIVE_ATTEMPTS = 2;
-constexpr uint32_t RETRY_DELAY_MS = 500;
 
 uint32_t verboseDiagnosticUs = 0;
 
@@ -64,6 +59,8 @@ void logMemoryStage(const char* stage) {
 
 struct AttemptResult {
   bool success = false;
+  bool cancelled = false;
+  bool transportBudgetExhausted = false;
   bool fallbackEligible = false;
   bool requiresWifiRecovery = false;
   app_state::FetchFailureStage failureStage =
@@ -72,19 +69,52 @@ struct AttemptResult {
   uint32_t jsonDeserializeUs = 0;
 };
 
-void waitForNativeRetry(uint8_t attempt) {
-  if (attempt < MAX_NATIVE_ATTEMPTS) delay(RETRY_DELAY_MS);
+enum class BoundedWaitResult : uint8_t {
+  COMPLETE,
+  CANCELLED,
+  BUDGET_EXHAUSTED,
+};
+
+bool abortRequested() {
+  return adsb::fetchAbortRequested();
+}
+
+uint32_t transportRemainingMs(uint32_t fetchStarted) {
+  return policy::transportRemainingMs(fetchStarted, millis());
+}
+
+BoundedWaitResult waitInterruptible(uint32_t durationMs,
+                                    uint32_t fetchStarted) {
+  const uint32_t waitStarted = millis();
+  while (static_cast<uint32_t>(millis() - waitStarted) < durationMs) {
+    if (abortRequested()) return BoundedWaitResult::CANCELLED;
+    const uint32_t remaining = transportRemainingMs(fetchStarted);
+    if (remaining == 0) return BoundedWaitResult::BUDGET_EXHAUSTED;
+    const uint32_t elapsed = millis() - waitStarted;
+    const uint32_t waitRemaining = durationMs - elapsed;
+    delay(min(min(waitRemaining, remaining), static_cast<uint32_t>(10)));
+  }
+  return BoundedWaitResult::COMPLETE;
+}
+
+AttemptResult cancelled(uint32_t responseBytes = 0) {
+  AttemptResult result;
+  result.cancelled = true;
+  result.responseBytes = responseBytes;
+  return result;
 }
 
 AttemptResult failed(app_state::FetchFailureStage stage,
                      uint32_t responseBytes = 0,
                      bool fallbackEligible = false,
-                     bool requiresWifiRecovery = false) {
+                     bool requiresWifiRecovery = false,
+                     bool transportBudgetExhausted = false) {
   AttemptResult result;
   result.failureStage = stage;
   result.responseBytes = responseBytes;
   result.fallbackEligible = fallbackEligible;
   result.requiresWifiRecovery = requiresWifiRecovery;
+  result.transportBudgetExhausted = transportBudgetExhausted;
   return result;
 }
 
@@ -104,7 +134,9 @@ uint8_t failureProgress(app_state::FetchFailureStage stage) {
 
 void preserveMostAdvancedFailure(AttemptResult& preserved,
                                  const AttemptResult& candidate) {
-  if (candidate.success) return;
+  if (candidate.success || candidate.cancelled) return;
+  const bool budgetExhausted = preserved.transportBudgetExhausted ||
+                               candidate.transportBudgetExhausted;
   const bool madeMoreProgress =
       candidate.responseBytes > preserved.responseBytes;
   const bool reachedLaterStage =
@@ -115,30 +147,45 @@ void preserveMostAdvancedFailure(AttemptResult& preserved,
       preserved.failureStage == app_state::FetchFailureStage::NONE) {
     preserved = candidate;
   }
+  preserved.transportBudgetExhausted = budgetExhausted;
 }
 
-void releaseNativeClient(esp_http_client_handle_t client, bool opened) {
+void settleReleasedTransport(uint32_t fetchStarted) {
+  if (abortRequested()) return;
+  const uint32_t remaining = transportRemainingMs(fetchStarted);
+  if (remaining == 0) return;
+  waitInterruptible(min(policy::TRANSPORT_RELEASE_DELAY_MS, remaining),
+                    fetchStarted);
+}
+
+void releaseNativeClient(esp_http_client_handle_t client, bool opened,
+                         uint32_t fetchStarted) {
   if (!client) return;
   if (opened) esp_http_client_close(client);
   esp_http_client_cleanup(client);
-  // Give lwIP/esp-tls time to release the closed socket and TLS state before
-  // a native retry or the independent fallback opens another connection.
-  delay(TRANSPORT_RELEASE_DELAY_MS);
+  // Give lwIP/esp-tls a short bounded release window before another socket.
+  settleReleasedTransport(fetchStarted);
 }
 
-void releaseFallbackClient(WiFiClientSecure& client) {
+void releaseFallbackClient(WiFiClientSecure& client,
+                           uint32_t fetchStarted) {
   client.stop();
-  delay(TRANSPORT_RELEASE_DELAY_MS);
+  settleReleasedTransport(fetchStarted);
 }
 
 app_state::FetchFailureStage diagnoseSecureConnectFailure(
-    const IPAddress& serverIp) {
-  // A short raw TCP probe only runs after a secure connect failure. This lets
-  // diagnostics distinguish an unreachable host/port from a TLS handshake.
+    const IPAddress& serverIp, uint32_t fetchStarted) {
+  // A short raw TCP probe only runs while shared transport budget remains.
+  const uint32_t remaining = transportRemainingMs(fetchStarted);
+  if (remaining < policy::MIN_BLOCKING_CALL_BUDGET_MS || abortRequested()) {
+    return app_state::FetchFailureStage::TLS;
+  }
+  const uint32_t timeoutMs = policy::boundedTimeoutMs(
+      remaining, policy::TCP_PROBE_TIMEOUT_MS);
   WiFiClient probe;
-  probe.setTimeout(TCP_PROBE_TIMEOUT_MS);
+  probe.setTimeout(timeoutMs);
   const bool tcpConnected = probe.connect(
-      serverIp, 443, static_cast<int32_t>(TCP_PROBE_TIMEOUT_MS));
+      serverIp, 443, static_cast<int32_t>(timeoutMs));
   probe.stop();
   return tcpConnected ? app_state::FetchFailureStage::TLS
                       : app_state::FetchFailureStage::TCP;
@@ -187,6 +234,8 @@ enum class SecureReadResult : uint8_t {
   OK,
   CLOSED,
   TIMEOUT,
+  CANCELLED,
+  BUDGET_EXHAUSTED,
   TOO_LARGE,
   IO_ERROR,
 };
@@ -203,6 +252,8 @@ const char* secureReadResultName(SecureReadResult result) {
     case SecureReadResult::OK: return "ok";
     case SecureReadResult::CLOSED: return "closed";
     case SecureReadResult::TIMEOUT: return "timeout";
+    case SecureReadResult::CANCELLED: return "cancelled";
+    case SecureReadResult::BUDGET_EXHAUSTED: return "budget-exhausted";
     case SecureReadResult::TOO_LARGE: return "too-large";
     case SecureReadResult::IO_ERROR: return "io-error";
   }
@@ -214,33 +265,39 @@ bool elapsedAtLeast(uint32_t now, uint32_t started, uint32_t intervalMs) {
 }
 
 SecureReadResult waitForSecureData(WiFiClientSecure& client,
+                                   uint32_t fetchStarted,
                                    uint32_t responseStarted,
                                    uint32_t& lastProgress,
                                    uint32_t phaseStarted,
                                    uint32_t phaseTimeoutMs) {
   while (true) {
+    if (abortRequested()) return SecureReadResult::CANCELLED;
+    if (transportRemainingMs(fetchStarted) == 0) {
+      return SecureReadResult::BUDGET_EXHAUSTED;
+    }
     if (client.available() > 0) return SecureReadResult::OK;
     if (!client.connected()) return SecureReadResult::CLOSED;
 
     const uint32_t now = millis();
-    if (elapsedAtLeast(now, lastProgress, IDLE_TIMEOUT_MS) ||
-        elapsedAtLeast(now, responseStarted, TOTAL_TIMEOUT_MS) ||
+    if (elapsedAtLeast(now, lastProgress, policy::IDLE_TIMEOUT_MS) ||
         (phaseTimeoutMs > 0 &&
          elapsedAtLeast(now, phaseStarted, phaseTimeoutMs))) {
       return SecureReadResult::TIMEOUT;
     }
+    (void)responseStarted;
     delay(2);
   }
 }
 
 SecureReadResult readSecureByte(WiFiClientSecure& client, uint8_t& value,
+                                uint32_t fetchStarted,
                                 uint32_t responseStarted,
                                 uint32_t& lastProgress,
                                 uint32_t phaseStarted,
                                 uint32_t phaseTimeoutMs) {
   const SecureReadResult waitResult =
-      waitForSecureData(client, responseStarted, lastProgress, phaseStarted,
-                        phaseTimeoutMs);
+      waitForSecureData(client, fetchStarted, responseStarted, lastProgress,
+                        phaseStarted, phaseTimeoutMs);
   if (waitResult != SecureReadResult::OK) return waitResult;
 
   const int readValue = client.read();
@@ -252,7 +309,8 @@ SecureReadResult readSecureByte(WiFiClientSecure& client, uint8_t& value,
 
 SecureReadResult readSecureLine(WiFiClientSecure& client, char* line,
                                 size_t lineCapacity, size_t& wireBytes,
-                                size_t wireLimit, uint32_t responseStarted,
+                                size_t wireLimit, uint32_t fetchStarted,
+                                uint32_t responseStarted,
                                 uint32_t& lastProgress,
                                 uint32_t phaseStarted,
                                 uint32_t phaseTimeoutMs) {
@@ -262,8 +320,8 @@ SecureReadResult readSecureLine(WiFiClientSecure& client, char* line,
   while (true) {
     uint8_t value = 0;
     const SecureReadResult readResult =
-        readSecureByte(client, value, responseStarted, lastProgress,
-                       phaseStarted, phaseTimeoutMs);
+        readSecureByte(client, value, fetchStarted, responseStarted,
+                       lastProgress, phaseStarted, phaseTimeoutMs);
     if (readResult != SecureReadResult::OK) return readResult;
 
     ++wireBytes;
@@ -366,6 +424,7 @@ bool parseContentLength(const char* value, size_t& contentLength) {
 
 SecureReadResult readFallbackHeaders(WiFiClientSecure& client,
                                      FallbackResponseHeaders& headers,
+                                     uint32_t fetchStarted,
                                      uint32_t responseStarted,
                                      uint32_t& lastProgress) {
   char line[MAX_HTTP_LINE_BYTES]{};
@@ -373,7 +432,8 @@ SecureReadResult readFallbackHeaders(WiFiClientSecure& client,
   const uint32_t headerStarted = millis();
   SecureReadResult readResult = readSecureLine(
       client, line, sizeof(line), headerBytes, MAX_HTTP_HEADER_BYTES,
-      responseStarted, lastProgress, headerStarted, HTTP_NETWORK_TIMEOUT_MS);
+      fetchStarted, responseStarted, lastProgress, headerStarted,
+      policy::HEADER_TIMEOUT_MS);
   if (readResult != SecureReadResult::OK) return readResult;
   if (!parseHttpStatus(line, headers.statusCode)) {
     return SecureReadResult::IO_ERROR;
@@ -382,7 +442,8 @@ SecureReadResult readFallbackHeaders(WiFiClientSecure& client,
   while (true) {
     readResult = readSecureLine(
         client, line, sizeof(line), headerBytes, MAX_HTTP_HEADER_BYTES,
-        responseStarted, lastProgress, headerStarted, HTTP_NETWORK_TIMEOUT_MS);
+        fetchStarted, responseStarted, lastProgress, headerStarted,
+      policy::HEADER_TIMEOUT_MS);
     if (readResult != SecureReadResult::OK) return readResult;
     if (line[0] == 0) break;
 
@@ -422,11 +483,13 @@ SecureReadResult readFallbackHeaders(WiFiClientSecure& client,
 
 SecureReadResult readSecureRaw(WiFiClientSecure& client, uint8_t* destination,
                                size_t length, size_t& bytesRead,
+                               uint32_t fetchStarted,
                                uint32_t responseStarted,
                                uint32_t& lastProgress) {
   while (bytesRead < length) {
     const SecureReadResult waitResult =
-        waitForSecureData(client, responseStarted, lastProgress, 0, 0);
+        waitForSecureData(client, fetchStarted, responseStarted,
+                          lastProgress, 0, 0);
     if (waitResult != SecureReadResult::OK) return waitResult;
 
     const size_t availableBytes = static_cast<size_t>(client.available());
@@ -488,7 +551,7 @@ bool validChunkTrailer(const char* line) {
 }
 
 SecureReadResult readChunkedBody(WiFiClientSecure& client, uint8_t* payload,
-                                 size_t& received,
+                                 size_t& received, uint32_t fetchStarted,
                                  uint32_t responseStarted,
                                  uint32_t& lastProgress) {
   size_t framingBytes = 0;
@@ -496,7 +559,7 @@ SecureReadResult readChunkedBody(WiFiClientSecure& client, uint8_t* payload,
   while (true) {
     SecureReadResult readResult = readSecureLine(
         client, line, sizeof(line), framingBytes, MAX_CHUNK_FRAMING_BYTES,
-        responseStarted, lastProgress, 0, 0);
+        fetchStarted, responseStarted, lastProgress, 0, 0);
     if (readResult != SecureReadResult::OK) return readResult;
     size_t chunkSize = 0;
     readResult = parseChunkSize(line, chunkSize);
@@ -505,7 +568,8 @@ SecureReadResult readChunkedBody(WiFiClientSecure& client, uint8_t* payload,
       while (true) {
         readResult = readSecureLine(
             client, line, sizeof(line), framingBytes,
-            MAX_CHUNK_FRAMING_BYTES, responseStarted, lastProgress, 0, 0);
+            MAX_CHUNK_FRAMING_BYTES, fetchStarted, responseStarted,
+            lastProgress, 0, 0);
         if (readResult != SecureReadResult::OK) return readResult;
         if (line[0] == 0) return SecureReadResult::OK;
         if (!validChunkTrailer(line)) return SecureReadResult::IO_ERROR;
@@ -517,14 +581,15 @@ SecureReadResult readChunkedBody(WiFiClientSecure& client, uint8_t* payload,
 
     size_t chunkRead = 0;
     readResult = readSecureRaw(client, payload + received, chunkSize, chunkRead,
-                               responseStarted, lastProgress);
+                               fetchStarted, responseStarted, lastProgress);
     received += chunkRead;
     if (readResult != SecureReadResult::OK) return readResult;
 
     uint8_t terminator[2]{};
     size_t terminatorRead = 0;
     readResult = readSecureRaw(client, terminator, sizeof(terminator),
-                               terminatorRead, responseStarted, lastProgress);
+                               terminatorRead, fetchStarted, responseStarted,
+                               lastProgress);
     if (readResult != SecureReadResult::OK) return readResult;
     framingBytes += sizeof(terminator);
     if (framingBytes > MAX_CHUNK_FRAMING_BYTES) {
@@ -538,11 +603,13 @@ SecureReadResult readChunkedBody(WiFiClientSecure& client, uint8_t* payload,
 
 SecureReadResult readCloseDelimitedBody(WiFiClientSecure& client,
                                         uint8_t* payload, size_t& received,
+                                        uint32_t fetchStarted,
                                         uint32_t responseStarted,
                                         uint32_t& lastProgress) {
   while (true) {
     const SecureReadResult waitResult =
-        waitForSecureData(client, responseStarted, lastProgress, 0, 0);
+        waitForSecureData(client, fetchStarted, responseStarted,
+                          lastProgress, 0, 0);
     if (waitResult == SecureReadResult::CLOSED) return SecureReadResult::OK;
     if (waitResult != SecureReadResult::OK) return waitResult;
     if (received >= MAX_RESPONSE_BYTES) return SecureReadResult::TOO_LARGE;
@@ -560,15 +627,19 @@ SecureReadResult readCloseDelimitedBody(WiFiClientSecure& client,
 }
 
 bool writeSecureText(WiFiClientSecure& client, const char* text,
-                     size_t length, uint32_t writeStarted,
+                     size_t length, uint32_t fetchStarted,
+                     uint32_t writeStarted,
                      uint32_t& lastProgress) {
   if (!text) return false;
   size_t written = 0;
   while (written < length) {
-    if (!client.connected()) return false;
+    if (abortRequested() || transportRemainingMs(fetchStarted) == 0 ||
+        !client.connected()) {
+      return false;
+    }
     const uint32_t now = millis();
-    if (elapsedAtLeast(now, writeStarted, HTTP_NETWORK_TIMEOUT_MS) ||
-        elapsedAtLeast(now, lastProgress, BODY_READ_TIMEOUT_MS)) {
+    if (elapsedAtLeast(now, writeStarted, policy::HEADER_TIMEOUT_MS) ||
+        elapsedAtLeast(now, lastProgress, policy::BODY_READ_TIMEOUT_MS)) {
       return false;
     }
     const size_t writeCount = client.write(
@@ -585,77 +656,117 @@ bool writeSecureText(WiFiClientSecure& client, const char* text,
 
 template <size_t N>
 bool writeSecureLiteral(WiFiClientSecure& client, const char (&text)[N],
-                        uint32_t writeStarted, uint32_t& lastProgress) {
-  return writeSecureText(client, text, N - 1, writeStarted, lastProgress);
+                        uint32_t fetchStarted, uint32_t writeStarted,
+                        uint32_t& lastProgress) {
+  return writeSecureText(client, text, N - 1, fetchStarted, writeStarted,
+                         lastProgress);
 }
 
-bool writeFallbackRequest(WiFiClientSecure& client, const char* path) {
+bool writeFallbackRequest(WiFiClientSecure& client, const char* path,
+                          uint32_t fetchStarted) {
   const uint32_t writeStarted = millis();
   uint32_t lastProgress = writeStarted;
-  return writeSecureLiteral(client, "GET ", writeStarted, lastProgress) &&
-         writeSecureText(client, path, strlen(path), writeStarted,
-                         lastProgress) &&
-         writeSecureLiteral(client, " HTTP/1.1\r\n", writeStarted,
+  return writeSecureLiteral(client, "GET ", fetchStarted, writeStarted,
                             lastProgress) &&
-         writeSecureLiteral(client, "Host: opendata.adsb.fi\r\n", writeStarted,
-                            lastProgress) &&
+         writeSecureText(client, path, strlen(path), fetchStarted,
+                         writeStarted, lastProgress) &&
+         writeSecureLiteral(client, " HTTP/1.1\r\n", fetchStarted,
+                            writeStarted, lastProgress) &&
+         writeSecureLiteral(client, "Host: opendata.adsb.fi\r\n",
+                            fetchStarted, writeStarted, lastProgress) &&
          writeSecureLiteral(
              client, "User-Agent: BILLS-Aircraft-Radar-7in/18\r\n",
-             writeStarted, lastProgress) &&
+             fetchStarted, writeStarted, lastProgress) &&
          writeSecureLiteral(client, "Accept: application/json\r\n",
-                            writeStarted, lastProgress) &&
+                            fetchStarted, writeStarted, lastProgress) &&
          writeSecureLiteral(client, "Accept-Encoding: identity\r\n",
-                            writeStarted, lastProgress) &&
-         writeSecureLiteral(client, "Connection: close\r\n\r\n", writeStarted,
-                            lastProgress);
+                            fetchStarted, writeStarted, lastProgress) &&
+         writeSecureLiteral(client, "Connection: close\r\n\r\n",
+                            fetchStarted, writeStarted, lastProgress);
 }
 
 AttemptResult fetchAttemptWithSecureClient(const char* path,
                                            JsonDocument& filter,
-                                           JsonDocument& doc) {
+                                           JsonDocument& doc,
+                                           uint32_t fetchStarted) {
+  if (abortRequested()) return cancelled();
+  uint32_t remainingBudget = transportRemainingMs(fetchStarted);
+  if (remainingBudget < policy::MIN_BLOCKING_CALL_BUDGET_MS) {
+    return failed(app_state::FetchFailureStage::TLS, 0, false, false, true);
+  }
+
   ADSB_VERBOSE_PRINTLN(
       "ADSB.fi fallback HTTPS via verified WiFiClientSecure stream");
   BundleVerifiedSecureClient client;
   client.useDefaultCaBundle();
-  client.setTimeout(BODY_READ_TIMEOUT_MS);
-  client.setHandshakeTimeout((HTTP_NETWORK_TIMEOUT_MS + 999) / 1000);
+  const uint32_t connectTimeout = policy::boundedTimeoutMs(
+      remainingBudget, policy::CONNECT_TIMEOUT_MS);
+  client.setTimeout(policy::boundedTimeoutMs(
+      remainingBudget, policy::BODY_READ_TIMEOUT_MS));
+  client.setHandshakeTimeout((connectTimeout + 999) / 1000);
 
   const uint32_t connectStarted = millis();
   logMemoryStage("fallback-start");
   if (!client.connect("opendata.adsb.fi", 443,
-                      static_cast<int32_t>(HTTP_NETWORK_TIMEOUT_MS))) {
+                      static_cast<int32_t>(connectTimeout))) {
     char tlsError[160]{};
     const int tlsErrorCode = client.lastError(tlsError, sizeof(tlsError));
-    releaseFallbackClient(client);
+    releaseFallbackClient(client, fetchStarted);
+    if (abortRequested()) return cancelled();
+    const bool budgetExhausted = transportRemainingMs(fetchStarted) == 0;
     Serial.printf(
-        "ADSB.fi fallback verified TLS connect failed after %lu ms: %d (%s)\n",
+        "ADSB.fi fallback verified TLS connect failed after %lu ms: %d (%s)%s\n",
         (unsigned long)(millis() - connectStarted), tlsErrorCode,
-        tlsError[0] ? tlsError : "no mbedTLS detail");
-    return failed(app_state::FetchFailureStage::TLS);
+        tlsError[0] ? tlsError : "no mbedTLS detail",
+        budgetExhausted ? " [shared budget exhausted]" : "");
+    return failed(app_state::FetchFailureStage::TLS, 0, false, false,
+                  budgetExhausted);
   }
 
+  if (abortRequested()) {
+    releaseFallbackClient(client, fetchStarted);
+    return cancelled();
+  }
   logMemoryStage("fallback-tls");
-  client.setTimeout(BODY_READ_TIMEOUT_MS);
-  if (!writeFallbackRequest(client, path)) {
-    releaseFallbackClient(client);
-    Serial.println("ADSB.fi fallback request write failed");
-    return failed(app_state::FetchFailureStage::TCP);
+  remainingBudget = transportRemainingMs(fetchStarted);
+  if (remainingBudget < policy::MIN_BLOCKING_CALL_BUDGET_MS) {
+    releaseFallbackClient(client, fetchStarted);
+    return failed(app_state::FetchFailureStage::TCP, 0, false, false, true);
+  }
+  client.setTimeout(policy::boundedTimeoutMs(
+      remainingBudget, policy::BODY_READ_TIMEOUT_MS));
+  if (!writeFallbackRequest(client, path, fetchStarted)) {
+    releaseFallbackClient(client, fetchStarted);
+    if (abortRequested()) return cancelled();
+    const bool budgetExhausted = transportRemainingMs(fetchStarted) == 0;
+    Serial.printf("ADSB.fi fallback request write failed%s\n",
+                  budgetExhausted ? " [shared budget exhausted]" : "");
+    return failed(app_state::FetchFailureStage::TCP, 0, false, false,
+                  budgetExhausted);
   }
 
   const uint32_t responseStarted = millis();
   uint32_t lastProgress = responseStarted;
   FallbackResponseHeaders headers;
-  const SecureReadResult headerResult =
-      readFallbackHeaders(client, headers, responseStarted, lastProgress);
+  const SecureReadResult headerResult = readFallbackHeaders(
+      client, headers, fetchStarted, responseStarted, lastProgress);
   if (headerResult != SecureReadResult::OK) {
-    releaseFallbackClient(client);
-    Serial.printf("ADSB.fi fallback header failure: %s\n",
-                  secureReadResultName(headerResult));
-    return failed(app_state::FetchFailureStage::HTTP_HEADERS);
+    releaseFallbackClient(client, fetchStarted);
+    if (headerResult == SecureReadResult::CANCELLED || abortRequested()) {
+      return cancelled();
+    }
+    const bool budgetExhausted =
+        headerResult == SecureReadResult::BUDGET_EXHAUSTED ||
+        transportRemainingMs(fetchStarted) == 0;
+    Serial.printf("ADSB.fi fallback header failure: %s%s\n",
+                  secureReadResultName(headerResult),
+                  budgetExhausted ? " [shared budget exhausted]" : "");
+    return failed(app_state::FetchFailureStage::HTTP_HEADERS, 0, false,
+                  false, budgetExhausted);
   }
 
   if (headers.statusCode != 200) {
-    releaseFallbackClient(client);
+    releaseFallbackClient(client, fetchStarted);
     Serial.printf("ADSB.fi fallback HTTP error: %d\n", headers.statusCode);
     return failed(app_state::FetchFailureStage::HTTP_STATUS);
   }
@@ -667,7 +778,7 @@ AttemptResult fetchAttemptWithSecureClient(const char* path,
           : MAX_RESPONSE_BYTES;
   uint8_t* payload = allocatePayload(capacity);
   if (!payload) {
-    releaseFallbackClient(client);
+    releaseFallbackClient(client, fetchStarted);
     Serial.printf("ADSB.fi fallback payload allocation failed: need %u bytes\n",
                   (unsigned)(capacity + 1));
     return failed(app_state::FetchFailureStage::RESPONSE_BODY,
@@ -678,31 +789,40 @@ AttemptResult fetchAttemptWithSecureClient(const char* path,
   size_t received = 0;
   SecureReadResult bodyResult = SecureReadResult::OK;
   if (headers.chunked) {
-    bodyResult = readChunkedBody(client, payload, received, responseStarted,
-                                 lastProgress);
+    bodyResult = readChunkedBody(client, payload, received, fetchStarted,
+                                 responseStarted, lastProgress);
   } else if (headers.contentLength >= 0) {
     size_t bodyRead = 0;
     bodyResult = readSecureRaw(client, payload, capacity, bodyRead,
-                               responseStarted, lastProgress);
+                               fetchStarted, responseStarted, lastProgress);
     received = bodyRead;
   } else {
     bodyResult = readCloseDelimitedBody(client, payload, received,
-                                        responseStarted, lastProgress);
+                                        fetchStarted, responseStarted,
+                                        lastProgress);
   }
-  releaseFallbackClient(client);
+  releaseFallbackClient(client, fetchStarted);
   logMemoryStage("fallback-release");
 
+  if (bodyResult == SecureReadResult::CANCELLED || abortRequested()) {
+    free(payload);
+    return cancelled(static_cast<uint32_t>(received));
+  }
   if (bodyResult != SecureReadResult::OK) {
+    const bool budgetExhausted =
+        bodyResult == SecureReadResult::BUDGET_EXHAUSTED ||
+        transportRemainingMs(fetchStarted) == 0;
     Serial.printf(
-        "ADSB.fi fallback body failure: %s after %u bytes in %lu ms\n",
+        "ADSB.fi fallback body failure: %s after %u bytes in %lu ms%s\n",
         secureReadResultName(bodyResult), (unsigned)received,
-        (unsigned long)(millis() - responseStarted));
+        (unsigned long)(millis() - responseStarted),
+        budgetExhausted ? " [shared budget exhausted]" : "");
     free(payload);
     const app_state::FetchFailureStage stage =
         WiFi.status() == WL_CONNECTED
             ? app_state::FetchFailureStage::RESPONSE_BODY
             : app_state::FetchFailureStage::WIFI;
-    return failed(stage, received);
+    return failed(stage, received, false, false, budgetExhausted);
   }
 
   payload[received] = 0;
@@ -711,6 +831,10 @@ AttemptResult fetchAttemptWithSecureClient(const char* path,
       (unsigned)received, (unsigned long)(millis() - responseStarted),
       headers.chunked ? "yes" : "no");
 
+  if (abortRequested()) {
+    free(payload);
+    return cancelled(static_cast<uint32_t>(received));
+  }
   doc.clear();
   const uint32_t deserializeStartedUs = micros();
   DeserializationError error = deserializeJson(
@@ -718,6 +842,7 @@ AttemptResult fetchAttemptWithSecureClient(const char* path,
   const uint32_t deserializeUs = micros() - deserializeStartedUs;
   free(payload);
   logMemoryStage("fallback-json-deserialized");
+  if (abortRequested()) return cancelled(static_cast<uint32_t>(received));
   if (error) {
     Serial.printf("ADSB.fi fallback JSON error: %s\n", error.c_str());
     return failed(app_state::FetchFailureStage::JSON, received);
@@ -739,21 +864,34 @@ AttemptResult fetchAttemptWithSecureClient(const char* path,
 // Native attempts are completed first for connection and header failures. A
 // partial response-body transport failure returns immediately so the existing
 // network recovery ladder can recycle WiFi before another TLS connection. The
-// independent verified fallback is invoked at most once for an eligible final
-// native connection or header failure.
+// independent verified fallback is invoked at most once when enough of the
+// same shared transport budget remains.
 
 AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
-                           JsonDocument& doc, uint8_t attempt) {
+                           JsonDocument& doc, uint8_t attempt,
+                           uint32_t fetchStarted) {
+  if (abortRequested()) return cancelled();
+  uint32_t remainingBudget = transportRemainingMs(fetchStarted);
+  if (remainingBudget < policy::MIN_BLOCKING_CALL_BUDGET_MS) {
+    return failed(app_state::FetchFailureStage::TLS, 0, false, false, true);
+  }
+
   ADSB_VERBOSE_PRINTF("ADSB.fi native HTTPS attempt %u\n", attempt);
   logMemoryStage("native-start");
   ADSB_VERBOSE_PRINTF("ADSB RSSI: %d dBm\n", WiFi.RSSI());
 
-  // Resolve for each attempt. A failed Cloudflare edge is never pinned across
-  // both retries, and the address remains available for TCP-vs-TLS diagnosis.
   IPAddress serverIp;
   if (!WiFi.hostByName("opendata.adsb.fi", serverIp)) {
-    Serial.println("ADSB DNS failed: opendata.adsb.fi");
-    return failed(app_state::FetchFailureStage::DNS);
+    if (abortRequested()) return cancelled();
+    const bool budgetExhausted = transportRemainingMs(fetchStarted) == 0;
+    Serial.printf("ADSB DNS failed: opendata.adsb.fi%s\n",
+                  budgetExhausted ? " [shared budget exhausted]" : "");
+    return failed(app_state::FetchFailureStage::DNS, 0, false, false,
+                  budgetExhausted);
+  }
+  if (abortRequested()) return cancelled();
+  if (transportRemainingMs(fetchStarted) == 0) {
+    return failed(app_state::FetchFailureStage::DNS, 0, false, false, true);
   }
   ADSB_VERBOSE_PRINTF("ADSB DNS attempt %u: opendata.adsb.fi -> %s\n",
                       attempt, serverIp.toString().c_str());
@@ -766,20 +904,24 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
     Serial.println("ADSB.fi request URL exceeded fixed buffer");
     return failed(app_state::FetchFailureStage::HTTP_HEADERS);
   }
+
+  remainingBudget = transportRemainingMs(fetchStarted);
+  if (remainingBudget < policy::MIN_BLOCKING_CALL_BUDGET_MS) {
+    return failed(app_state::FetchFailureStage::TLS, 0, false, false, true);
+  }
+  const uint32_t connectTimeout = policy::boundedTimeoutMs(
+      remainingBudget, policy::CONNECT_TIMEOUT_MS);
   esp_http_client_config_t config{};
   config.url = url;
   config.user_agent = "BILLS-Aircraft-Radar-7in/18";
   config.method = HTTP_METHOD_GET;
-  config.timeout_ms = HTTP_NETWORK_TIMEOUT_MS;
+  config.timeout_ms = connectTimeout;
   config.disable_auto_redirect = false;
   config.max_redirection_count = 3;
   config.transport_type = HTTP_TRANSPORT_OVER_SSL;
   config.buffer_size = 4096;
   config.buffer_size_tx = 1024;
   config.keep_alive_enable = false;
-  // Native esp-tls requires an explicit server-verification method. Use the
-  // full CA bundle already supplied by the pinned Arduino/ESP-IDF framework
-  // and retain hostname verification for opendata.adsb.fi.
   config.crt_bundle_attach = esp_crt_bundle_attach;
   config.skip_cert_common_name_check = false;
 
@@ -799,43 +941,69 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
   const esp_err_t openError = esp_http_client_open(client, 0);
   if (openError != ESP_OK) {
     const int socketError = esp_http_client_get_errno(client);
+    if (abortRequested()) {
+      releaseNativeClient(client, false, fetchStarted);
+      return cancelled();
+    }
     const app_state::FetchFailureStage stage =
         WiFi.status() == WL_CONNECTED
-            ? diagnoseSecureConnectFailure(serverIp)
+            ? diagnoseSecureConnectFailure(serverIp, fetchStarted)
             : app_state::FetchFailureStage::WIFI;
+    releaseNativeClient(client, false, fetchStarted);
+    const bool budgetExhausted = transportRemainingMs(fetchStarted) == 0;
     Serial.printf(
-        "ADSB.fi native %s connect failed after %lu ms: %s (0x%x), errno=%d\n",
+        "ADSB.fi native %s connect failed after %lu ms: %s (0x%x), errno=%d%s\n",
         app_state::failureStageName(stage),
         (unsigned long)(millis() - connectStarted),
-        esp_err_to_name(openError), (unsigned)openError, socketError);
-    releaseNativeClient(client, false);
+        esp_err_to_name(openError), (unsigned)openError, socketError,
+        budgetExhausted ? " [shared budget exhausted]" : "");
     const bool fallbackEligible =
         stage == app_state::FetchFailureStage::TCP ||
         stage == app_state::FetchFailureStage::TLS;
-    return failed(stage, 0, fallbackEligible);
+    return failed(stage, 0, fallbackEligible, false, budgetExhausted);
   }
   ADSB_VERBOSE_PRINTF("ADSB.fi native TLS connected in %lu ms\n",
                       (unsigned long)(millis() - connectStarted));
   logMemoryStage("tls-connected");
   const bool clientOpened = true;
 
+  if (abortRequested()) {
+    releaseNativeClient(client, clientOpened, fetchStarted);
+    return cancelled();
+  }
+  remainingBudget = transportRemainingMs(fetchStarted);
+  if (remainingBudget < policy::MIN_BLOCKING_CALL_BUDGET_MS) {
+    releaseNativeClient(client, clientOpened, fetchStarted);
+    return failed(app_state::FetchFailureStage::HTTP_HEADERS, 0, true, false,
+                  true);
+  }
+  esp_http_client_set_timeout_ms(
+      client, policy::boundedTimeoutMs(remainingBudget,
+                                       policy::HEADER_TIMEOUT_MS));
   const int64_t headerLength = esp_http_client_fetch_headers(client);
   if (headerLength < 0) {
-    Serial.printf("ADSB.fi native header failure: %lld\n",
-                  static_cast<long long>(headerLength));
-    releaseNativeClient(client, clientOpened);
+    if (abortRequested()) {
+      releaseNativeClient(client, clientOpened, fetchStarted);
+      return cancelled();
+    }
     const app_state::FetchFailureStage stage =
         WiFi.status() == WL_CONNECTED
             ? app_state::FetchFailureStage::HTTP_HEADERS
             : app_state::FetchFailureStage::WIFI;
+    releaseNativeClient(client, clientOpened, fetchStarted);
+    const bool budgetExhausted = transportRemainingMs(fetchStarted) == 0;
+    Serial.printf("ADSB.fi native header failure: %lld%s\n",
+                  static_cast<long long>(headerLength),
+                  budgetExhausted ? " [shared budget exhausted]" : "");
     return failed(stage, 0,
-                  stage == app_state::FetchFailureStage::HTTP_HEADERS);
+                  stage == app_state::FetchFailureStage::HTTP_HEADERS,
+                  false, budgetExhausted);
   }
 
   const int statusCode = esp_http_client_get_status_code(client);
   if (statusCode != 200) {
     Serial.printf("ADSB.fi HTTP error: %d\n", statusCode);
-    releaseNativeClient(client, clientOpened);
+    releaseNativeClient(client, clientOpened, fetchStarted);
     return failed(app_state::FetchFailureStage::HTTP_STATUS);
   }
 
@@ -844,7 +1012,7 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
   if (lengthKnown && static_cast<uint64_t>(headerLength) > MAX_RESPONSE_BYTES) {
     Serial.printf("ADSB.fi response too large: %lld bytes\n",
                   static_cast<long long>(headerLength));
-    releaseNativeClient(client, clientOpened);
+    releaseNativeClient(client, clientOpened, fetchStarted);
     return failed(app_state::FetchFailureStage::HTTP_HEADERS);
   }
   const size_t capacity =
@@ -858,7 +1026,7 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
   if (!payload) {
     Serial.printf("ADSB.fi payload allocation failed: need %u bytes\n",
                   (unsigned)(capacity + 1));
-    releaseNativeClient(client, clientOpened);
+    releaseNativeClient(client, clientOpened, fetchStarted);
     return failed(app_state::FetchFailureStage::RESPONSE_BODY,
                   static_cast<uint32_t>(capacity));
   }
@@ -869,17 +1037,33 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
   uint32_t lastProgress = readStarted;
   bool readFailed = false;
   bool endedEarly = false;
-  esp_http_client_set_timeout_ms(client, BODY_READ_TIMEOUT_MS);
+  bool cancelledDuringRead = false;
+  bool budgetExhausted = false;
   while (received < capacity) {
-    uint32_t now = millis();
-    if (now - lastProgress >= IDLE_TIMEOUT_MS ||
-        now - readStarted >= TOTAL_TIMEOUT_MS) {
+    if (abortRequested()) {
+      cancelledDuringRead = true;
       break;
     }
+    const uint32_t now = millis();
+    remainingBudget = transportRemainingMs(fetchStarted);
+    if (remainingBudget < policy::MIN_BLOCKING_CALL_BUDGET_MS) {
+      budgetExhausted = true;
+      break;
+    }
+    if (now - lastProgress >= policy::IDLE_TIMEOUT_MS) break;
+
+    esp_http_client_set_timeout_ms(
+        client, policy::boundedTimeoutMs(remainingBudget,
+                                         policy::BODY_READ_TIMEOUT_MS));
     const size_t remaining = capacity - received;
-    const int toRead = static_cast<int>(min(remaining, static_cast<size_t>(4096)));
+    const int toRead = static_cast<int>(
+        min(remaining, static_cast<size_t>(4096)));
     const int bytesRead = esp_http_client_read(
         client, reinterpret_cast<char*>(payload + received), toRead);
+    if (abortRequested()) {
+      cancelledDuringRead = true;
+      break;
+    }
     if (bytesRead > 0) {
       received += static_cast<size_t>(bytesRead);
       lastProgress = millis();
@@ -902,11 +1086,6 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
             "no progress for %lu ms, read=%d, errno=%d\n",
             (unsigned)received, (unsigned)capacity,
             (unsigned long)stalledForMs, bytesRead, readErrno);
-        // A successful 180-200 KB body normally completes in about one second
-        // on the target. Physical Product 40 logs show that after this bounded
-        // three-second read timeout, no later read makes progress and the WiFi
-        // station must be restarted before TLS becomes healthy again. Return
-        // immediately instead of spending the full idle deadline on a dead stream.
         readFailed = true;
         break;
       }
@@ -919,15 +1098,22 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
   payload[received] = 0;
   const bool responseComplete =
       esp_http_client_is_complete_data_received(client);
-  releaseNativeClient(client, clientOpened);
+  releaseNativeClient(client, clientOpened, fetchStarted);
   logMemoryStage("transport-released");
 
+  if (cancelledDuringRead || abortRequested()) {
+    free(payload);
+    return cancelled(static_cast<uint32_t>(received));
+  }
+  budgetExhausted = budgetExhausted ||
+                    transportRemainingMs(fetchStarted) == 0;
   const bool lengthMismatch = lengthKnown && received != capacity;
   if (readFailed || endedEarly || lengthMismatch || !responseComplete) {
     Serial.printf(
-        "ADSB.fi incomplete response: received %u of %u bytes, complete=%s\n",
+        "ADSB.fi incomplete response: received %u of %u bytes, complete=%s%s\n",
         (unsigned)received, (unsigned)capacity,
-        responseComplete ? "yes" : "no");
+        responseComplete ? "yes" : "no",
+        budgetExhausted ? " [shared budget exhausted]" : "");
     free(payload);
     const app_state::FetchFailureStage stage =
         WiFi.status() == WL_CONNECTED
@@ -935,12 +1121,17 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
             : app_state::FetchFailureStage::WIFI;
     const bool bodyTransportFailure =
         stage == app_state::FetchFailureStage::RESPONSE_BODY;
-    return failed(stage, received, false, bodyTransportFailure);
+    return failed(stage, received, false, bodyTransportFailure,
+                  budgetExhausted);
   }
   ADSB_VERBOSE_PRINTF("ADSB.fi response complete: %u bytes in %lu ms\n",
                       (unsigned)received,
                       (unsigned long)(millis() - readStarted));
 
+  if (abortRequested()) {
+    free(payload);
+    return cancelled(static_cast<uint32_t>(received));
+  }
   doc.clear();
   const uint32_t deserializeStartedUs = micros();
   DeserializationError error = deserializeJson(
@@ -948,6 +1139,7 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
   const uint32_t deserializeUs = micros() - deserializeStartedUs;
   free(payload);
   logMemoryStage("json-deserialized");
+  if (abortRequested()) return cancelled(static_cast<uint32_t>(received));
   if (error) {
     Serial.printf("ADSB.fi JSON error: %s\n", error.c_str());
     return failed(app_state::FetchFailureStage::JSON, received);
@@ -961,9 +1153,7 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
   result.success = true;
   result.responseBytes = received;
   result.jsonDeserializeUs = deserializeUs;
-  if (result.success && attempt > 1) {
-    ADSB_VERBOSE_PRINTLN("ADSB.fi retry succeeded");
-  }
+  if (attempt > 1) ADSB_VERBOSE_PRINTLN("ADSB.fi retry succeeded");
   return result;
 }
 
@@ -1125,6 +1315,12 @@ Result fetchAircraft(aircraft::Target* out) {
   const double homeLatitude = settings::homeLatitude();
   const double homeLongitude = settings::homeLongitude();
 
+  if (abortRequested()) {
+    result.cancelled = true;
+    result.durationMs = millis() - fetchStarted;
+    return result;
+  }
+
   const wl_status_t wifiStatus = app_state::wifiStatus();
   if (wifiStatus != WL_CONNECTED) {
     Serial.printf("ADSB skipped: WiFi status=%s (%d)\n",
@@ -1173,8 +1369,8 @@ Result fetchAircraft(aircraft::Target* out) {
   uint8_t nativeAttemptsUsed = 0;
   for (uint8_t attempt = 1; attempt <= MAX_NATIVE_ATTEMPTS; ++attempt) {
     nativeAttemptsUsed = attempt;
-    attemptResult = fetchAttempt(path, filter, doc, attempt);
-    if (attemptResult.success) break;
+    attemptResult = fetchAttempt(path, filter, doc, attempt, fetchStarted);
+    if (attemptResult.success || attemptResult.cancelled) break;
     preserveMostAdvancedFailure(preservedFailure, attemptResult);
     if (attemptResult.requiresWifiRecovery) {
       Serial.println(
@@ -1182,34 +1378,93 @@ Result fetchAircraft(aircraft::Target* out) {
           "skipping in-association retry and fallback");
       break;
     }
-    waitForNativeRetry(attempt);
+    if (attempt >= MAX_NATIVE_ATTEMPTS) break;
+
+    const uint32_t remainingBudget = transportRemainingMs(fetchStarted);
+    if (!policy::canStartNativeRetry(remainingBudget)) {
+      attemptResult.transportBudgetExhausted = remainingBudget == 0;
+      preservedFailure.transportBudgetExhausted =
+          preservedFailure.transportBudgetExhausted ||
+          attemptResult.transportBudgetExhausted;
+      Serial.printf(
+          "ADSB.fi native retry skipped: %lu ms shared budget remains\n",
+          (unsigned long)remainingBudget);
+      break;
+    }
+    const BoundedWaitResult retryWait =
+        waitInterruptible(policy::RETRY_DELAY_MS, fetchStarted);
+    if (retryWait == BoundedWaitResult::CANCELLED) {
+      attemptResult = cancelled();
+      break;
+    }
+    if (retryWait == BoundedWaitResult::BUDGET_EXHAUSTED) {
+      attemptResult.transportBudgetExhausted = true;
+      preservedFailure.transportBudgetExhausted = true;
+      break;
+    }
   }
 
-  if (!attemptResult.success && attemptResult.fallbackEligible &&
-      WiFi.status() == WL_CONNECTED) {
-    Serial.printf(
-        "ADSB.fi native retries exhausted at %s; waiting %lu ms before "
-        "one verified fallback attempt\n",
-        app_state::failureStageName(attemptResult.failureStage),
-        (unsigned long)FALLBACK_START_DELAY_MS);
-    delay(FALLBACK_START_DELAY_MS);
-    fallbackAttempted = true;
-    const AttemptResult fallbackResult =
-        fetchAttemptWithSecureClient(path, filter, doc);
-    if (fallbackResult.success) {
-      attemptResult = fallbackResult;
-      Serial.println("ADSB.fi verified fallback succeeded");
+  if (!attemptResult.success && !attemptResult.cancelled &&
+      attemptResult.fallbackEligible && WiFi.status() == WL_CONNECTED) {
+    uint32_t remainingBudget = transportRemainingMs(fetchStarted);
+    if (policy::canStartFallback(remainingBudget)) {
+      Serial.printf(
+          "ADSB.fi native retries ended at %s; waiting %lu ms before "
+          "one verified fallback attempt\n",
+          app_state::failureStageName(attemptResult.failureStage),
+          (unsigned long)policy::FALLBACK_START_DELAY_MS);
+      const BoundedWaitResult fallbackWait = waitInterruptible(
+          policy::FALLBACK_START_DELAY_MS, fetchStarted);
+      if (fallbackWait == BoundedWaitResult::CANCELLED) {
+        attemptResult = cancelled();
+      } else if (fallbackWait == BoundedWaitResult::BUDGET_EXHAUSTED) {
+        attemptResult.transportBudgetExhausted = true;
+        preservedFailure.transportBudgetExhausted = true;
+      } else {
+        remainingBudget = transportRemainingMs(fetchStarted);
+        if (policy::canStartFallback(remainingBudget)) {
+          fallbackAttempted = true;
+          const AttemptResult fallbackResult =
+              fetchAttemptWithSecureClient(path, filter, doc, fetchStarted);
+          if (fallbackResult.success) {
+            attemptResult = fallbackResult;
+            Serial.println("ADSB.fi verified fallback succeeded");
+          } else {
+            preserveMostAdvancedFailure(preservedFailure, fallbackResult);
+            attemptResult = fallbackResult;
+          }
+        }
+      }
     } else {
-      preserveMostAdvancedFailure(preservedFailure, fallbackResult);
-      attemptResult = fallbackResult;
+      Serial.printf(
+          "ADSB.fi verified fallback skipped: %lu ms shared budget remains\n",
+          (unsigned long)remainingBudget);
+      if (remainingBudget == 0) {
+        attemptResult.transportBudgetExhausted = true;
+        preservedFailure.transportBudgetExhausted = true;
+      }
     }
+  }
+
+  if (attemptResult.cancelled || abortRequested()) {
+    result.cancelled = true;
+    result.responseBytes = attemptResult.responseBytes;
+    result.durationMs = millis() - fetchStarted;
+    result.verboseDiagnosticUs = verboseDiagnosticUs;
+    return result;
   }
 
   result.responseBytes = attemptResult.success
                              ? attemptResult.responseBytes
                              : preservedFailure.responseBytes;
+  result.transportBudgetExhausted =
+      attemptResult.transportBudgetExhausted ||
+      preservedFailure.transportBudgetExhausted;
   if (!attemptResult.success) {
-    result.failureStage = preservedFailure.failureStage;
+    result.failureStage =
+        preservedFailure.failureStage != app_state::FetchFailureStage::NONE
+            ? preservedFailure.failureStage
+            : attemptResult.failureStage;
     result.durationMs = millis() - fetchStarted;
     if (result.failureStage != attemptResult.failureStage) {
       Serial.printf(
@@ -1219,15 +1474,23 @@ Result fetchAircraft(aircraft::Target* out) {
           app_state::failureStageName(attemptResult.failureStage));
     }
     Serial.printf(
-        "ADSB.fi request failed after %u native attempts%s at %s stage\n",
+        "ADSB.fi request failed after %u native attempts%s at %s stage%s\n",
         nativeAttemptsUsed,
         fallbackAttempted ? " and one fallback" : "",
-        app_state::failureStageName(result.failureStage));
+        app_state::failureStageName(result.failureStage),
+        result.transportBudgetExhausted
+            ? " [shared transport budget exhausted]" : "");
     result.verboseDiagnosticUs = verboseDiagnosticUs;
     return result;
   }
 
   result.jsonDeserializeUs = attemptResult.jsonDeserializeUs;
+  if (abortRequested()) {
+    result.cancelled = true;
+    result.durationMs = millis() - fetchStarted;
+    result.verboseDiagnosticUs = verboseDiagnosticUs;
+    return result;
+  }
   logMemoryStage("json-extract");
   const uint32_t extractStartedUs = micros();
   parseAircraft(doc, result.requestedRangeMiles, homeLatitude, homeLongitude,

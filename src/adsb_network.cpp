@@ -337,6 +337,16 @@ void fetchTask(void* parameter) {
         static_cast<uint32_t>(uxTaskGetStackHighWaterMark(nullptr)));
     bool immediateFollowup = false;
 
+    if (result.cancelled) {
+      // Cancellation is an OTA ownership handoff, not an ADS-B transport
+      // failure. Preserve last-good data, failure counters, and recovery state.
+      app_state::setFetchInProgress(false);
+      Serial.printf(
+          "ADSB fetch cancelled for OTA maintenance after %lu ms\n",
+          (unsigned long)result.durationMs);
+      continue;
+    }
+
     if (result.success) {
       if (result.requestGeneration != app_state::rangeGeneration()) {
         Serial.printf(
@@ -601,6 +611,10 @@ void requestWifiReconnect() {
 
 bool wifiOperationInProgress() {
   return isWifiOperationPending();
+}
+
+bool fetchAbortRequested() {
+  return isMaintenanceRequested();
 }
 
 bool requestMaintenanceHold() {
