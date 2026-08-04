@@ -32,7 +32,7 @@ namespace {
 constexpr char NVS_NAMESPACE[] = "radar_update";
 constexpr char NVS_KEY[] = "state";
 constexpr uint32_t STORED_MAGIC = 0x55504454UL;  // UPDT
-constexpr uint16_t STORED_SCHEMA = 3;
+constexpr uint16_t STORED_SCHEMA = 4;
 constexpr uint32_t VALID_EPOCH_MINIMUM = 1700000000UL;
 constexpr uint32_t CHECK_TOTAL_TIMEOUT_MS = 6000UL;
 constexpr uint32_t HTTP_CONNECT_TIMEOUT_MS = 2500UL;
@@ -298,6 +298,22 @@ Status snapshotStatus() {
   status = currentStatus;
   portEXIT_CRITICAL(&statusMux);
   return status;
+}
+
+void resetBootSession(Status& status) {
+  status.checking = false;
+  status.manualQueued = false;
+  status.installQueued = false;
+  status.installing = false;
+  status.installResult = InstallResult::IDLE;
+  status.installProgressPercent = 0;
+  status.installReceivedBytes = 0;
+  status.installPackageBytes = 0;
+  status.lastAttemptEpoch = 0;
+  status.lastResult = CheckResult::NEVER;
+  clearRelease(status);
+  copyText(status.message, sizeof(status.message),
+           "Automatic check waits five minutes after reboot; CHECK NOW is ready");
 }
 
 bool abortWasRequested() {
@@ -986,6 +1002,7 @@ void finishFailure(Status status, const char* message) {
   status.manualQueued = false;
   status.lastResult = CheckResult::FAILED;
   commitAttemptTimestamp(status);
+  clearRelease(status);
   copyText(status.message, sizeof(status.message), message);
   publishStatus(status);
   persist(status);
@@ -1428,7 +1445,7 @@ bool begin() {
   currentStatus = Status{};
   currentStatus.initialized = true;
   copyText(currentStatus.message, sizeof(currentStatus.message),
-           "Automatic check waits five minutes; CHECK NOW is ready");
+           "Automatic check waits five minutes after reboot; CHECK NOW is ready");
 
   persistenceReady = preferences.begin(NVS_NAMESPACE, false);
   if (persistenceReady && preferences.getType(NVS_KEY) == PT_BLOB) {
@@ -1450,18 +1467,11 @@ bool begin() {
           "GitHub update cache ignored: incompatible pre-Product-73 size");
     }
   }
-  currentStatus.checking = false;
-  currentStatus.manualQueued = false;
-  currentStatus.installQueued = false;
-  currentStatus.installing = false;
-  currentStatus.installResult = InstallResult::IDLE;
-  currentStatus.installProgressPercent = 0;
-  currentStatus.installReceivedBytes = 0;
-  currentStatus.installPackageBytes = 0;
+  resetBootSession(currentStatus);
   currentStatus.statusVersion = 1;
   Serial.println(
-      "GitHub update checker ready: automatic 5-minute/24-hour schedule; "
-      "manual CHECK NOW enabled");
+      "GitHub update checker ready: reboot clears transient update state; "
+      "automatic check waits five minutes and then runs again; manual CHECK NOW enabled");
   return persistenceReady;
 }
 

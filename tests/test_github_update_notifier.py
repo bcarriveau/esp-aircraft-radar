@@ -20,14 +20,14 @@ def git_blob_sha(data: bytes) -> str:
 
 
 class GithubUpdateNotifierTests(unittest.TestCase):
-    def test_build_identity_is_product_73_and_hardware_specific(self) -> None:
+    def test_build_identity_is_product_75_and_hardware_specific(self) -> None:
         build = read("include/build_info.h")
-        self.assertIn("FIRMWARE_VERSION_CODE = 73", build)
-        self.assertIn('FIRMWARE_VERSION_LABEL = "Product 73"', build)
+        self.assertIn("FIRMWARE_VERSION_CODE = 75", build)
+        self.assertIn('FIRMWARE_VERSION_LABEL = "Product 75"', build)
         self.assertIn('"waveshare-esp32-s3-touch-lcd-7"', build)
         self.assertIn('FIRMWARE_RELEASE_CHANNEL = "stable"', build)
-        self.assertIn("7IN-20260804-PRODUCT73-GITHUB-OTA-INSTALL", build)
-        self.assertIn("f999347897185d41761dc6c896229e002cb7482f", build)
+        self.assertIn("7IN-20260804-PRODUCT75-UPDATE-UI-BOOT-CLEAR", build)
+        self.assertIn("clears transient GitHub update state on reboot", build)
 
     def test_check_has_no_task_or_forbidden_transport(self) -> None:
         source = read("src/update_manager.cpp")
@@ -104,13 +104,17 @@ class GithubUpdateNotifierTests(unittest.TestCase):
         self.assertIn('lv_label_set_text(checkNowLabel, "CHECK NOW")', ui)
         self.assertIn("successful ADS-B cycle", source)
 
-    def test_older_cache_cannot_authorize_product_73_install(self) -> None:
+    def test_reboot_clears_transient_release_state_and_forces_a_fresh_schedule(self) -> None:
         source = read("src/update_manager.cpp")
-        self.assertIn("STORED_SCHEMA = 3", source)
+        self.assertIn("STORED_SCHEMA = 4", source)
         self.assertIn("sizeof(StoredState) == 512", source)
         self.assertIn("remotePackageSha256[32]", source)
         self.assertIn("remoteFirmwareSha256[32]", source)
-        self.assertIn("incompatible pre-Product-73 schema", source)
+        self.assertIn("void resetBootSession(Status& status)", source)
+        self.assertIn("status.lastAttemptEpoch = 0", source)
+        self.assertIn("status.lastResult = CheckResult::NEVER", source)
+        self.assertIn("resetBootSession(currentStatus);", source)
+        self.assertIn("Automatic check waits five minutes after reboot", source)
         self.assertNotIn("setAttemptTimestamp(status)", source)
         prepare = source[source.index("bool prepareAfterSuccessfulAdsb") :]
         self.assertNotIn("commitAttemptTimestamp(status)", prepare.split("void performPreparedCheck", 1)[0])
@@ -131,6 +135,7 @@ class GithubUpdateNotifierTests(unittest.TestCase):
         self.assertNotIn("persist", aborted.group("body"))
         self.assertIn("commitAttemptTimestamp", failed.group("body"))
         self.assertIn("persist", failed.group("body"))
+        self.assertIn("clearRelease(status)", failed.group("body"))
         self.assertIn("AbortCause::OTA", source)
         self.assertIn("AbortCause::COMMAND", source)
         self.assertIn("status.manualQueued = manual", aborted.group("body"))
@@ -238,6 +243,19 @@ class GithubUpdateNotifierTests(unittest.TestCase):
         self.assertIn("LV_OBJ_FLAG_HIDDEN", later.group("body"))
         for forbidden in ("request", "http", "WiFi", "persist"):
             self.assertNotIn(forbidden, later.group("body"))
+
+    def test_update_ui_layout_uses_non_overlapping_positions(self) -> None:
+        ui = read("src/update_ui.cpp")
+        self.assertIn("lv_obj_set_size(systemSummaryButton, 88, 34)", ui)
+        self.assertIn("lv_obj_set_pos(systemSummaryButton, 428, 8)", ui)
+        self.assertIn('lv_label_set_text(systemSummaryLabel, "UPDATES")', ui)
+        self.assertIn('"Verified GitHub release\\nDownload and install directly on this radar"', ui)
+        self.assertIn('"INSTALLED     %s\\nBUILD         %s"', ui)
+        self.assertIn('"AVAILABLE     %s\\nBUILD         %s"', ui)
+        self.assertIn('12, 84);', ui)
+        self.assertIn('12, 132);', ui)
+        self.assertIn("&lv_font_montserrat_12,", ui)
+        self.assertNotIn("lv_font_montserrat_13", ui)
 
     def test_remote_install_is_explicit_streamed_and_verified(self) -> None:
         header = read("include/update_manager.h")

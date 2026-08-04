@@ -210,8 +210,8 @@ bool build() {
   lv_obj_add_flag(headerButton, LV_OBJ_FLAG_HIDDEN);
 
   systemSummaryButton = lv_btn_create(pagePanel);
-  lv_obj_set_size(systemSummaryButton, 100, 34);
-  lv_obj_set_pos(systemSummaryButton, 440, 8);
+  lv_obj_set_size(systemSummaryButton, 72, 34);
+  lv_obj_set_pos(systemSummaryButton, 468, 8);
   lv_obj_set_style_bg_color(systemSummaryButton, rgb(20, 68, 82), 0);
   lv_obj_set_style_radius(systemSummaryButton, 5, 0);
   lv_obj_set_style_shadow_width(systemSummaryButton, 0, 0);
@@ -225,7 +225,7 @@ bool build() {
     }
   }
   systemSummaryLabel = lv_label_create(systemSummaryButton);
-  lv_label_set_text(systemSummaryLabel, "UPDATE CHECK");
+  lv_label_set_text(systemSummaryLabel, "UPDATES");
   lv_obj_set_style_text_font(systemSummaryLabel, &lv_font_montserrat_12, 0);
   lv_obj_center(systemSummaryLabel);
 
@@ -235,28 +235,39 @@ bool build() {
   stylePanel(detailPanel);
   makeLabel(detailPanel, "SOFTWARE UPDATE", &lv_font_montserrat_28,
             rgb(63, 255, 155), 12, 7);
-  makeLabel(detailPanel,
-            "Verified GitHub release — download and install on this radar",
-            &lv_font_montserrat_12, rgb(100, 170, 180), 12, 45);
+  lv_obj_t* subtitle = makeLabel(
+      detailPanel,
+      "Verified GitHub release\nDownload and install directly on this radar",
+      &lv_font_montserrat_12, rgb(100, 170, 180), 12, 45);
+  lv_obj_set_width(subtitle, 710);
+  lv_label_set_long_mode(subtitle, LV_LABEL_LONG_WRAP);
 
-  installedLabel = makeLabel(detailPanel, "INSTALLED", &lv_font_montserrat_16,
-                             rgb(225, 235, 240), 12, 76);
-  availableLabel = makeLabel(detailPanel, "AVAILABLE", &lv_font_montserrat_16,
-                             rgb(120, 240, 155), 12, 105);
+  installedLabel = makeLabel(detailPanel, "INSTALLED", &lv_font_montserrat_14,
+                             rgb(225, 235, 240), 12, 84);
+  lv_obj_set_width(installedLabel, 710);
+  lv_label_set_long_mode(installedLabel, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_line_space(installedLabel, 3, 0);
+  availableLabel = makeLabel(detailPanel, "AVAILABLE", &lv_font_montserrat_14,
+                             rgb(120, 240, 155), 12, 132);
+  lv_obj_set_width(availableLabel, 710);
+  lv_label_set_long_mode(availableLabel, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_line_space(availableLabel, 3, 0);
   lastCheckLabel = makeLabel(detailPanel, "LAST CHECK", &lv_font_montserrat_14,
-                             rgb(110, 220, 255), 12, 136);
+                             rgb(110, 220, 255), 12, 180);
+  lv_obj_set_width(lastCheckLabel, 710);
   messageLabel = makeLabel(detailPanel, "", &lv_font_montserrat_14,
-                           rgb(255, 214, 80), 12, 165);
+                           rgb(255, 214, 80), 12, 208);
   lv_obj_set_width(messageLabel, 710);
   lv_label_set_long_mode(messageLabel, LV_LABEL_LONG_WRAP);
-  notesLabel = makeLabel(detailPanel, "", &lv_font_montserrat_14,
-                         rgb(180, 210, 215), 12, 205);
+  notesLabel = makeLabel(detailPanel, "", &lv_font_montserrat_12,
+                         rgb(180, 210, 215), 12, 234);
   lv_obj_set_width(notesLabel, 710);
   lv_label_set_long_mode(notesLabel, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_line_space(notesLabel, 2, 0);
 
   checkNowButton = lv_btn_create(detailPanel);
   lv_obj_set_size(checkNowButton, 160, 40);
-  lv_obj_set_pos(checkNowButton, 12, 280);
+  lv_obj_set_pos(checkNowButton, 12, 286);
   lv_obj_set_style_bg_color(checkNowButton, rgb(24, 128, 84), 0);
   lv_obj_set_style_radius(checkNowButton, 6, 0);
   lv_obj_add_event_cb(checkNowButton, checkNowEvent,
@@ -268,7 +279,7 @@ bool build() {
 
   installButton = lv_btn_create(detailPanel);
   lv_obj_set_size(installButton, 210, 40);
-  lv_obj_set_pos(installButton, 190, 280);
+  lv_obj_set_pos(installButton, 190, 286);
   lv_obj_set_style_bg_color(installButton, rgb(24, 128, 84), 0);
   lv_obj_set_style_radius(installButton, 6, 0);
   lv_obj_add_event_cb(installButton, installEvent,
@@ -280,7 +291,7 @@ bool build() {
 
   laterButton = lv_btn_create(detailPanel);
   lv_obj_set_size(laterButton, 150, 40);
-  lv_obj_set_pos(laterButton, 572, 280);
+  lv_obj_set_pos(laterButton, 572, 286);
   lv_obj_set_style_bg_color(laterButton, rgb(20, 68, 82), 0);
   lv_obj_set_style_radius(laterButton, 6, 0);
   lv_obj_add_event_cb(laterButton, laterEvent, LV_EVENT_CLICKED, nullptr);
@@ -336,19 +347,19 @@ void update(uint32_t now) {
                            : (failed || aborted ? rgb(126, 76, 34)
                                                : rgb(20, 68, 82))),
       0);
-  char summary[32];
+  char summary[16];
   if (status.installing &&
       status.installResult == update_manager::InstallResult::DOWNLOADING) {
-    snprintf(summary, sizeof(summary), "INSTALL %u%%",
+    snprintf(summary, sizeof(summary), "%u%%",
              static_cast<unsigned>(status.installProgressPercent));
   } else {
     snprintf(summary, sizeof(summary), "%s",
-             status.installing ? "INSTALLING..."
-             : (status.installQueued ? "INSTALL QUEUED"
-             : (status.checking ? "CHECKING..."
-             : (queued ? "CHECK QUEUED"
-             : (status.updateAvailable ? "UPDATE READY"
-             : (failed ? "CHECK FAILED" : "UPDATE CHECK"))))));
+             status.installing ? "INSTALL"
+             : (status.installQueued ? "QUEUED"
+             : (status.checking ? "CHECKING"
+             : (queued ? "QUEUED"
+             : (status.updateAvailable ? "READY"
+             : (failed ? "FAILED" : "UPDATES"))))));
   }
   setLabelTextIfChanged(systemSummaryLabel, summary);
   lv_obj_center(systemSummaryLabel);
@@ -394,12 +405,12 @@ void update(uint32_t now) {
   }
 
   char text[256];
-  snprintf(text, sizeof(text), "INSTALLED     %s\n%s",
+  snprintf(text, sizeof(text), "INSTALLED     %s\nBUILD         %s",
            FIRMWARE_VERSION_LABEL, BUILD_ID);
   setLabelTextIfChanged(installedLabel, text);
 
   if (status.updateAvailable) {
-    snprintf(text, sizeof(text), "AVAILABLE     %s\n%s",
+    snprintf(text, sizeof(text), "AVAILABLE     %s\nBUILD         %s",
              status.remoteVersionLabel, status.remoteBuildId);
   } else {
     snprintf(text, sizeof(text), "AVAILABLE     None");
