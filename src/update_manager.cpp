@@ -37,7 +37,6 @@ constexpr uint32_t HTTP_BODY_IDLE_TIMEOUT_MS = 1500UL;
 constexpr uint32_t ADSB_POLL_GUARD_MS = 1500UL;
 constexpr uint32_t MINIMUM_HTTP_BUDGET_MS = 250UL;
 constexpr uint32_t TRANSPORT_RELEASE_DELAY_MS = 75UL;
-constexpr size_t MAX_HEADER_BYTES = 4096;
 constexpr size_t MAX_MANIFEST_RESPONSE_BYTES =
     update_policy::MAX_MANIFEST_BYTES;
 constexpr uint8_t MAX_REDIRECTS = 3;
@@ -72,14 +71,23 @@ struct StoredState {
 static_assert(sizeof(StoredState) == 440,
               "Update-check NVS state layout changed");
 
+enum class HeaderFailure : uint8_t {
+  NONE = 0,
+  TOTAL_BYTES,
+  CONTENT_LENGTH,
+  TRANSFER_ENCODING,
+  LOCATION_TOO_LONG,
+  CONFLICTING_FRAMING,
+};
+
 struct HttpHeaderState {
   size_t totalBytes = 0;
-  bool invalid = false;
+  HeaderFailure failure = HeaderFailure::NONE;
   bool contentLengthSeen = false;
   bool transferEncodingSeen = false;
   bool chunkedOnly = false;
   uint64_t contentLength = 0;
-  char location[1024]{};
+  char location[update_policy::MAX_REDIRECT_URL_LENGTH + 1U]{};
 };
 
 struct HttpResponse {
@@ -91,10 +99,13 @@ struct HttpResponse {
 
 struct HttpWorkspace {
   HttpHeaderState headers;
-  char currentUrl[1024]{};
+  char currentUrl[update_policy::MAX_REDIRECT_URL_LENGTH + 1U]{};
   char host[96]{};
   char redirectHost[96]{};
 };
+
+static_assert(sizeof(HttpWorkspace) <= 9U * 1024U,
+              "Release-check workspace exceeded its bounded PSRAM budget");
 
 class WorkspaceGuard {
  public:
@@ -392,26 +403,50 @@ bool parseUnsignedHeader(const char* text, uint64_t& value) {
   return true;
 }
 
+const char* headerFailureMessage(HeaderFailure failure) {
+  switch (failure) {
+    case HeaderFailure::TOTAL_BYTES:
+      return "GitHub response headers exceeded the 16384-byte limit";
+    case HeaderFailure::CONTENT_LENGTH:
+      return "GitHub Content-Length header was invalid or conflicting";
+    case HeaderFailure::TRANSFER_ENCODING:
+      return "GitHub Transfer-Encoding header was invalid or repeated";
+    case HeaderFailure::LOCATION_TOO_LONG:
+      return "GitHub redirect Location exceeded the 4095-byte limit";
+    case HeaderFailure::CONFLICTING_FRAMING:
+      return "GitHub response contained conflicting framing headers";
+    case HeaderFailure::NONE:
+    default:
+      return "GitHub response headers were invalid";
+  }
+}
+
+void setHeaderFailure(HttpHeaderState& state, HeaderFailure failure) {
+  if (state.failure == HeaderFailure::NONE) state.failure = failure;
+}
+
 esp_err_t httpEventHandler(esp_http_client_event_t* event) {
   if (!event || !event->user_data) return ESP_OK;
   HttpHeaderState& state = *static_cast<HttpHeaderState*>(event->user_data);
   if (event->event_id != HTTP_EVENT_ON_HEADER || !event->header_key ||
       !event->header_value) {
-    return state.invalid ? ESP_FAIL : ESP_OK;
+    return state.failure == HeaderFailure::NONE ? ESP_OK : ESP_FAIL;
   }
 
-  state.totalBytes += strlen(event->header_key) +
-                      strlen(event->header_value) + 4U;
-  if (state.totalBytes > MAX_HEADER_BYTES) {
-    state.invalid = true;
+  size_t updatedTotal = state.totalBytes;
+  if (!update_policy::accumulateHeaderBytes(
+          state.totalBytes, strlen(event->header_key),
+          strlen(event->header_value), updatedTotal)) {
+    setHeaderFailure(state, HeaderFailure::TOTAL_BYTES);
     return ESP_FAIL;
   }
+  state.totalBytes = updatedTotal;
 
   if (equalsIgnoreCase(event->header_key, "Content-Length")) {
     uint64_t parsed = 0;
     if (!parseUnsignedHeader(event->header_value, parsed) ||
         (state.contentLengthSeen && state.contentLength != parsed)) {
-      state.invalid = true;
+      setHeaderFailure(state, HeaderFailure::CONTENT_LENGTH);
       return ESP_FAIL;
     }
     state.contentLengthSeen = true;
@@ -419,22 +454,22 @@ esp_err_t httpEventHandler(esp_http_client_event_t* event) {
   } else if (equalsIgnoreCase(event->header_key, "Transfer-Encoding")) {
     if (state.transferEncodingSeen ||
         !equalsHeaderToken(event->header_value, "chunked")) {
-      state.invalid = true;
+      setHeaderFailure(state, HeaderFailure::TRANSFER_ENCODING);
       return ESP_FAIL;
     }
     state.transferEncodingSeen = true;
     state.chunkedOnly = true;
   } else if (equalsIgnoreCase(event->header_key, "Location")) {
     const char* value = skipWhitespace(event->header_value);
-    if (!value || strlen(value) >= sizeof(state.location)) {
-      state.invalid = true;
+    if (!update_policy::redirectUrlLengthValid(value)) {
+      setHeaderFailure(state, HeaderFailure::LOCATION_TOO_LONG);
       return ESP_FAIL;
     }
     copyText(state.location, sizeof(state.location), value);
   }
 
   if (state.contentLengthSeen && state.transferEncodingSeen) {
-    state.invalid = true;
+    setHeaderFailure(state, HeaderFailure::CONFLICTING_FRAMING);
     return ESP_FAIL;
   }
   return ESP_OK;
@@ -608,14 +643,20 @@ bool httpGetManifest(uint32_t absoluteDeadlineMs, HttpResponse& response,
     }
 
     const int64_t fetchedLength = esp_http_client_fetch_headers(client);
-    if (fetchedLength < 0 || workspace->headers.invalid) {
+    if (workspace->headers.failure != HeaderFailure::NONE ||
+        fetchedLength < 0) {
       const AbortCause cause = currentAbortCause(absoluteDeadlineMs);
       if (cause != AbortCause::NONE) {
         yielded = cause == AbortCause::COMMAND || cause == AbortCause::OTA;
         copyText(failure, failureCapacity, abortCauseMessage(cause));
-      } else {
+      } else if (workspace->headers.failure != HeaderFailure::NONE) {
         copyText(failure, failureCapacity,
-                 "GitHub response headers were invalid");
+                 headerFailureMessage(workspace->headers.failure));
+      } else {
+        const int socketError = esp_http_client_get_errno(client);
+        snprintf(failure, failureCapacity,
+                 "GitHub header fetch failed: result=%lld errno=%d",
+                 static_cast<long long>(fetchedLength), socketError);
       }
       releaseHttpClient(client, opened);
       return false;

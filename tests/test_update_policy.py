@@ -15,14 +15,15 @@ class UpdatePolicyHostTests(unittest.TestCase):
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>
+#include <string>
 #include "update_policy.h"
 
 int main() {
   using namespace update_policy;
-  assert(compareVersion(0, 70) == VersionRelation::INVALID);
-  assert(compareVersion(69, 70) == VersionRelation::OLDER);
-  assert(compareVersion(70, 70) == VersionRelation::CURRENT);
-  assert(compareVersion(71, 70) == VersionRelation::NEWER);
+  assert(compareVersion(0, 71) == VersionRelation::INVALID);
+  assert(compareVersion(70, 71) == VersionRelation::OLDER);
+  assert(compareVersion(71, 71) == VersionRelation::CURRENT);
+  assert(compareVersion(72, 71) == VersionRelation::NEWER);
 
   char digest[65];
   memset(digest, 'a', 64);
@@ -51,7 +52,7 @@ int main() {
   assert(!packageLayoutValid(64U * 1024U + 511U, 64U * 1024U));
   assert(!packageLayoutValid(8U * 1024U * 1024U + 1U,
                              8U * 1024U * 1024U - 511U));
-  assert(assetNameValid("waveshare-esp32-s3-touch-lcd-7-product-70.radarota"));
+  assert(assetNameValid("waveshare-esp32-s3-touch-lcd-7-product-71.radarota"));
   assert(!assetNameValid("firmware.bin"));
 
   char host[96];
@@ -68,6 +69,28 @@ int main() {
   assert(!parseAllowedHttpsUrl("https://user@github.com/path", host,
                                sizeof(host)));
   assert(!parseAllowedHttpsUrl("https://example.com/path", host, sizeof(host)));
+
+  size_t headerTotal = 0;
+  for (int index = 0; index < 48; ++index) {
+    size_t updated = 0;
+    assert(accumulateHeaderBytes(headerTotal, 24, 180, updated));
+    headerTotal = updated;
+  }
+  assert(headerTotal > 4096U);
+  assert(headerTotal < MAX_HTTP_HEADER_BYTES);
+  size_t rejectedTotal = 0;
+  assert(!accumulateHeaderBytes(MAX_HTTP_HEADER_BYTES - 2U, 1U, 1U,
+                                rejectedTotal));
+
+  std::string signedRedirect =
+      "https://release-assets.githubusercontent.com/github-production-release-asset/";
+  signedRedirect.append(1800U, 'a');
+  signedRedirect += "?sp=r&sv=2025-01-05&sr=b&spr=https";
+  assert(signedRedirect.size() > 1024U);
+  assert(redirectUrlLengthValid(signedRedirect.c_str()));
+  assert(parseAllowedHttpsUrl(signedRedirect.c_str(), host, sizeof(host)));
+  std::string oversizedRedirect(MAX_REDIRECT_URL_LENGTH + 1U, 'a');
+  assert(!redirectUrlLengthValid(oversizedRedirect.c_str()));
 
   assert(framingIsUnambiguous(true, false, false, false));
   assert(framingIsUnambiguous(false, true, true, true));

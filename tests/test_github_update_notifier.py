@@ -20,14 +20,14 @@ def git_blob_sha(data: bytes) -> str:
 
 
 class GithubUpdateNotifierTests(unittest.TestCase):
-    def test_build_identity_is_product_70_and_hardware_specific(self) -> None:
+    def test_build_identity_is_product_71_and_hardware_specific(self) -> None:
         build = read("include/build_info.h")
-        self.assertIn("FIRMWARE_VERSION_CODE = 70", build)
-        self.assertIn('FIRMWARE_VERSION_LABEL = "Product 70"', build)
+        self.assertIn("FIRMWARE_VERSION_CODE = 71", build)
+        self.assertIn('FIRMWARE_VERSION_LABEL = "Product 71"', build)
         self.assertIn('"waveshare-esp32-s3-touch-lcd-7"', build)
         self.assertIn('FIRMWARE_RELEASE_CHANNEL = "stable"', build)
-        self.assertIn("7IN-20260803-PRODUCT70-GITHUB-UPDATE-CHECK", build)
-        self.assertIn("0111ff5ad7c38ec4fe7464a3064c8a7e218791d6", build)
+        self.assertIn("7IN-20260803-PRODUCT71-GITHUB-REDIRECT-FIX", build)
+        self.assertIn("b20c2d47c5b3a758564e944e9b912fd562334c1d", build)
 
     def test_check_has_no_task_or_forbidden_transport(self) -> None:
         source = read("src/update_manager.cpp")
@@ -49,6 +49,35 @@ class GithubUpdateNotifierTests(unittest.TestCase):
         self.assertIn("CHECK_TOTAL_TIMEOUT_MS = 6000UL", source)
         self.assertIn("HTTP_CONNECT_TIMEOUT_MS = 2500UL", source)
         self.assertIn("HTTP_BODY_IDLE_TIMEOUT_MS = 1500UL", source)
+
+    def test_github_headers_and_signed_redirects_are_realistically_bounded(self) -> None:
+        source = read("src/update_manager.cpp")
+        policy = read("include/update_policy.h")
+        self.assertIn("MAX_HTTP_HEADER_BYTES = 16U * 1024U", policy)
+        self.assertIn("MAX_REDIRECT_URL_LENGTH = 4095U", policy)
+        self.assertIn("accumulateHeaderBytes", policy)
+        self.assertIn("redirectUrlLengthValid", policy)
+        self.assertIn("HeaderFailure::TOTAL_BYTES", source)
+        self.assertIn("HeaderFailure::LOCATION_TOO_LONG", source)
+        self.assertIn("HeaderFailure::CONFLICTING_FRAMING", source)
+        self.assertIn("response headers exceeded the 16384-byte limit", source)
+        self.assertIn("redirect Location exceeded the 4095-byte limit", source)
+        self.assertIn("GitHub header fetch failed: result=%lld errno=%d", source)
+        self.assertNotIn(
+            'copyText(failure, failureCapacity,\n'
+            '                 "GitHub response headers were invalid");',
+            source,
+        )
+        self.assertIn(
+            "char currentUrl[update_policy::MAX_REDIRECT_URL_LENGTH + 1U]",
+            source,
+        )
+        self.assertIn(
+            "char location[update_policy::MAX_REDIRECT_URL_LENGTH + 1U]",
+            source,
+        )
+        self.assertIn("release-assets.githubusercontent.com", policy)
+        self.assertIn("MAX_REDIRECTS = 3", source)
 
     def test_manual_check_is_real_and_bypasses_only_timers(self) -> None:
         header = read("include/update_manager.h")

@@ -12,6 +12,8 @@ constexpr size_t MAX_VERSION_LABEL_LENGTH = 31U;
 constexpr size_t MAX_BUILD_ID_LENGTH = 95U;
 constexpr size_t MAX_ASSET_NAME_LENGTH = 127U;
 constexpr size_t MAX_NOTES_LENGTH = 191U;
+constexpr size_t MAX_HTTP_HEADER_BYTES = 16U * 1024U;
+constexpr size_t MAX_REDIRECT_URL_LENGTH = 4095U;
 constexpr uint32_t PACKAGE_HEADER_BYTES = 512U;
 constexpr uint32_t MINIMUM_FIRMWARE_BYTES = 64U * 1024U;
 constexpr uint32_t MAXIMUM_PACKAGE_BYTES = 8U * 1024U * 1024U;
@@ -44,6 +46,28 @@ inline bool boundedPrintableAscii(const char* text, size_t maximumLength,
     if (value < 0x20 || value > 0x7e) return false;
   }
   return true;
+}
+
+inline bool accumulateHeaderBytes(size_t currentTotal,
+                                  size_t keyLength,
+                                  size_t valueLength,
+                                  size_t& updatedTotal) {
+  constexpr size_t framingBytes = 4U;  // ": " plus CRLF.
+  if (currentTotal > MAX_HTTP_HEADER_BYTES ||
+      keyLength > MAX_HTTP_HEADER_BYTES - currentTotal) {
+    return false;
+  }
+  const size_t afterKey = currentTotal + keyLength;
+  if (valueLength > MAX_HTTP_HEADER_BYTES - afterKey) return false;
+  const size_t afterValue = afterKey + valueLength;
+  if (framingBytes > MAX_HTTP_HEADER_BYTES - afterValue) return false;
+  updatedTotal = afterValue + framingBytes;
+  return true;
+}
+
+inline bool redirectUrlLengthValid(const char* url) {
+  return url && strnlen(url, MAX_REDIRECT_URL_LENGTH + 1U) <=
+                    MAX_REDIRECT_URL_LENGTH;
 }
 
 inline bool lowerHexDigest(const char* digest) {

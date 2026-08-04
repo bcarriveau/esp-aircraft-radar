@@ -1,8 +1,9 @@
 # Stable GitHub Release format
 
-Product 70 restores the bounded GitHub stable-release notifier on top of the
-physically exercised Product 69 bounded ADS-B transport. It checks release
-metadata only. Firmware installation remains the existing local browser OTA.
+Product 71 corrects real-world GitHub response-header and signed-redirect
+handling on top of the Product 70 bounded release checker and the physically
+exercised Product 69 ADS-B transport. It checks release metadata only. Firmware
+installation remains the existing local browser OTA.
 
 ## Runtime behavior
 
@@ -34,7 +35,15 @@ A claimed check has:
 - a 1.5-second guard before the next ADS-B poll
 - at most three HTTPS redirects
 - a 2048-byte manifest body limit
-- a 4096-byte aggregate header limit
+- a 16384-byte aggregate header limit
+- a 4095-character redirect URL limit
+
+The header callback keeps only bounded framing fields and the redirect URL in
+PSRAM. It accepts GitHub's larger streamed security/cache header set, while still
+rejecting oversized aggregate headers, oversized redirects, conflicting
+Content-Length values, repeated or non-chunked Transfer-Encoding, and combined
+Content-Length plus Transfer-Encoding. Serial diagnostics name the exact rejected
+condition instead of collapsing every case into one generic header error.
 
 MQTT service calls are skipped only while the disposable check owns the network.
 The check is claimed while the existing ADS-B exclusion is still active, so no
@@ -55,8 +64,8 @@ recorded as a completed attempt and is throttled.
 Publish a normal, non-draft, non-prerelease GitHub Release with matching names:
 
 ```text
-Tag:          product-70
-Release name: Product 70
+Tag:          product-71
+Release name: Product 71
 Channel:      stable
 ```
 
@@ -69,11 +78,11 @@ PlatformIO's existing post-build script creates all three files:
 
 ```text
 release/firmware.radarota
-release/waveshare-esp32-s3-touch-lcd-7-product-70.radarota
+release/waveshare-esp32-s3-touch-lcd-7-product-71.radarota
 release/waveshare-esp32-s3-touch-lcd-7.manifest.json
 ```
 
-Attach the versioned `.radarota` and fixed-name manifest to the Product 70 GitHub
+Attach the versioned `.radarota` and fixed-name manifest to the Product 71 GitHub
 Release. `release/firmware.radarota` remains the local browser-install fallback.
 Do not rename or hand-edit generated assets.
 
@@ -111,13 +120,13 @@ existing **FIRMWARE / OTA** page to install a downloaded `.radarota` file.
 
 ## Publishing checklist
 
-1. Build the exact intended Product 70 source with the user-side PlatformIO environment.
-2. Confirm `7IN-20260803-PRODUCT70-GITHUB-UPDATE-CHECK` at boot.
+1. Build the exact intended Product 71 source with the user-side PlatformIO environment.
+2. Confirm `7IN-20260803-PRODUCT71-GITHUB-REDIRECT-FIX` at boot.
 3. Run the checked-in host tests.
 4. Confirm `release/firmware.radarota` still installs through local browser OTA.
-5. Create a normal published `product-70` GitHub Release.
-6. Attach the generated fixed manifest and Product 70 versioned package.
-7. To test the green indicator, later publish a compatible Product 71 release.
+5. Create a normal published `product-71` GitHub Release.
+6. Attach the generated fixed manifest and Product 71 versioned package.
+7. To test the green indicator, later publish a compatible Product 72 release.
 8. Do not publish packages for other hardware under these asset names.
 
 ## Authenticity boundary
