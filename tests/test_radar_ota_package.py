@@ -120,7 +120,15 @@ class RadarOtaPackageTests(unittest.TestCase):
 
 
 class RadarOtaIntegrationTests(unittest.TestCase):
-    def test_product_54_integration_is_bounded_and_isolated(self):
+    def test_product_70_integration_is_bounded_and_isolated(self):
+        required = (
+            ROOT / "platformio.ini", ROOT / "src" / "ota_update.cpp",
+            ROOT / "include" / "adsb_network.h",
+            ROOT / "include" / "mqtt_service.h",
+            ROOT / "src" / "mqtt_service.cpp",
+        )
+        if not all(path.exists() for path in required):
+            self.skipTest("full repository files are not present in changed-file package")
         platformio = (ROOT / "platformio.ini").read_text(encoding="utf-8")
         build_info = (ROOT / "include" / "build_info.h").read_text(encoding="utf-8")
         ota_source = (ROOT / "src" / "ota_update.cpp").read_text(encoding="utf-8")
@@ -135,7 +143,7 @@ class RadarOtaIntegrationTests(unittest.TestCase):
         self.assertIn('Path("release") / "firmware.radarota"', package_script)
         self.assertIn("board_build.partitions = default_16MB.csv", platformio)
         self.assertIn("platformio/framework-arduinoespressif32-libs@", platformio)
-        self.assertIn("7IN-20260802-PRODUCT68-FETCH-CONTENTION", build_info)
+        self.assertIn("7IN-20260803-PRODUCT70-GITHUB-UPDATE-CHECK", build_info)
         for api in ("esp_ota_begin", "esp_ota_write", "esp_ota_end",
                     "esp_ota_set_boot_partition"):
             self.assertIn(api, ota_source)

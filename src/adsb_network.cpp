@@ -9,6 +9,7 @@
 #include "network_reconnect_logic.h"
 #include "mqtt_service.h"
 #include "settings.h"
+#include "update_manager.h"
 
 namespace adsb {
 namespace {
@@ -101,6 +102,7 @@ void configureTimeSync() {
 }
 
 void queueCommand(uint32_t command) {
+  update_manager::requestAbort();
   portENTER_CRITICAL(&commandMux);
   pendingCommands |= command;
   portEXIT_CRITICAL(&commandMux);
@@ -366,6 +368,12 @@ void fetchTask(void* parameter) {
         immediateFollowup = true;
       } else {
         app_state::publishTargets(incoming, result.acceptedCount, millis());
+        // Claim an optional manual or daily release check while the established
+        // ADS-B/MQTT exclusion is still active. The disposable GitHub request
+        // runs only after publication and ADS-B diagnostics complete.
+        const bool updateCheckPrepared =
+            update_manager::prepareAfterSuccessfulAdsb(
+                pollStartedAt + FETCH_INTERVAL_MS);
         app_state::recordFetchSuccess(
             result.durationMs, result.responseBytes, result.receivedCount,
             result.eligibleCount, result.acceptedCount,
@@ -376,6 +384,7 @@ void fetchTask(void* parameter) {
         printFetchSummary("OK", result, diagnostics);
         outageStartedAt = 0;
         outageRecoveries = 0;
+        if (updateCheckPrepared) update_manager::performPreparedCheck();
       }
     } else {
       app_state::recordFetchFailure(result.failureStage, result.durationMs,
@@ -618,6 +627,8 @@ bool fetchAbortRequested() {
 }
 
 bool requestMaintenanceHold() {
+  // A browser OTA request takes priority over the disposable GitHub check.
+  update_manager::requestAbort();
   bool accepted = false;
   portENTER_CRITICAL(&commandMux);
   if (maintenanceRequested) {

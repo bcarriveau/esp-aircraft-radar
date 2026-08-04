@@ -16,6 +16,8 @@
 #include "ota_update.h"
 #include "settings.h"
 #include "ui.h"
+#include "update_manager.h"
+#include "update_ui.h"
 
 namespace {
 bool startupComplete = false;
@@ -64,6 +66,10 @@ void setup() {
         "WARNING: NVS unavailable or unhealthy; saving disabled and compile-time "
         "defaults used when stored values cannot be read");
   }
+  if (!update_manager::begin()) {
+    Serial.println(
+        "WARNING: Update-check persistence unavailable; using boot-local schedule");
+  }
   app_state::initialize();
   if (!ui::allocateTargetBuffer()) return;
 
@@ -71,11 +77,16 @@ void setup() {
   display_power::initialize();
   lvgl_port_lock(-1);
   const bool uiReady = ui::buildUi();
+  const bool updateUiReady = uiReady && update_ui::build();
   if (!uiReady) ui::showFatalStatus("UI INITIALIZATION FAILED");
   lvgl_port_unlock();
   if (!uiReady) {
     Serial.println("FATAL: Required UI construction failed; startup halted");
     return;
+  }
+  if (!updateUiReady) {
+    Serial.println(
+        "WARNING: GitHub update indicator UI unavailable; radar continuing");
   }
 
   if (!airport_data::initialize(settings::homeLatitude(),
@@ -111,10 +122,13 @@ void loop() {
 
   uint32_t now = millis();
   adsb::service();
-  mqtt_service::service();
+  if (!update_manager::networkCheckInProgress()) {
+    mqtt_service::service();
+  }
   if (!adsb::wifiOperationInProgress()) ota_update::service();
   lvgl_port_lock(-1);
   ui::update(now);
+  update_ui::update(now);
   lvgl_port_unlock();
   delay(5);
 }
