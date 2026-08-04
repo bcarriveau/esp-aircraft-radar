@@ -1538,6 +1538,108 @@ void updateVerticalStateDisplay(lv_obj_t* canvas, lv_color_t* buffer,
   lv_obj_clear_flag(label, LV_OBJ_FLAG_HIDDEN);
 }
 
+
+struct PriorityNeighbor {
+  const aircraft::Target* target = nullptr;
+  float separationSquaredMiles = INFINITY;
+  float relativeBearingDegrees = 0.0f;
+};
+
+bool targetLocalPosition(const aircraft::Target& target,
+                         float& northMiles, float& eastMiles) {
+  if (!isfinite(target.distanceMiles) || target.distanceMiles < 0.0f ||
+      !isfinite(target.bearing)) {
+    return false;
+  }
+  const float bearingRadians = target.bearing * (float)M_PI / 180.0f;
+  northMiles = cosf(bearingRadians) * target.distanceMiles;
+  eastMiles = sinf(bearingRadians) * target.distanceMiles;
+  return isfinite(northMiles) && isfinite(eastMiles);
+}
+
+bool neighborBefore(const aircraft::Target& candidate,
+                    float candidateSeparationSquared,
+                    const PriorityNeighbor& current) {
+  if (!current.target) return true;
+  constexpr float DISTANCE_TIE_EPSILON = 0.000001f;
+  if (candidateSeparationSquared <
+      current.separationSquaredMiles - DISTANCE_TIE_EPSILON) {
+    return true;
+  }
+  if (fabsf(candidateSeparationSquared -
+            current.separationSquaredMiles) > DISTANCE_TIE_EPSILON) {
+    return false;
+  }
+  return strcmp(candidate.hex, current.target->hex) < 0;
+}
+
+uint8_t findPriorityNeighbors(const aircraft::Target* targets, uint8_t count,
+                              const aircraft::Target& primary,
+                              PriorityNeighbor* neighbors,
+                              uint8_t neighborCapacity) {
+  if (!targets || !neighbors || neighborCapacity == 0 ||
+      !primary.hex[0]) {
+    return 0;
+  }
+
+  float primaryNorthMiles = 0.0f;
+  float primaryEastMiles = 0.0f;
+  if (!targetLocalPosition(primary, primaryNorthMiles, primaryEastMiles)) {
+    return 0;
+  }
+
+  uint8_t neighborCount = 0;
+  for (uint8_t targetIndex = 0; targetIndex < count; ++targetIndex) {
+    const aircraft::Target& candidate = targets[targetIndex];
+    if (!candidate.hex[0] || strcmp(candidate.hex, primary.hex) == 0) {
+      continue;
+    }
+
+    float candidateNorthMiles = 0.0f;
+    float candidateEastMiles = 0.0f;
+    if (!targetLocalPosition(candidate, candidateNorthMiles,
+                             candidateEastMiles)) {
+      continue;
+    }
+
+    const float deltaNorthMiles =
+        candidateNorthMiles - primaryNorthMiles;
+    const float deltaEastMiles =
+        candidateEastMiles - primaryEastMiles;
+    const float separationSquaredMiles =
+        deltaNorthMiles * deltaNorthMiles +
+        deltaEastMiles * deltaEastMiles;
+    if (!isfinite(separationSquaredMiles)) continue;
+
+    uint8_t insertAt = 0;
+    while (insertAt < neighborCount &&
+           !neighborBefore(candidate, separationSquaredMiles,
+                           neighbors[insertAt])) {
+      ++insertAt;
+    }
+    if (insertAt >= neighborCapacity) continue;
+
+    const uint8_t shiftEnd =
+        neighborCount < neighborCapacity
+            ? neighborCount
+            : static_cast<uint8_t>(neighborCapacity - 1U);
+    for (uint8_t shift = shiftEnd; shift > insertAt; --shift) {
+      neighbors[shift] = neighbors[shift - 1U];
+    }
+
+    PriorityNeighbor& neighbor = neighbors[insertAt];
+    neighbor.target = &candidate;
+    neighbor.separationSquaredMiles = separationSquaredMiles;
+    neighbor.relativeBearingDegrees = fmodf(
+        atan2f(deltaEastMiles, deltaNorthMiles) *
+                180.0f / (float)M_PI +
+            360.0f,
+        360.0f);
+    if (neighborCount < neighborCapacity) ++neighborCount;
+  }
+  return neighborCount;
+}
+
 void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
                         const app_state::Snapshot& snapshot,
                         const char* selectedHex) {
@@ -1673,23 +1775,24 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
     updateSideIcon(radarView.leftOtherIcons[i],
                    radarView.leftOtherIconBuffers[i], nullptr, false);
   }
-  if (priorityAircraft) {
-    uint8_t otherIndex = 0;
-    for (uint8_t targetIndex = 0;
-         targetIndex < count && otherIndex < PRIORITY_OTHER_COUNT;
-         ++targetIndex) {
-      const aircraft::Target& target = workTargets[targetIndex];
-      if (primaryTarget && target.hex[0] && primaryTarget->hex[0] &&
-          strcmp(target.hex, primaryTarget->hex) == 0) {
-        continue;
-      }
-      if (radarView.leftOtherHexes[otherIndex] && target.hex[0]) {
+  if (priorityAircraft && primaryTarget) {
+    PriorityNeighbor neighbors[PRIORITY_OTHER_COUNT]{};
+    const uint8_t neighborCount = findPriorityNeighbors(
+        workTargets, count, *primaryTarget, neighbors,
+        PRIORITY_OTHER_COUNT);
+    for (uint8_t otherIndex = 0; otherIndex < neighborCount; ++otherIndex) {
+      const PriorityNeighbor& neighbor = neighbors[otherIndex];
+      const aircraft::Target& target = *neighbor.target;
+      if (radarView.leftOtherHexes[otherIndex]) {
         strncpy(radarView.leftOtherHexes[otherIndex], target.hex, 6);
         radarView.leftOtherHexes[otherIndex][6] = 0;
       }
+      const float separationMiles =
+          sqrtf(neighbor.separationSquaredMiles);
       snprintf(text, sizeof(text), "%s\n%.1f MI %s",
-               aircraft::primaryIdentifier(target), target.distanceMiles,
-               aircraft::compassDirection(target.bearing));
+               aircraft::primaryIdentifier(target), separationMiles,
+               aircraft::compassDirection(
+                   neighbor.relativeBearingDegrees));
       if (radarView.leftOtherLabels[otherIndex]) {
         lv_label_set_text(radarView.leftOtherLabels[otherIndex], text);
         lv_obj_clear_flag(radarView.leftOtherLabels[otherIndex],
@@ -1697,17 +1800,19 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
       }
       updateSideIcon(radarView.leftOtherIcons[otherIndex],
                      radarView.leftOtherIconBuffers[otherIndex], &target, true);
-      ++otherIndex;
     }
     if (radarView.leftOtherModeLabel) {
-      if (otherIndex > 0) {
-        lv_label_set_text_fmt(radarView.leftOtherModeLabel, "NEAREST %u",
-                              (unsigned)otherIndex);
-      } else {
-        lv_label_set_text(radarView.leftOtherModeLabel, "NO OTHER");
-      }
+      lv_label_set_text(
+          radarView.leftOtherModeLabel,
+          neighborCount > 0
+              ? (snapshot.manualTracking ? "NEAR TRACK" : "NEAR SELECT")
+              : "NO OTHER");
       lv_obj_clear_flag(radarView.leftOtherModeLabel, LV_OBJ_FLAG_HIDDEN);
     }
+  } else if (snapshot.manualTracking &&
+             radarView.leftOtherModeLabel) {
+    lv_label_set_text(radarView.leftOtherModeLabel, "POSITION LOST");
+    lv_obj_clear_flag(radarView.leftOtherModeLabel, LV_OBJ_FLAG_HIDDEN);
   }
 
   for (int i = 0; i < 5; ++i) {
