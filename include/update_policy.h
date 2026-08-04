@@ -14,6 +14,10 @@ constexpr size_t MAX_ASSET_NAME_LENGTH = 127U;
 constexpr size_t MAX_NOTES_LENGTH = 191U;
 constexpr size_t MAX_HTTP_HEADER_BYTES = 16U * 1024U;
 constexpr size_t MAX_REDIRECT_URL_LENGTH = 4095U;
+constexpr size_t MIN_HTTP_TX_BUFFER_BYTES = 1024U;
+constexpr size_t HTTP_TX_HEADROOM_BYTES = 512U;
+constexpr size_t MAX_HTTP_TX_BUFFER_BYTES =
+    MAX_REDIRECT_URL_LENGTH + HTTP_TX_HEADROOM_BYTES;
 constexpr uint32_t PACKAGE_HEADER_BYTES = 512U;
 constexpr uint32_t MINIMUM_FIRMWARE_BYTES = 64U * 1024U;
 constexpr uint32_t MAXIMUM_PACKAGE_BYTES = 8U * 1024U * 1024U;
@@ -69,6 +73,17 @@ inline bool redirectUrlLengthValid(const char* url) {
   return url && strnlen(url, MAX_REDIRECT_URL_LENGTH + 1U) <=
                     MAX_REDIRECT_URL_LENGTH;
 }
+
+constexpr size_t httpTransmitBufferBytes(size_t urlLength) {
+  if (urlLength > MAX_REDIRECT_URL_LENGTH) return 0;
+  const size_t required = urlLength + HTTP_TX_HEADROOM_BYTES;
+  return required < MIN_HTTP_TX_BUFFER_BYTES
+      ? MIN_HTTP_TX_BUFFER_BYTES
+      : required;
+}
+
+static_assert(MAX_HTTP_TX_BUFFER_BYTES == 4607U,
+              "GitHub transmit-buffer ceiling changed unexpectedly");
 
 inline bool lowerHexDigest(const char* digest) {
   if (!digest || strlen(digest) != 64U) return false;

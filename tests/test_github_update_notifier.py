@@ -20,14 +20,14 @@ def git_blob_sha(data: bytes) -> str:
 
 
 class GithubUpdateNotifierTests(unittest.TestCase):
-    def test_build_identity_is_product_71_and_hardware_specific(self) -> None:
+    def test_build_identity_is_product_72_and_hardware_specific(self) -> None:
         build = read("include/build_info.h")
-        self.assertIn("FIRMWARE_VERSION_CODE = 71", build)
-        self.assertIn('FIRMWARE_VERSION_LABEL = "Product 71"', build)
+        self.assertIn("FIRMWARE_VERSION_CODE = 72", build)
+        self.assertIn('FIRMWARE_VERSION_LABEL = "Product 72"', build)
         self.assertIn('"waveshare-esp32-s3-touch-lcd-7"', build)
         self.assertIn('FIRMWARE_RELEASE_CHANNEL = "stable"', build)
-        self.assertIn("7IN-20260803-PRODUCT71-GITHUB-REDIRECT-FIX", build)
-        self.assertIn("b20c2d47c5b3a758564e944e9b912fd562334c1d", build)
+        self.assertIn("7IN-20260803-PRODUCT72-GITHUB-TX-BUFFER-FIX", build)
+        self.assertIn("a52ee1cd39f1d39182730418de7192b9779a4307", build)
 
     def test_check_has_no_task_or_forbidden_transport(self) -> None:
         source = read("src/update_manager.cpp")
@@ -55,6 +55,10 @@ class GithubUpdateNotifierTests(unittest.TestCase):
         policy = read("include/update_policy.h")
         self.assertIn("MAX_HTTP_HEADER_BYTES = 16U * 1024U", policy)
         self.assertIn("MAX_REDIRECT_URL_LENGTH = 4095U", policy)
+        self.assertIn("MIN_HTTP_TX_BUFFER_BYTES = 1024U", policy)
+        self.assertIn("HTTP_TX_HEADROOM_BYTES = 512U", policy)
+        self.assertIn("MAX_HTTP_TX_BUFFER_BYTES", policy)
+        self.assertIn("httpTransmitBufferBytes", policy)
         self.assertIn("accumulateHeaderBytes", policy)
         self.assertIn("redirectUrlLengthValid", policy)
         self.assertIn("HeaderFailure::TOTAL_BYTES", source)
@@ -78,6 +82,14 @@ class GithubUpdateNotifierTests(unittest.TestCase):
         )
         self.assertIn("release-assets.githubusercontent.com", policy)
         self.assertIn("MAX_REDIRECTS = 3", source)
+        self.assertIn("httpTransmitBufferBytes(currentUrlLength)", source)
+        self.assertIn(
+            "config.buffer_size_tx = static_cast<int>(transmitBufferBytes)",
+            source,
+        )
+        self.assertIn("GitHub HTTPS open/send failed", source)
+        self.assertIn("(url=%u tx=%u)", source)
+        self.assertNotIn("config.buffer_size_tx = 512", source)
 
     def test_manual_check_is_real_and_bypasses_only_timers(self) -> None:
         header = read("include/update_manager.h")

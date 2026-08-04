@@ -20,10 +20,10 @@ class UpdatePolicyHostTests(unittest.TestCase):
 
 int main() {
   using namespace update_policy;
-  assert(compareVersion(0, 71) == VersionRelation::INVALID);
-  assert(compareVersion(70, 71) == VersionRelation::OLDER);
-  assert(compareVersion(71, 71) == VersionRelation::CURRENT);
-  assert(compareVersion(72, 71) == VersionRelation::NEWER);
+  assert(compareVersion(0, 72) == VersionRelation::INVALID);
+  assert(compareVersion(71, 72) == VersionRelation::OLDER);
+  assert(compareVersion(72, 72) == VersionRelation::CURRENT);
+  assert(compareVersion(73, 72) == VersionRelation::NEWER);
 
   char digest[65];
   memset(digest, 'a', 64);
@@ -52,7 +52,7 @@ int main() {
   assert(!packageLayoutValid(64U * 1024U + 511U, 64U * 1024U));
   assert(!packageLayoutValid(8U * 1024U * 1024U + 1U,
                              8U * 1024U * 1024U - 511U));
-  assert(assetNameValid("waveshare-esp32-s3-touch-lcd-7-product-71.radarota"));
+  assert(assetNameValid("waveshare-esp32-s3-touch-lcd-7-product-72.radarota"));
   assert(!assetNameValid("firmware.bin"));
 
   char host[96];
@@ -91,6 +91,16 @@ int main() {
   assert(parseAllowedHttpsUrl(signedRedirect.c_str(), host, sizeof(host)));
   std::string oversizedRedirect(MAX_REDIRECT_URL_LENGTH + 1U, 'a');
   assert(!redirectUrlLengthValid(oversizedRedirect.c_str()));
+
+  assert(httpTransmitBufferBytes(0) == MIN_HTTP_TX_BUFFER_BYTES);
+  assert(httpTransmitBufferBytes(100) == MIN_HTTP_TX_BUFFER_BYTES);
+  assert(httpTransmitBufferBytes(512) == MIN_HTTP_TX_BUFFER_BYTES);
+  assert(httpTransmitBufferBytes(513) == 1025U);
+  assert(httpTransmitBufferBytes(1800) == 2312U);
+  assert(httpTransmitBufferBytes(MAX_REDIRECT_URL_LENGTH) ==
+         MAX_HTTP_TX_BUFFER_BYTES);
+  assert(httpTransmitBufferBytes(MAX_REDIRECT_URL_LENGTH + 1U) == 0);
+  assert(MAX_HTTP_TX_BUFFER_BYTES == 4607U);
 
   assert(framingIsUnambiguous(true, false, false, false));
   assert(framingIsUnambiguous(false, true, true, true));

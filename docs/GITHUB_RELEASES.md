@@ -1,9 +1,10 @@
 # Stable GitHub Release format
 
-Product 71 corrects real-world GitHub response-header and signed-redirect
-handling on top of the Product 70 bounded release checker and the physically
-exercised Product 69 ADS-B transport. It checks release metadata only. Firmware
-installation remains the existing local browser OTA.
+Product 72 corrects ESP-IDF request transmission for GitHub's long signed
+release-asset redirects on top of the Product 71 response-header fix, Product 70
+bounded release checker, and physically exercised Product 69 ADS-B transport. It
+checks release metadata only. Firmware installation remains the existing local
+browser OTA.
 
 ## Runtime behavior
 
@@ -37,6 +38,13 @@ A claimed check has:
 - a 2048-byte manifest body limit
 - a 16384-byte aggregate header limit
 - a 4095-character redirect URL limit
+- a URL-sized ESP-IDF transmit buffer from 1024 through 4607 bytes
+
+ESP-IDF must assemble the complete request target in `buffer_size_tx`. Product 72
+right-sizes that internal transmit buffer from the already validated URL length
+and reserves 512 bytes for the request-line suffix and bounded request headers.
+Short GitHub requests keep a 1024-byte minimum; the longest accepted redirect is
+bounded to a 4607-byte transmit allocation.
 
 The header callback keeps only bounded framing fields and the redirect URL in
 PSRAM. It accepts GitHub's larger streamed security/cache header set, while still
@@ -64,8 +72,8 @@ recorded as a completed attempt and is throttled.
 Publish a normal, non-draft, non-prerelease GitHub Release with matching names:
 
 ```text
-Tag:          product-71
-Release name: Product 71
+Tag:          product-72
+Release name: Product 72
 Channel:      stable
 ```
 
@@ -78,11 +86,11 @@ PlatformIO's existing post-build script creates all three files:
 
 ```text
 release/firmware.radarota
-release/waveshare-esp32-s3-touch-lcd-7-product-71.radarota
+release/waveshare-esp32-s3-touch-lcd-7-product-72.radarota
 release/waveshare-esp32-s3-touch-lcd-7.manifest.json
 ```
 
-Attach the versioned `.radarota` and fixed-name manifest to the Product 71 GitHub
+Attach the versioned `.radarota` and fixed-name manifest to the Product 72 GitHub
 Release. `release/firmware.radarota` remains the local browser-install fallback.
 Do not rename or hand-edit generated assets.
 
@@ -120,13 +128,13 @@ existing **FIRMWARE / OTA** page to install a downloaded `.radarota` file.
 
 ## Publishing checklist
 
-1. Build the exact intended Product 71 source with the user-side PlatformIO environment.
-2. Confirm `7IN-20260803-PRODUCT71-GITHUB-REDIRECT-FIX` at boot.
+1. Build the exact intended Product 72 source with the user-side PlatformIO environment.
+2. Confirm `7IN-20260803-PRODUCT72-GITHUB-TX-BUFFER-FIX` at boot.
 3. Run the checked-in host tests.
 4. Confirm `release/firmware.radarota` still installs through local browser OTA.
-5. Create a normal published `product-71` GitHub Release.
-6. Attach the generated fixed manifest and Product 71 versioned package.
-7. To test the green indicator, later publish a compatible Product 72 release.
+5. Create a normal published `product-72` GitHub Release.
+6. Attach the generated fixed manifest and Product 72 versioned package.
+7. To test the green indicator, later publish a compatible Product 73 release.
 8. Do not publish packages for other hardware under these asset names.
 
 ## Authenticity boundary

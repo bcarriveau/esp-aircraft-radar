@@ -595,6 +595,15 @@ bool httpGetManifest(uint32_t absoluteDeadlineMs, HttpResponse& response,
       return false;
     }
 
+    const size_t currentUrlLength = strlen(workspace->currentUrl);
+    const size_t transmitBufferBytes =
+        update_policy::httpTransmitBufferBytes(currentUrlLength);
+    if (transmitBufferBytes == 0) {
+      copyText(failure, failureCapacity,
+               "GitHub request URL exceeded the transmit-buffer policy");
+      return false;
+    }
+
     esp_http_client_config_t config{};
     config.url = workspace->currentUrl;
     config.user_agent = USER_AGENT;
@@ -604,7 +613,7 @@ bool httpGetManifest(uint32_t absoluteDeadlineMs, HttpResponse& response,
     config.max_redirection_count = 0;
     config.transport_type = HTTP_TRANSPORT_OVER_SSL;
     config.buffer_size = 2048;
-    config.buffer_size_tx = 512;
+    config.buffer_size_tx = static_cast<int>(transmitBufferBytes);
     config.keep_alive_enable = false;
     config.crt_bundle_attach = esp_crt_bundle_attach;
     config.skip_cert_common_name_check = false;
@@ -629,8 +638,11 @@ bool httpGetManifest(uint32_t absoluteDeadlineMs, HttpResponse& response,
         yielded = cause == AbortCause::COMMAND || cause == AbortCause::OTA;
         copyText(failure, failureCapacity, abortCauseMessage(cause));
       } else {
-        snprintf(failure, failureCapacity, "GitHub TLS connect failed: %s",
-                 esp_err_to_name(openResult));
+        snprintf(failure, failureCapacity,
+                 "GitHub HTTPS open/send failed: %s (url=%u tx=%u)",
+                 esp_err_to_name(openResult),
+                 static_cast<unsigned>(currentUrlLength),
+                 static_cast<unsigned>(transmitBufferBytes));
       }
       releaseHttpClient(client, false);
       return false;
