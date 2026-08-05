@@ -198,6 +198,7 @@ lv_obj_t* otaEnableLabel = nullptr;
 lv_obj_t* otaCloseButton = nullptr;
 lv_obj_t* detailPanel = nullptr;
 lv_obj_t* detailTitle = nullptr;
+lv_obj_t* detailStatusLabel = nullptr;
 lv_obj_t* detailBody = nullptr;
 lv_obj_t* detailTrackButton = nullptr;
 lv_obj_t* detailTrackLabel = nullptr;
@@ -239,6 +240,10 @@ enum class AirportView : uint8_t {
 AirportView airportView = AirportView::DIRECTORY;
 aircraft::Target detailTarget;
 bool detailTargetValid = false;
+bool detailTargetCurrent = false;
+uint32_t detailTargetVersion = UINT32_MAX;
+uint32_t detailRangeGeneration = UINT32_MAX;
+uint32_t detailTrackingVersion = UINT32_MAX;
 bool passwordVisible = false;
 bool resetConfirmationPending = false;
 uint32_t resetConfirmationDeadline = 0;
@@ -253,6 +258,14 @@ enum class DetailOrigin : uint8_t {
 };
 
 DetailOrigin detailOrigin = DetailOrigin::TRACKS;
+
+void resetTargetDetailsState() {
+  detailTargetValid = false;
+  detailTargetCurrent = false;
+  detailTargetVersion = UINT32_MAX;
+  detailRangeGeneration = UINT32_MAX;
+  detailTrackingVersion = UINT32_MAX;
+}
 
 inline lv_color_t rgb(uint8_t red, uint8_t green, uint8_t blue) {
   return lv_color_make(red, green, blue);
@@ -1324,7 +1337,7 @@ void selectPage(uint8_t page) {
     if (detailOrigin == DetailOrigin::RADAR && selectedHex[0]) {
       selectedAtMs = millis();
     }
-    detailTargetValid = false;
+    resetTargetDetailsState();
     if (detailPanel) lv_obj_add_flag(detailPanel, LV_OBJ_FLAG_HIDDEN);
   }
   currentPage = nextPage;
@@ -1586,6 +1599,99 @@ void autoExpandTrackedRange(const app_state::Snapshot& snapshot) {
   }
 }
 
+void renderTargetDetails(const aircraft::Target& target, bool current,
+                         bool trackedMissing) {
+  detailTarget = target;
+  detailTargetCurrent = current;
+
+  setLabelTextFmtIfChanged(detailTitle, "%s // AIRCRAFT PROFILE", target.id);
+  char details[768];
+  snprintf(details, sizeof(details),
+    "TYPE: %s  %s\nRegistration: %s\nICAO: %s\nOperator: %s\nDescription: %s\n\n"
+    "Distance: %.1f miles\nBearing: %.0f deg %s\nAltitude: %.0f feet\n"
+    "Speed: %.0f MPH\nHeading: %.0f deg\nVertical rate: %+.0f ft/min",
+    aircraft::kindName(target), target.typeCode, target.registration,
+    target.hex[0] ? target.hex : "Unknown", target.operatorName,
+    target.description, target.distanceMiles, target.bearing,
+    aircraft::compassDirection(target.bearing), target.altitudeFt,
+    target.speedKt * 1.15078f, target.track, target.verticalRateFpm);
+  setLabelTextIfChanged(detailBody, details);
+  radar::drawAircraftPreview(detailPlaneCanvas, detailPlaneBuffer, target);
+
+  const bool tracked =
+      trackedMissing || app_state::isManuallyTracked(target);
+  const bool trackActionAvailable = current || tracked;
+  setLabelTextIfChanged(detailStatusLabel,
+                        current
+                            ? "CURRENT UPDATE"
+                            : (trackedMissing
+                                   ? "TRACK SIGNAL LOST\nLAST KNOWN VALUES"
+                                   : "NOT IN CURRENT UPDATE\nLAST KNOWN VALUES"));
+  if (detailStatusLabel) {
+    lv_obj_set_style_text_color(
+        detailStatusLabel,
+        current ? rgb(120, 240, 155)
+                : (trackedMissing ? rgb(255, 120, 110)
+                                  : rgb(255, 190, 95)),
+        0);
+  }
+  setLabelTextIfChanged(detailTrackLabel,
+                        tracked
+                            ? "STOP TRACKING"
+                            : (trackActionAvailable ? "TRACK ON RADAR"
+                                                    : "NOT AVAILABLE"));
+  if (detailTrackLabel) lv_obj_center(detailTrackLabel);
+  if (detailTrackButton) {
+    if (trackActionAvailable) {
+      lv_obj_clear_state(detailTrackButton, LV_STATE_DISABLED);
+    } else {
+      lv_obj_add_state(detailTrackButton, LV_STATE_DISABLED);
+    }
+    lv_obj_set_style_opa(detailTrackButton,
+                         trackActionAvailable ? LV_OPA_COVER : LV_OPA_50, 0);
+    lv_obj_set_style_bg_color(detailTrackButton,
+                              tracked ? rgb(125, 28, 35)
+                                      : rgb(24, 128, 84),
+                              0);
+  }
+}
+
+void refreshOpenTargetDetails() {
+  if (!detailTargetValid || !detailTarget.hex[0] || !detailPanel ||
+      lv_obj_has_flag(detailPanel, LV_OBJ_FLAG_HIDDEN)) {
+    return;
+  }
+
+  const uint32_t currentTargetVersion = app_state::targetVersion();
+  const uint32_t currentRangeGeneration = app_state::rangeGeneration();
+  const uint32_t currentTrackingVersion = app_state::trackingVersion();
+  if (detailTargetVersion == currentTargetVersion &&
+      detailRangeGeneration == currentRangeGeneration &&
+      detailTrackingVersion == currentTrackingVersion) {
+    return;
+  }
+
+  app_state::Snapshot snapshot;
+  app_state::copySnapshot(uiTargets, snapshot);
+  detailTargetVersion = snapshot.targetVersion;
+  detailRangeGeneration = snapshot.rangeGeneration;
+  detailTrackingVersion = snapshot.trackingVersion;
+
+  for (uint8_t index = 0; index < snapshot.count; ++index) {
+    if (!uiTargets[index].hex[0] ||
+        strcmp(uiTargets[index].hex, detailTarget.hex) != 0) {
+      continue;
+    }
+    renderTargetDetails(uiTargets[index], true, false);
+    return;
+  }
+
+  const bool trackedMissing =
+      snapshot.manualTracking && snapshot.trackedHex[0] &&
+      strcmp(snapshot.trackedHex, detailTarget.hex) == 0;
+  renderTargetDetails(detailTarget, false, trackedMissing);
+}
+
 void showTargetDetails(const aircraft::Target& target,
                        DetailOrigin origin) {
   detailOrigin = origin;
@@ -1602,24 +1708,11 @@ void showTargetDetails(const aircraft::Target& target,
     setVisible(retryButton, false);
     setVisible(showPasswordButton, false);
   }
-  detailTarget = target;
   detailTargetValid = true;
-  lv_label_set_text_fmt(detailTitle, "%s // AIRCRAFT PROFILE", target.id);
-  char details[768];
-  snprintf(details, sizeof(details),
-    "TYPE: %s  %s\nRegistration: %s\nICAO: %s\nOperator: %s\nDescription: %s\n\n"
-    "Distance: %.1f miles\nBearing: %.0f deg %s\nAltitude: %.0f feet\n"
-    "Speed: %.0f MPH\nHeading: %.0f deg\nVertical rate: %+.0f ft/min",
-    aircraft::kindName(target), target.typeCode, target.registration,
-    target.hex[0] ? target.hex : "Unknown", target.operatorName,
-    target.description, target.distanceMiles, target.bearing,
-    aircraft::compassDirection(target.bearing), target.altitudeFt,
-    target.speedKt * 1.15078f, target.track, target.verticalRateFpm);
-  lv_label_set_text(detailBody, details);
-  radar::drawAircraftPreview(detailPlaneCanvas, detailPlaneBuffer, target);
-  lv_label_set_text(detailTrackLabel,
-                    app_state::isManuallyTracked(target)
-                        ? "STOP TRACKING" : "TRACK ON RADAR");
+  detailTargetVersion = UINT32_MAX;
+  detailRangeGeneration = UINT32_MAX;
+  detailTrackingVersion = UINT32_MAX;
+  renderTargetDetails(target, true, false);
   lv_obj_move_foreground(detailPanel);
   lv_obj_clear_flag(detailPanel, LV_OBJ_FLAG_HIDDEN);
 }
@@ -1756,7 +1849,7 @@ void radarCanvasEvent(lv_event_t*) {
 
 void detailBackEvent(lv_event_t*) {
   const DetailOrigin returnOrigin = detailOrigin;
-  detailTargetValid = false;
+  resetTargetDetailsState();
   lv_obj_add_flag(detailPanel, LV_OBJ_FLAG_HIDDEN);
   if (returnOrigin == DetailOrigin::RADAR) {
     if (hasSelectedAircraft()) selectedAtMs = millis();
@@ -1796,7 +1889,9 @@ void radarUntrackEvent(lv_event_t*) {
 
 void detailTrackEvent(lv_event_t*) {
   if (!detailTargetValid) return;
-  if (app_state::isManuallyTracked(detailTarget)) {
+  const bool tracked = app_state::isManuallyTracked(detailTarget);
+  if (!detailTargetCurrent && !tracked) return;
+  if (tracked) {
     stopManualTracking();
   } else {
     app_state::selectManualTracking(detailTarget);
@@ -1805,7 +1900,7 @@ void detailTrackEvent(lv_event_t*) {
     clearSelectedAircraft();
   }
   syncRadarRangeControlPosition();
-  detailTargetValid = false;
+  resetTargetDetailsState();
   lv_obj_add_flag(detailPanel, LV_OBJ_FLAG_HIDDEN);
   selectPage(0);
 }
@@ -3397,6 +3492,12 @@ void buildDetailPanel() {
   lv_obj_set_style_bg_color(detailPanel, rgb(7, 16, 23), 0);
   detailTitle = makeLabel(detailPanel, "AIRCRAFT DETAILS",
                           &lv_font_montserrat_28, rgb(63, 255, 155), 10, 6);
+  detailStatusLabel = makeLabel(
+      detailPanel, "CURRENT UPDATE", &lv_font_montserrat_12,
+      rgb(120, 240, 155), 500, 8);
+  lv_obj_set_width(detailStatusLabel, 230);
+  lv_obj_set_style_text_align(detailStatusLabel, LV_TEXT_ALIGN_RIGHT, 0);
+  lv_label_set_long_mode(detailStatusLabel, LV_LABEL_LONG_WRAP);
   detailBody = makeLabel(detailPanel, "", &lv_font_montserrat_16,
                          rgb(225, 235, 240), 10, 50);
   lv_obj_set_width(detailBody, 480);
@@ -3715,6 +3816,7 @@ void update(uint32_t now) {
   if (mqttPanel && !lv_obj_has_flag(mqttPanel, LV_OBJ_FLAG_HIDDEN)) {
     updateMqttPanel();
   }
+  refreshOpenTargetDetails();
   if (currentPage == 0 && !detailTargetValid) {
     renderRadarPage();
   }
