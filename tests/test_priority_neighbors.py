@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focused Product 76 selected/tracked neighbor checks."""
+"""Product 76 priority-neighbor checks retained by Product 78."""
 
 from __future__ import annotations
 
@@ -76,11 +76,11 @@ class Product76PriorityNeighborTests(unittest.TestCase):
         self.assertIn("priorityAircraft && primaryTarget", source)
         self.assertIn("strcmp(candidate.hex, primary.hex) == 0", source)
 
-    def test_build_identity_is_product_76(self) -> None:
+    def test_current_build_retains_product_76_behavior(self) -> None:
         build = BUILD.read_text(encoding="utf-8")
-        self.assertIn("FIRMWARE_VERSION_CODE = 76", build)
-        self.assertIn('FIRMWARE_VERSION_LABEL = "Product 76"', build)
-        self.assertIn("7IN-20260804-PRODUCT76-PRIORITY-NEIGHBORS", build)
+        self.assertIn("FIRMWARE_VERSION_CODE = 78", build)
+        self.assertIn('FIRMWARE_VERSION_LABEL = "Product 78"', build)
+        self.assertIn("7IN-20260805-PRODUCT78-PAGE-TOP-RESET", build)
 
     def test_relative_geometry_and_ordering(self) -> None:
         primary = Target("AAAAAA", 10.0, 0.0)
