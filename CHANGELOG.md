@@ -14,11 +14,11 @@ repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current replacement source:** Product 77
-- **Current build marker:** `7IN-20260805-PRODUCT77-LIVE-AIRCRAFT-PROFILE`
+- **Current replacement source:** Product 78
+- **Current build marker:** `7IN-20260805-PRODUCT78-PAGE-TOP-RESET`
 - **Source baseline branch:** `main`
-- **Latest inspected baseline commit:** `508144cf4599929505db077c64aec98d0cfdb406`
-- **Product 76 runtime commit retained:** `817462c8a6f2cb8157c7223a1788c8ff34dfc621`
+- **Latest inspected baseline commit:** `d4b60cddfecdc943c2d33231bc1a76289b85760b`
+- **Product 77 source commit retained:** `d4b60cddfecdc943c2d33231bc1a76289b85760b`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD,
   GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
@@ -26,23 +26,90 @@ repository does not provide authoritative evidence.
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 77 is a focused replacement-source candidate based on the current
-Product 76 repository baseline. It has focused host regression coverage but is not
-claimed as committed, PlatformIO-built, uploaded, or physically verified here.
+Product 78 is a focused replacement-source candidate based on committed Product 77
+`main` commit `d4b60cddfecdc943c2d33231bc1a76289b85760b`. It has focused host
+regression coverage but is not claimed as committed, PlatformIO-built, uploaded, or
+physically verified here.
 
-Product 73's remote GitHub installer was physically proven by installing the
-versioned Product 74 test release. Products 75 and 76 were committed after that
-verified OTA milestone. Their focused source and test history remains documented
-below without adding unrecorded device-validation claims.
+Product 77 is committed on `main`. Product 73's remote GitHub installer was
+physically proven by installing the versioned Product 74 test release. Later Product
+source remains documented without adding unrecorded device-validation claims.
+
+## Product 78 - 2026-08-05
+
+**Build:** `7IN-20260805-PRODUCT78-PAGE-TOP-RESET`  
+**Source baseline:** Product 77 `main` commit
+`d4b60cddfecdc943c2d33231bc1a76289b85760b`  
+**Status:** Focused replacement-source candidate; host validation complete;
+PlatformIO and physical verification pending
+
+### Diagnosed
+
+- The fixed 112-pixel selected/tracked secondary heading still used Montserrat 16.
+  `NEAR SELECT` reached the panel edge and visibly clipped on the 800x480 display.
+- Tracks deliberately preserved its prior LVGL table scroll position across refreshes,
+  but that same state also survived leaving and re-entering the page.
+- The Airports directory likewise retained its prior table scroll position when the
+  page or directory view was entered again.
+
+### Changed
+
+- Reduced only the selected/tracked secondary heading to Montserrat 14 so
+  `NEAR SELECT`, `NEAR TRACK`, `POSITION LOST`, and `NO OTHER` fit the existing
+  fixed panel without changing its geometry.
+- Added explicit navigation-time scroll resets for Tracks and the Airports
+  directory.
+- Entering Tracks, returning from a Tracks Aircraft Profile, entering Airports, or
+  returning to the Airports directory now starts at the top.
+- Applies each reset after the table rows are populated, including no-data and
+  optional-storage-unavailable directory states.
+- Preserves the established scroll position during ordinary target or airport refreshes
+  while the user remains on the page; refreshes do not repeatedly force the top.
+- Reuses existing LVGL tables and adds no task, timer, dynamic allocation, page object,
+  target buffer, or capacity-scaled storage.
+
+### Preserved
+
+- Product 77 live stable-ICAO Aircraft Profiles and current/last-known states.
+- Product 76 relative-neighbor calculation, row actions, selected/tracked state, and
+  radar-renderer behavior.
+- Tracks row-count scroll clamping during in-page refresh, airport edit/tap safety,
+  airport directory bounds, and all page content.
+- ADS-B networking, native/fallback HTTPS, Wi-Fi recovery, MQTT, local/remote OTA,
+  200-target capacity, panel timing, DMA, OPI PSRAM, 128 KiB LVGL pool, 12 KiB ADS-B
+  task stack, and the 20-scanline bounce buffer.
+
+### Validation
+
+- Thirteen focused Product 78 Python tests passed for build identity, compact heading
+  font, Tracks/Airports entry resets after content rendering, profile/directory return
+  behavior, in-page scroll preservation, and allocation-free implementation.
+- The complete Product 77 live-profile focused suite still passed: 14 tests.
+- The retained Product 76 priority-neighbor suite passed: 8 tests.
+- A strict C++17 page-entry scroll model passed with warnings treated as errors,
+  AddressSanitizer, and UndefinedBehaviorSanitizer.
+- Complete changed-file lexical, whitespace, build-marker, forbidden-API, and
+  unintended-scope checks passed.
+- PlatformIO compile/link, OTA asset generation, upload, physical display/touch
+  testing, and soak testing were not run here.
+
+### Pending verification
+
+- Confirm the Product 78 marker at boot.
+- Confirm all selected/tracked secondary heading states fit without clipping.
+- Scroll Tracks and Airports down, leave and re-enter, and confirm both start at the
+  top. Repeat after returning from their profile/settings views.
+- Stay on each page through live refreshes and confirm the current scroll position is
+  retained until the page is entered again.
+- Confirm Product 77 live profiles, Product 76 neighbor rows, 20/40/80 ranges, MQTT,
+  local/remote OTA, airports, display stability, and memory recovery remain unchanged.
 
 ## Product 77 - 2026-08-05
 
 **Build:** `7IN-20260805-PRODUCT77-LIVE-AIRCRAFT-PROFILE`  
-**Source baseline:** Current `main` baseline commit
-`508144cf4599929505db077c64aec98d0cfdb406`, retaining Product 76 runtime commit
-`817462c8a6f2cb8157c7223a1788c8ff34dfc621`  
-**Status:** Focused replacement-source candidate; host validation complete;
-PlatformIO and physical verification pending
+**Commit:** [`d4b60cd`](https://github.com/bcarriveau/esp-aircraft-radar/commit/d4b60cddfecdc943c2d33231bc1a76289b85760b)  
+**Status:** Committed focused implementation; host validation recorded; PlatformIO
+and physical verification not recorded here
 
 ### Diagnosed
 
@@ -115,8 +182,8 @@ PlatformIO and physical verification pending
 
 **Build:** `7IN-20260804-PRODUCT76-PRIORITY-NEIGHBORS`
 **Commit:** [`817462c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/817462c8a6f2cb8157c7223a1788c8ff34dfc621)
-**Status:** Current source; focused implementation and host regression coverage
-committed; separate device validation not recorded here
+**Status:** Committed relative-neighbor baseline retained by Products 77 and 78;
+separate device validation not recorded here
 
 ### Changed
 

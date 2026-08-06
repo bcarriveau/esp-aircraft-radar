@@ -359,6 +359,12 @@ void setTracksVisible(bool visible) {
   setVisible(tracksTable, visible);
 }
 
+void resetScrollToTop(lv_obj_t* object) {
+  if (!object) return;
+  lv_obj_scroll_to_y(object, 0, LV_ANIM_OFF);
+  lv_obj_update_layout(object);
+}
+
 void restoreTracksScrollPosition(lv_coord_t previousScrollY) {
   if (!tracksTable) return;
 
@@ -836,6 +842,7 @@ void showAirportDirectory() {
   setVisible(airportDetailView, false);
   setLabelTextIfChanged(pageTitle, "AIRPORTS // NEARBY");
   updateAirportDirectory();
+  resetScrollToTop(airportDirectoryTable);
 }
 
 void showAirportOptions() {
@@ -1377,6 +1384,11 @@ void selectPage(uint8_t page) {
   setVisible(retryButton, false);
   setVisible(showPasswordButton, false);
   updatePageContent();
+  if (currentPage == 1) {
+    resetScrollToTop(tracksTable);
+  } else if (currentPage == 3 && airportView == AirportView::DIRECTORY) {
+    resetScrollToTop(airportDirectoryTable);
+  }
 }
 
 void tabEvent(lv_event_t* event) {
@@ -1858,6 +1870,7 @@ void detailBackEvent(lv_event_t*) {
     updateSelectedActions();
   } else {
     updatePageContent();
+    resetScrollToTop(tracksTable);
   }
 }
 
@@ -2427,7 +2440,7 @@ bool buildRadarPanels(lv_obj_t* root) {
   }
 
   leftOtherModeLabel = makeLabel(left, "NEAREST 3",
-                                 &lv_font_montserrat_16,
+                                 &lv_font_montserrat_14,
                                  rgb(110, 220, 255), 4, 86);
   lv_obj_set_width(leftOtherModeLabel, 112);
   lv_label_set_long_mode(leftOtherModeLabel, LV_LABEL_LONG_CLIP);

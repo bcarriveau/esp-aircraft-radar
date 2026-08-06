@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focused Product 77 live Aircraft Profile regression checks."""
+"""Product 77 live Aircraft Profile checks retained by Product 78."""
 
 from __future__ import annotations
 
@@ -91,12 +91,12 @@ def resolve_profile(
     return None, tracked_missing
 
 
-class Product77SourceTests(unittest.TestCase):
+class Product77RetainedSourceTests(unittest.TestCase):
     def test_product_marker(self) -> None:
-        self.assertIn("FIRMWARE_VERSION_CODE = 77", BUILD_INFO)
-        self.assertIn('FIRMWARE_VERSION_LABEL = "Product 77"', BUILD_INFO)
+        self.assertIn("FIRMWARE_VERSION_CODE = 78", BUILD_INFO)
+        self.assertIn('FIRMWARE_VERSION_LABEL = "Product 78"', BUILD_INFO)
         self.assertIn(
-            '"7IN-20260805-PRODUCT77-LIVE-AIRCRAFT-PROFILE"', BUILD_INFO
+            '"7IN-20260805-PRODUCT78-PAGE-TOP-RESET"', BUILD_INFO
         )
 
     def test_profile_refresh_is_version_gated(self) -> None:

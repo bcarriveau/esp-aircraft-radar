@@ -22,20 +22,20 @@ panels, Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 Current replacement-source build marker:
 
 ```text
-7IN-20260805-PRODUCT77-LIVE-AIRCRAFT-PROFILE
+7IN-20260805-PRODUCT78-PAGE-TOP-RESET
 ```
 
 Source baseline:
 
 ```text
 main
-508144cf4599929505db077c64aec98d0cfdb406
+d4b60cddfecdc943c2d33231bc1a76289b85760b
 ```
 
-Product 76 runtime commit retained by this update:
+Product 77 source commit retained by this update:
 
 ```text
-817462c8a6f2cb8157c7223a1788c8ff34dfc621
+d4b60cddfecdc943c2d33231bc1a76289b85760b
 ```
 
 The hardened permanent rollback baseline remains **Product 15**:
@@ -45,18 +45,23 @@ product-15-hardened
 7IN-20260721-PRODUCT15-HARDENED
 ```
 
-Product 77 is a focused replacement-source candidate based on the current `main`
-baseline. It keeps an open Aircraft Profile synchronized with newly published
-aircraft snapshots by stable ICAO hex. Distance, bearing, altitude, speed, heading,
-vertical rate, identity text, aircraft preview, and tracking action update together
-only when target, range, or tracking versions change.
+Product 78 is a focused replacement-source candidate based on the committed
+Product 77 `main` source. It reduces the selected/tracked secondary heading from
+Montserrat 16 to Montserrat 14 so `NEAR SELECT`, `NEAR TRACK`, `POSITION LOST`, and
+`NO OTHER` fit cleanly inside the fixed 112-pixel left-panel heading area.
 
-A fresh profile shows `CURRENT UPDATE`. When a selected aircraft is absent from the
-latest snapshot, the profile explicitly shows `NOT IN CURRENT UPDATE / LAST KNOWN
-VALUES` and prevents starting a new track from stale data. During the established
-tracked-aircraft grace period, it shows `TRACK SIGNAL LOST / LAST KNOWN VALUES`
-while preserving `STOP TRACKING`. The profile resumes current data automatically
-when the same ICAO returns.
+Tracks and the Airports directory now use explicit navigation-time scroll
+resets after their rows are ready. Entering either page, returning from a Tracks Aircraft Profile, or returning
+to the Airports directory starts at the top. Normal live refreshes while the user
+remains on a page preserve the current scroll position instead of repeatedly forcing
+the table upward.
+
+Product 77 is the current committed baseline. It keeps an open Aircraft Profile
+synchronized with newly published aircraft snapshots by stable ICAO hex. Distance,
+bearing, altitude, speed, heading, vertical rate, identity text, aircraft preview,
+and tracking action update together only when target, range, or tracking versions
+change. Fresh data shows `CURRENT UPDATE`; explicitly marked last-known states retain
+safe behavior when a selected or tracked aircraft is absent.
 
 Product 76 changed the three secondary aircraft rows shown during selection or
 tracking so they are ranked by horizontal separation from the selected or tracked
@@ -94,7 +99,7 @@ Products 69-72 established the bounded transport foundation used by that updater
   long signed release redirects can be sent without removing any TLS, host, or
   redirect restrictions.
 
-The Product 77 candidate preserves Product 63's PSRAM-only ADS-B JSON and
+The Product 78 candidate preserves Product 63's PSRAM-only ADS-B JSON and
 response-body policy, Product 64's measured 12 KiB core-0 ADS-B task stack,
 Product 66's bounded dirty-region radar restoration, Product 68's reduced fetch
 logging contention, Product 69's bounded transport, Product 73's verified remote
@@ -139,7 +144,7 @@ Selected state:
 - CLEAR removes the selection.
 - The secondary rows show up to three aircraft nearest to the selected aircraft.
 - Each row reports separation and relative compass direction from the selection.
-- The secondary heading reads `NEAR SELECT` or `NO OTHER`.
+- The compact secondary heading reads `NEAR SELECT` or `NO OTHER` without clipping.
 
 Tracked state:
 
@@ -149,7 +154,8 @@ Tracked state:
 - The secondary rows show up to three aircraft nearest to the tracked aircraft.
 - Each row reports separation and relative compass direction from the tracked
   aircraft rather than distance and bearing from home.
-- The secondary heading reads `NEAR TRACK`, `NO OTHER`, or `POSITION LOST`.
+- The compact secondary heading reads `NEAR TRACK`, `NO OTHER`, or
+  `POSITION LOST` without clipping.
 - Stopping tracking preserves selection when practical.
 - One or two successful snapshots that temporarily omit the tracked ICAO retain
   tracking.
@@ -178,14 +184,17 @@ Aircraft Profile:
 ### Additional pages
 
 - **Tracks:** Aircraft table with a live stable-ICAO Aircraft Profile, scrolling
-  protection after row-count reductions, and explicit return-to-Tracks behavior.
+  protection after row-count reductions, explicit return-to-Tracks behavior, and a
+  guaranteed top-of-list position whenever the page is entered. Live updates while
+  staying on Tracks preserve the user's current scroll position.
 - **Airspace:** Live totals, a green 20/40/80-mile range toggle, aircraft-category
   cards, and tappable nearest, fastest, lowest-airborne, and highest-airborne
   shortcuts that select aircraft on Radar by stable ICAO hex.
 - **Airports:** Nearby-airport awareness, directory and profile views, per-category
   20/40/80-mile symbol and label controls, `AUTO / SHOW / HIDE` preferences,
   current-label eye indicators retained for every airport label actually rendered,
-  and `SHOW ON RADAR` range selection.
+  `SHOW ON RADAR` range selection, and a top-of-directory reset whenever the page or
+  directory view is entered. Ongoing directory refreshes preserve active scrolling.
 - **System:** Build, memory, connectivity, airport, radar-cadence, MQTT, local OTA,
   and GitHub update status; Device & Network settings; and bounded maintenance
   controls.
@@ -277,6 +286,9 @@ Aircraft Profile:
   LVGL object and does not run during ordinary unchanged 80 ms frames.
 - Missing-current-data states retain clearly marked last-known values instead of
   silently presenting them as live.
+- Tracks and Airports reset their existing tables immediately after navigation
+  finishes populating the rows, while version-driven refreshes within the active
+  page retain the current valid scroll position.
 
 ### Home Assistant MQTT
 
@@ -514,7 +526,7 @@ A successful build creates:
 ~/.platformio/workspaces/bills_aircraft_radar/build/waveshare-s3-touch-lcd-7/firmware.bin
 ~/.platformio/workspaces/bills_aircraft_radar/build/waveshare-s3-touch-lcd-7/firmware.radarota
 <project>/release/firmware.radarota
-<project>/release/waveshare-esp32-s3-touch-lcd-7-product-77.radarota
+<project>/release/waveshare-esp32-s3-touch-lcd-7-product-78.radarota
 <project>/release/waveshare-esp32-s3-touch-lcd-7.manifest.json
 ```
 
@@ -553,7 +565,7 @@ To publish a stable release for the on-device updater:
 2. Confirm the expected Product marker on hardware.
 3. Run the relevant checked-in tests and normal radar regression checks.
 4. Create a normal, published, non-draft, non-prerelease release.
-5. Use the matching tag and release name, such as `product-77` / `Product 77`.
+5. Use the matching tag and release name, such as `product-78` / `Product 78`.
 6. Attach the generated versioned `.radarota` package and the fixed-name manifest.
 7. Keep `release/firmware.radarota` as the local browser-install fallback.
 
@@ -584,7 +596,7 @@ The programming USB-C port is normally used for upload and Serial Monitor.
 
 Confirm the serial log reports:
 
-- `7IN-20260805-PRODUCT77-LIVE-AIRCRAFT-PROFILE`
+- `7IN-20260805-PRODUCT78-PAGE-TOP-RESET`
 - PSRAM detected
 - unused BLE controller memory released
 - app-state, radar, UI, and ADS-B buffers allocated in PSRAM
@@ -603,7 +615,7 @@ Before calling a Product release complete:
 
 1. Compile and link the full PlatformIO project.
 2. Record flash and internal RAM use.
-3. Confirm the Product 77 marker, OPI PSRAM, 128 KiB LVGL pool, 12 KiB ADS-B
+3. Confirm the Product 78 marker, OPI PSRAM, 128 KiB LVGL pool, 12 KiB ADS-B
    stack, and 20-scanline bounce buffer.
 4. Test normal 15-second updates and 20/40/80-mile range changes.
 5. Select an aircraft, open **INFO**, and leave the profile open through several
@@ -621,25 +633,32 @@ Before calling a Product release complete:
     consecutive confirmed miss clears it.
 11. Confirm failed requests and stale discarded responses do not clear tracking.
 12. Test BACK, TRACK, STOP TRACK, CLEAR, tab changes, and selected timeout behavior.
-13. Select and track aircraft; confirm the three secondary rows remain ranked by
+13. Scroll down Tracks, leave and re-enter it, and confirm the first header/aircraft
+    rows are visible without manual upward scrolling. Repeat after returning from an
+    Aircraft Profile.
+14. Scroll down Airports, leave and re-enter it, then open and return from Airport
+    Profile and Display Settings; confirm the directory returns to the top each time.
+15. While remaining on Tracks or Airports, let live refreshes occur and confirm they
+    do not repeatedly force the current scroll position to the top.
+16. Select and track aircraft; confirm the three secondary rows remain ranked by
     separation from the priority aircraft and show relative direction.
-14. Confirm `NEAR SELECT`, `NEAR TRACK`, `NO OTHER`, and `POSITION LOST` states.
-15. Interrupt Wi-Fi or the router and confirm recovery.
-16. Change range during an active request and confirm stale-response rejection.
-17. Check display stability during HTTPS, MQTT, update checks, and page switching.
-18. Check heap, largest internal block, PSRAM, LVGL pool, and ADS-B stack stability.
-19. Confirm local browser OTA failure and success paths.
-20. Confirm a manual GitHub check waits for a safe ADS-B window and reports its state.
-21. Confirm reboot clears transient update/install state and starts a fresh
+17. Confirm `NEAR SELECT`, `NEAR TRACK`, `NO OTHER`, and `POSITION LOST` states.
+18. Interrupt Wi-Fi or the router and confirm recovery.
+19. Change range during an active request and confirm stale-response rejection.
+20. Check display stability during HTTPS, MQTT, update checks, and page switching.
+21. Check heap, largest internal block, PSRAM, LVGL pool, and ADS-B stack stability.
+22. Confirm local browser OTA failure and success paths.
+23. Confirm a manual GitHub check waits for a safe ADS-B window and reports its state.
+24. Confirm reboot clears transient update/install state and starts a fresh
     five-minute automatic-check delay.
-22. Publish a numerically newer test release and confirm two-tap remote installation,
+25. Publish a numerically newer test release and confirm two-tap remote installation,
     fresh manifest recheck, progress, verification, restart, and new marker.
-23. Confirm changed-manifest, cancellation, truncation, hash mismatch, wrong hardware,
+26. Confirm changed-manifest, cancellation, truncation, hash mismatch, wrong hardware,
     and wrong image cases leave the current boot partition active.
-24. Confirm MQTT disabled and enabled behavior, Home Assistant controls, and network
+27. Confirm MQTT disabled and enabled behavior, Home Assistant controls, and network
     serialization around ADS-B and OTA.
-25. Confirm every visible radar airport label has a matching directory eye indicator.
-26. Complete an extended soak test.
+28. Confirm every visible radar airport label has a matching directory eye indicator.
+29. Complete an extended soak test.
 
 ## Screenshots
 
@@ -681,6 +700,8 @@ curated repository-facing screenshot set is not yet committed under `docs/images
   tracked aircraft.
 - **Product 77:** Live stable-ICAO Aircraft Profiles with version-gated coherent
   refresh, explicit current/last-known states, and safe tracked-signal-loss actions.
+- **Product 78:** Compact selected/tracked neighbor headings plus navigation-time
+  Tracks and Airports top-of-page resets that do not disturb live in-page scrolling.
 
 Detailed confirmed Product history is maintained in `CHANGELOG.md`. Products 1-14
 are not reconstructed because the repository does not preserve authoritative
