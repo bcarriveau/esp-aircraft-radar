@@ -57,7 +57,7 @@ class ReleaseManifestTests(unittest.TestCase):
         )
         self.assertEqual(manifest["min_updater"], identity.updater_version)
 
-    def test_release_assets_keep_local_fallback_and_use_fixed_manifest(self) -> None:
+    def test_release_directory_contains_only_versioned_package_and_manifest(self) -> None:
         identity = MODULE.read_build_identity(ROOT / "include" / "build_info.h")
         firmware = self.make_firmware(identity.build_id)
         with tempfile.TemporaryDirectory() as temporary:
@@ -76,13 +76,24 @@ class ReleaseManifestTests(unittest.TestCase):
             self.assertEqual(manifest_path.name, MODULE.MANIFEST_ASSET_NAME)
             self.assertEqual(asset_path.read_bytes(), package_path.read_bytes())
             self.assertEqual(metadata.package_size, package_path.stat().st_size)
+            self.assertEqual(
+                {path.name for path in release_dir.iterdir()},
+                {MODULE.versioned_package_name(identity), MODULE.MANIFEST_ASSET_NAME},
+            )
+            self.assertFalse((release_dir / "firmware.radarota").exists())
+            self.assertNotIn("PROJECT_PACKAGE_PATH", vars(MODULE))
+            self.assertNotIn("copy_project_package", vars(MODULE))
 
     def test_build_identity_rejects_mismatched_label(self) -> None:
+        identity = MODULE.read_build_identity(ROOT / "include" / "build_info.h")
         original = (ROOT / "include" / "build_info.h").read_text(encoding="utf-8")
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "build_info.h"
             path.write_text(
-                original.replace('"Product 73"', '"Product 72"'),
+                original.replace(
+                    f'"Product {identity.version_code}"',
+                    f'"Product {identity.version_code - 1}"',
+                ),
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(ValueError, "does not match"):

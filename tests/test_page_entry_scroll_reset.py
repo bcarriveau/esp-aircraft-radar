@@ -84,9 +84,9 @@ class PageScroll:
 
 class Product78SourceTests(unittest.TestCase):
     def test_product_marker(self) -> None:
-        self.assertIn("FIRMWARE_VERSION_CODE = 78", BUILD_INFO)
-        self.assertIn('FIRMWARE_VERSION_LABEL = "Product 78"', BUILD_INFO)
-        self.assertIn('"7IN-20260805-PRODUCT78-PAGE-TOP-RESET"', BUILD_INFO)
+        self.assertIn("FIRMWARE_VERSION_CODE = 79", BUILD_INFO)
+        self.assertIn('FIRMWARE_VERSION_LABEL = "Product 79"', BUILD_INFO)
+        self.assertIn('"7IN-20260806-PRODUCT79-RANGE-SYMBOLS"', BUILD_INFO)
 
     def test_priority_heading_uses_compact_font(self) -> None:
         creation = UI_SOURCE[UI_SOURCE.index("leftOtherModeLabel = makeLabel") :]

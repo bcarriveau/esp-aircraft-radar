@@ -139,17 +139,18 @@ Release name: Product 73
 Channel:      stable
 ```
 
-PlatformIO's existing post-build hook creates:
+PlatformIO's post-build hook writes only the two repository release assets:
 
 ```text
-release/firmware.radarota
 release/waveshare-esp32-s3-touch-lcd-7-product-73.radarota
 release/waveshare-esp32-s3-touch-lcd-7.manifest.json
 ```
 
-Attach the fixed-name manifest and the Product 73 versioned package to the GitHub
-Release. `release/firmware.radarota` remains the local browser-install fallback.
-Do not rename or hand-edit generated assets.
+Use the Product-numbered `.radarota` for both the local browser OTA page and the
+GitHub Release. The browser accepts the full versioned filename, so no generic
+`release/firmware.radarota` copy is generated. Attach the fixed-name manifest and
+the matching Product-numbered package to the GitHub Release. Do not rename or
+hand-edit either generated asset.
 
 The manifest remains compact ASCII JSON, schema 1, and at most 2048 bytes. It
 contains the exact tag, hardware, stable channel, numeric version, readable
@@ -168,8 +169,8 @@ a separate future hardening phase.
 
 1. Build the exact intended Product 73 source and confirm
    `7IN-20260804-PRODUCT73-GITHUB-OTA-INSTALL` at boot.
-2. Confirm the existing local browser OTA still accepts the generated local
-   fallback package.
+2. Confirm the existing local browser OTA accepts the generated
+   Product-numbered `.radarota` package.
 3. Publish Product 73 only after local installation and normal radar regression
    checks pass.
 4. Exercise remote installation with a later compatible Product release, because

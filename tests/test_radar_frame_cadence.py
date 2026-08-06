@@ -14,7 +14,7 @@ def test_product67_marker_and_scope():
     lv_conf = (ROOT / "include/lv_conf.h").read_text(encoding="utf-8")
     panel = (ROOT / "include/waveshare_panel_board.h").read_text(encoding="utf-8")
 
-    assert "7IN-20260802-PRODUCT68-FETCH-CONTENTION" in build
+    assert "7IN-20260806-PRODUCT79-RANGE-SYMBOLS" in build
     assert "SWEEP_DEGREES_PER_SECOND = 27.5f" in renderer
     assert "elapsedMs * (SWEEP_DEGREES_PER_SECOND / 1000.0f)" in renderer
     assert "sweepDegrees + 2.2f" not in renderer
@@ -52,7 +52,9 @@ def test_dense_frames_use_bounded_merged_dirty_regions():
 def test_dirty_restore_bounds_cover_dynamic_contacts_and_tags():
     renderer = (ROOT / "src/radar_renderer.cpp").read_text(encoding="utf-8")
     assert "BITMAP_CONTACT_CLEAR_RADIUS = 14" in renderer
-    assert "DOT_CONTACT_CLEAR_RADIUS = 6" in renderer
+    assert "CONTACT_40_MILE_CLEAR_RADIUS = 10" in renderer
+    assert "CONTACT_80_MILE_CLEAR_RADIUS = 7" in renderer
+    assert "renderedContactClearRadius" in renderer
     assert "contact.x - clearRadius" in renderer
     assert "hit.tag.x1 - 1" in renderer
     assert "restoreLineFromBase" in renderer

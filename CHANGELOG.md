@@ -14,11 +14,11 @@ repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current replacement source:** Product 78
-- **Current build marker:** `7IN-20260805-PRODUCT78-PAGE-TOP-RESET`
+- **Current replacement source:** Product 79
+- **Current build marker:** `7IN-20260806-PRODUCT79-RANGE-SYMBOLS`
 - **Source baseline branch:** `main`
-- **Latest inspected baseline commit:** `d4b60cddfecdc943c2d33231bc1a76289b85760b`
-- **Product 77 source commit retained:** `d4b60cddfecdc943c2d33231bc1a76289b85760b`
+- **Latest inspected baseline commit:** `87e3382d23b68a55f3bc7ec7167641d3a7eceea4`
+- **Product 78 source commit retained:** `87e3382d23b68a55f3bc7ec7167641d3a7eceea4`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD,
   GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
@@ -26,14 +26,22 @@ repository does not provide authoritative evidence.
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 78 is a focused replacement-source candidate based on committed Product 77
-`main` commit `d4b60cddfecdc943c2d33231bc1a76289b85760b`. It has focused host
+Product 79 is a focused replacement-source candidate based on committed Product 78
+`main` commit `87e3382d23b68a55f3bc7ec7167641d3a7eceea4`. It has focused host
 regression coverage but is not claimed as committed, PlatformIO-built, uploaded, or
 physically verified here.
 
-Product 77 is committed on `main`. Product 73's remote GitHub installer was
+Product 78 is committed on `main`. Product 73's remote GitHub installer was
 physically proven by installing the versioned Product 74 test release. Later Product
 source remains documented without adding unrecorded device-validation claims.
+
+## Product 79 — 40/80-mile aircraft symbols
+
+- Keeps the existing full-size 25×25, 16-heading aircraft contact sprites unchanged at 20 miles.
+- Reuses the same checked-in contact sprites directly at render time, sampling them to 17×17 at 40 miles and 11×11 at 80 miles; no new bitmap assets, startup cache, or frame-loop allocation is added.
+- Preserves heading direction at 40 miles and uses a stable north-oriented type silhouette at 80 miles for consistent low-cost readability.
+- Removes the 40/80-mile dot substitution so contact appearance no longer changes between aircraft symbols and dots.
+- Preserves tracked red, selected amber, normal cyan, sweep tint, rings, stable ICAO hit testing, label priority, dirty-region restoration, target capacity, ADS-B networking, TLS, panel timing, DMA, OPI PSRAM, and the 20-scanline RGB bounce buffer.
 
 ## Product 78 - 2026-08-05
 

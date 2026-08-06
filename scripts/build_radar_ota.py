@@ -20,7 +20,6 @@ HEADER_SIZE = 512
 ESP_IMAGE_MAGIC = 0xE9
 ESP32_S3_CHIP_ID = 9
 HEADER_STRUCT = struct.Struct("<16sHH32s96sI32s328s")
-PROJECT_PACKAGE_PATH = Path("release") / "firmware.radarota"
 MANIFEST_ASSET_NAME = "waveshare-esp32-s3-touch-lcd-7.manifest.json"
 MAX_MANIFEST_BYTES = 2048
 
@@ -233,13 +232,6 @@ def create_release_manifest(
     return encoded
 
 
-def copy_project_package(package_path: Path, project_dir: Path) -> Path:
-    destination = project_dir / PROJECT_PACKAGE_PATH
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(package_path, destination)
-    return destination
-
-
 def write_release_assets(
     package_path: Path, build_info_path: Path, release_dir: Path
 ) -> tuple[Path, Path, PackageMetadata]:
@@ -268,7 +260,6 @@ def _platformio_post_action(source, target, env) -> None:
     package_size, package_sha = write_package(
         firmware_path, build_info_path, output_path
     )
-    project_output_path = copy_project_package(output_path, project_dir)
     asset_path, manifest_path, _ = write_release_assets(
         output_path, build_info_path, project_dir / "release"
     )
@@ -276,8 +267,7 @@ def _platformio_post_action(source, target, env) -> None:
         f"Radar OTA package: {output_path} "
         f"({package_size} bytes, SHA256 {package_sha})"
     )
-    print(f"Project OTA copy: {project_output_path}")
-    print(f"GitHub Release firmware asset: {asset_path}")
+    print(f"Versioned browser/GitHub OTA package: {asset_path}")
     print(f"GitHub Release manifest asset: {manifest_path}")
 
 
