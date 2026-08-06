@@ -35,8 +35,13 @@ constexpr size_t RADAR_BUFFER_BYTES =
 constexpr float SWEEP_DEGREES_PER_SECOND = 27.5f;
 constexpr uint32_t SWEEP_PERIOD_MS = 13091;
 constexpr uint32_t ACTIVE_FRAME_GAP_LIMIT_MS = 1000;
+constexpr int CONTACT_20_MILE_SIZE = 25;
+constexpr int CONTACT_40_MILE_SIZE = 17;
+constexpr int CONTACT_80_MILE_SIZE = 11;
 constexpr int BITMAP_CONTACT_CLEAR_RADIUS = 14;
-constexpr int DOT_CONTACT_CLEAR_RADIUS = 6;
+constexpr int CONTACT_20_MILE_CLEAR_RADIUS = BITMAP_CONTACT_CLEAR_RADIUS;
+constexpr int CONTACT_40_MILE_CLEAR_RADIUS = 10;
+constexpr int CONTACT_80_MILE_CLEAR_RADIUS = 7;
 constexpr uint16_t DIRTY_REGION_CAPACITY =
     aircraft::MAX_TARGETS * 2U + 4U;
 constexpr uint32_t RADAR_PERFORMANCE_LOG_INTERVAL_MS = 15000;
@@ -185,7 +190,7 @@ uint16_t airportLabelStatsCount = 0;
 ContactFrame contactFrame;
 uint8_t renderedHitCount = 0;
 uint16_t dirtyRegionCount = 0;
-bool renderedTwentyMileRange = false;
+int renderedContactClearRadius = CONTACT_20_MILE_CLEAR_RADIUS;
 app_state::Snapshot cachedRadarSnapshot{};
 bool cachedRadarSnapshotValid = false;
 uint32_t lastPerformanceLogMs = 0;
@@ -740,9 +745,9 @@ bool restorePreviousDynamicLayer(float previousSweepDegrees) {
   for (uint8_t index = 0; index < contactFrame.count; ++index) {
     const ScreenContact& contact = contactFrame.contacts[index];
     const int clearRadius =
-        renderedTwentyMileRange || contact.selected || contact.tracked
-            ? BITMAP_CONTACT_CLEAR_RADIUS
-            : DOT_CONTACT_CLEAR_RADIUS;
+        contact.selected || contact.tracked
+            ? CONTACT_20_MILE_CLEAR_RADIUS
+            : renderedContactClearRadius;
     if (!addDirtyRegion(contact.x - clearRadius, contact.y - clearRadius,
                         contact.x + clearRadius, contact.y + clearRadius)) {
       return false;
@@ -1129,16 +1134,20 @@ uint8_t radarContactHeadingIndex(float trackDegrees) {
 
 void drawRadarBitmapContact(int centerX, int centerY,
                             AircraftBitmapId bitmapId,
-                            uint8_t headingIndex, lv_color_t color) {
-  const int startX = centerX - RADAR_CONTACT_BITMAP_W / 2;
-  const int startY = centerY - RADAR_CONTACT_BITMAP_H / 2;
+                            uint8_t headingIndex, int destinationSize,
+                            lv_color_t color) {
+  const int startX = centerX - destinationSize / 2;
+  const int startY = centerY - destinationSize / 2;
   const uint8_t* sprite = radarContactBitmap(bitmapId, headingIndex);
 
-  for (uint8_t destinationY = 0; destinationY < RADAR_CONTACT_BITMAP_H;
-       ++destinationY) {
-    for (uint8_t destinationX = 0; destinationX < RADAR_CONTACT_BITMAP_W;
+  for (int destinationY = 0; destinationY < destinationSize; ++destinationY) {
+    const uint8_t sourceY = static_cast<uint8_t>(
+        destinationY * RADAR_CONTACT_BITMAP_H / destinationSize);
+    for (int destinationX = 0; destinationX < destinationSize;
          ++destinationX) {
-      if (!radarContactPixel(sprite, destinationX, destinationY)) continue;
+      const uint8_t sourceX = static_cast<uint8_t>(
+          destinationX * RADAR_CONTACT_BITMAP_W / destinationSize);
+      if (!radarContactPixel(sprite, sourceX, sourceY)) continue;
 
       const int x = startX + destinationX;
       const int y = startY + destinationY;
@@ -1151,13 +1160,19 @@ void drawRadarBitmapContact(int centerX, int centerY,
 void drawRadarBitmapContactWithOutline(int centerX, int centerY,
                                        AircraftBitmapId bitmapId,
                                        uint8_t headingIndex,
+                                       int destinationSize,
                                        lv_color_t color) {
   const lv_color_t outline = rgb(2, 8, 12);
-  drawRadarBitmapContact(centerX - 1, centerY, bitmapId, headingIndex, outline);
-  drawRadarBitmapContact(centerX + 1, centerY, bitmapId, headingIndex, outline);
-  drawRadarBitmapContact(centerX, centerY - 1, bitmapId, headingIndex, outline);
-  drawRadarBitmapContact(centerX, centerY + 1, bitmapId, headingIndex, outline);
-  drawRadarBitmapContact(centerX, centerY, bitmapId, headingIndex, color);
+  drawRadarBitmapContact(centerX - 1, centerY, bitmapId, headingIndex,
+                         destinationSize, outline);
+  drawRadarBitmapContact(centerX + 1, centerY, bitmapId, headingIndex,
+                         destinationSize, outline);
+  drawRadarBitmapContact(centerX, centerY - 1, bitmapId, headingIndex,
+                         destinationSize, outline);
+  drawRadarBitmapContact(centerX, centerY + 1, bitmapId, headingIndex,
+                         destinationSize, outline);
+  drawRadarBitmapContact(centerX, centerY, bitmapId, headingIndex,
+                         destinationSize, color);
 }
 
 void drawContacts(aircraft::Target* workTargets, uint8_t count,
@@ -1166,7 +1181,6 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
                   ContactFrame& frame) {
   const lv_color_t cyan = rgb(80, 210, 255);
   const lv_color_t sweepBitmapTint = rgb(225, 205, 105);
-  const lv_color_t sweepDotHalo = rgb(255, 220, 80);
   const lv_color_t amber = rgb(255, 190, 70);
   const lv_color_t red = rgb(255, 80, 80);
   frame.count = 0;
@@ -1280,38 +1294,40 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
     }
   }
 
+  const int contactSize =
+      rangeMiles <= 20.1f
+          ? CONTACT_20_MILE_SIZE
+          : (rangeMiles <= 40.1f ? CONTACT_40_MILE_SIZE
+                                 : CONTACT_80_MILE_SIZE);
+
   // Draw low-priority contacts first so tracked, selected, and nearer aircraft
-  // remain on top without suppressing any contact. At 20 miles the sweep briefly
-  // tints the normal bitmap at its existing size; at 40/80 miles the compact dot
-  // retains its small yellow halo. Tags and priority-state colors remain stable.
+  // remain on top without suppressing any contact. Existing 16-heading sprites
+  // remain full size at 20 miles and are sampled directly to 17x17 at 40 miles.
+  // The 80-mile view uses a fixed 11x11 type silhouette to remain readable and
+  // deterministic without adding runtime allocations, caches, or asset copies.
   for (uint8_t drawRank = frame.count; drawRank > 0; --drawRank) {
     const ScreenContact& screen =
         frame.contacts[priorityOrder[drawRank - 1]];
     const bool sweepActive =
         screen.sweepHighlighted && !screen.selected && !screen.tracked;
-    if (rangeMiles <= 20.1f) {
-      const lv_color_t iconColor =
-          screen.tracked
-              ? red
-              : (screen.selected
-                     ? amber
-                     : (sweepActive ? sweepBitmapTint : cyan));
-      const AircraftBitmapId bitmapId =
-          aircraft::bitmapForTarget(workTargets[screen.targetIndex]);
-      if (screen.needsOutline) {
-        drawRadarBitmapContactWithOutline(
-            screen.x, screen.y, bitmapId, screen.headingIndex, iconColor);
-      } else {
-        drawRadarBitmapContact(
-            screen.x, screen.y, bitmapId, screen.headingIndex, iconColor);
-      }
+    const lv_color_t iconColor =
+        screen.tracked
+            ? red
+            : (screen.selected
+                   ? amber
+                   : (sweepActive ? sweepBitmapTint : cyan));
+    const AircraftBitmapId bitmapId =
+        aircraft::bitmapForTarget(workTargets[screen.targetIndex]);
+    const uint8_t renderedHeadingIndex =
+        rangeMiles <= 40.1f ? screen.headingIndex : 0;
+    if (screen.needsOutline) {
+      drawRadarBitmapContactWithOutline(
+          screen.x, screen.y, bitmapId, renderedHeadingIndex,
+          contactSize, iconColor);
     } else {
-      const int contactRadius = screen.tracked ? 4 : 2;
-      if (sweepActive) {
-        fillCircle(screen.x, screen.y, contactRadius + 2, sweepDotHalo);
-      }
-      fillCircle(screen.x, screen.y, contactRadius,
-                 screen.tracked ? red : (screen.selected ? amber : cyan));
+      drawRadarBitmapContact(
+          screen.x, screen.y, bitmapId, renderedHeadingIndex,
+          contactSize, iconColor);
     }
 
     if (screen.selected) {
@@ -1361,7 +1377,9 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
     drawPlacedTag(
         frame.trackedX, frame.trackedY, lines, colors, 3, rgb(35, 12, 18),
         rgb(255, 105, 95), 118,
-        rangeMiles <= 20.1f ? RADAR_CONTACT_TAG_CLEARANCE : DOT_TAG_CLEARANCE,
+        rangeMiles <= 20.1f
+            ? RADAR_CONTACT_TAG_CLEARANCE
+            : (rangeMiles <= 40.1f ? 12 : DOT_TAG_CLEARANCE),
         hitIndex, labelBoxes, labelBoxCount);
   }
 
@@ -1378,7 +1396,9 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
     drawPlacedTag(
         screen.x, screen.y, lines, colors, 2, rgb(7, 22, 27),
         rgb(255, 190, 70), 104,
-        rangeMiles <= 20.1f ? RADAR_CONTACT_TAG_CLEARANCE : DOT_TAG_CLEARANCE,
+        rangeMiles <= 20.1f
+            ? RADAR_CONTACT_TAG_CLEARANCE
+            : (rangeMiles <= 40.1f ? 12 : DOT_TAG_CLEARANCE),
         screen.hitIndex, labelBoxes, labelBoxCount);
   }
 
@@ -1996,7 +2016,11 @@ bool render(aircraft::Target* workTargets, const char* selectedHex,
   const float projectionSeconds =
       min(contactAgeMs, adsb::FETCH_INTERVAL_MS * 2UL) / 1000.0f;
   const float rangeMiles = snapshot.rangeMiles;
-  renderedTwentyMileRange = rangeMiles <= 20.1f;
+  renderedContactClearRadius =
+      rangeMiles <= 20.1f
+          ? CONTACT_20_MILE_CLEAR_RADIUS
+          : (rangeMiles <= 40.1f ? CONTACT_40_MILE_CLEAR_RADIUS
+                                 : CONTACT_80_MILE_CLEAR_RADIUS);
   bool selectedAvailable = !selectedHex || !selectedHex[0];
   if (!snapshot.manualTracking && selectedHex && selectedHex[0]) {
     selectedAvailable = false;
@@ -2190,7 +2214,7 @@ bool hitTest(int canvasX, int canvasY, HitResult& result) {
     return strcmp(candidate.hex, best.hex) < 0;
   };
 
-  if (renderedTwentyMileRange) {
+  if (renderedContactClearRadius == CONTACT_20_MILE_CLEAR_RADIUS) {
     // A direct press on a visible tag is authoritative. Tag rectangles are
     // collision-placed, but priority and center distance keep any edge case
     // deterministic without allowing a nearby aircraft icon to steal the press.
@@ -2257,8 +2281,8 @@ bool hitTest(int canvasX, int canvasY, HitResult& result) {
     return copyResult(bestIndex);
   }
 
-  // Preserve the established 40/80-mile behavior: selected/tracked tags and
-  // compact contact dots participate in the same priority-and-distance contest.
+  // At 40/80 miles, selected/tracked tags and compact aircraft symbols
+  // participate in the same priority-and-distance contest.
   int bestIndex = -1;
   int bestPriority = -1;
   int bestDistanceSquared = INT_MAX;

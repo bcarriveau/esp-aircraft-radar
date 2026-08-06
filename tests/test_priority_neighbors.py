@@ -78,9 +78,9 @@ class Product76PriorityNeighborTests(unittest.TestCase):
 
     def test_current_build_retains_product_76_behavior(self) -> None:
         build = BUILD.read_text(encoding="utf-8")
-        self.assertIn("FIRMWARE_VERSION_CODE = 78", build)
-        self.assertIn('FIRMWARE_VERSION_LABEL = "Product 78"', build)
-        self.assertIn("7IN-20260805-PRODUCT78-PAGE-TOP-RESET", build)
+        self.assertIn("FIRMWARE_VERSION_CODE = 79", build)
+        self.assertIn('FIRMWARE_VERSION_LABEL = "Product 79"', build)
+        self.assertIn("7IN-20260806-PRODUCT79-RANGE-SYMBOLS", build)
 
     def test_relative_geometry_and_ordering(self) -> None:
         primary = Target("AAAAAA", 10.0, 0.0)
