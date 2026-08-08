@@ -1787,12 +1787,19 @@ void airspaceHighlightEvent(lv_event_t* event) {
   const uint8_t index =
       (uint8_t)(uintptr_t)lv_event_get_user_data(event);
   if (index >= AIRSPACE_HIGHLIGHT_COUNT ||
-      !airspaceHighlightHex[index][0] || app_state::hasManualTracking()) {
+      !airspaceHighlightHex[index][0]) {
     return;
   }
 
   aircraft::Target target;
   if (!copyVisibleTargetByHex(airspaceHighlightHex[index], target)) return;
+
+  if (app_state::hasManualTracking()) {
+    app_state::clearManualTracking();
+    Serial.println("Manual aircraft tracking stopped for Airspace selection");
+    syncRadarRangeControlPosition();
+  }
+
   selectAircraftHex(target.hex);
   if (!hasSelectedAircraft()) return;
   selectPage(0);
