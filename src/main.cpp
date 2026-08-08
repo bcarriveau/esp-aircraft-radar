@@ -10,10 +10,12 @@
 #include "app_state.h"
 #include "aircraft_data.h"
 #include "airport_data.h"
+#include "boot_splash.h"
 #include "build_info.h"
 #include "display_power.h"
 #include "mqtt_service.h"
 #include "ota_update.h"
+#include "radar_north_marker.h"
 #include "settings.h"
 #include "ui.h"
 #include "update_manager.h"
@@ -78,6 +80,9 @@ void setup() {
   lvgl_port_lock(-1);
   const bool uiReady = ui::buildUi();
   const bool updateUiReady = uiReady && update_ui::build();
+  const bool radarNorthReady = uiReady && radar_north_marker::attach();
+  const bool splashReady =
+      uiReady && boot_splash::show(settings::deviceTitle().c_str());
   if (!uiReady) ui::showFatalStatus("UI INITIALIZATION FAILED");
   lvgl_port_unlock();
   if (!uiReady) {
@@ -87,6 +92,14 @@ void setup() {
   if (!updateUiReady) {
     Serial.println(
         "WARNING: GitHub update indicator UI unavailable; radar continuing");
+  }
+  if (!radarNorthReady) {
+    Serial.println(
+        "WARNING: Live radar north marker unavailable; radar continuing");
+  }
+  if (!splashReady) {
+    Serial.println(
+        "WARNING: Boot splash unavailable; continuing with operational UI");
   }
 
   if (!airport_data::initialize(settings::homeLatitude(),
@@ -98,6 +111,7 @@ void setup() {
   if (!adsb::begin()) {
     Serial.println("FATAL: ADSB networking initialization failed; startup halted");
     lvgl_port_lock(-1);
+    boot_splash::cancel();
     ui::showFatalStatus("NETWORK INITIALIZATION FAILED");
     lvgl_port_unlock();
     return;
@@ -111,6 +125,9 @@ void setup() {
   }
 
   startupComplete = true;
+  lvgl_port_lock(-1);
+  boot_splash::markStartupComplete();
+  lvgl_port_unlock();
   Serial.println("Startup complete");
 }
 
