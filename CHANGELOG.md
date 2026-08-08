@@ -14,11 +14,11 @@ repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current replacement source:** Product 80
-- **Current build marker:** `7IN-20260807-PRODUCT80-BOOT-SPLASH`
+- **Current replacement source:** Product 81
+- **Current build marker:** `7IN-20260807-PRODUCT81-80MI-HEADING`
 - **Source baseline branch:** `main`
-- **Latest inspected baseline commit:** `997a5813bb1031ac6d5929cf849950ce23d51a2b`
-- **Product 79 source commit retained:** `997a5813bb1031ac6d5929cf849950ce23d51a2b`
+- **Current committed baseline:** Product 80 `ec320cca4ad53294f78cf1e933a54978af414e3a`
+- **Product 79 source commit:** `997a5813bb1031ac6d5929cf849950ce23d51a2b`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD,
   GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
@@ -26,114 +26,101 @@ repository does not provide authoritative evidence.
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 80 remains an uncommitted focused replacement-source candidate based on
-committed Product 79 `main` commit `997a5813bb1031ac6d5929cf849950ce23d51a2b`.
-Focused host validation is recorded below; PlatformIO and physical verification are
-not claimed here.
+Product 81 is a focused replacement-source candidate based directly on committed
+Product 80 `main` commit `ec320cca4ad53294f78cf1e933a54978af414e3a`.
+It changes only the 80-mile aircraft contact orientation behavior plus Product
+identity/documentation/tests. PlatformIO and physical verification are not claimed.
 
-Product 79 is committed on `main`. Product 73's remote GitHub installer was
-physically proven by installing the versioned Product 74 test release. Later Product
-source remains documented without adding unrecorded device-validation claims.
+## Product 81 - 2026-08-07
+
+**Build:** `7IN-20260807-PRODUCT81-80MI-HEADING`  
+**Source baseline:** Product 80 `main` commit
+`ec320cca4ad53294f78cf1e933a54978af414e3a`  
+**Status:** Focused replacement-source candidate; focused host validation complete;
+PlatformIO and physical verification pending
+
+### Changed
+
+- The 11x11 aircraft symbols at the 80-mile range now use each contact's existing
+  discretized heading index instead of forcing every 80-mile symbol to the
+  north-oriented heading bucket.
+- Retains the existing 16 heading buckets and existing aircraft contact bitmap
+  database; no new artwork, bitmap cache, task, timer, or render-loop allocation
+  is introduced.
+- Keeps the Product 79 25x25 symbols at 20 miles and 17x17 heading-aware symbols
+  at 40 miles unchanged.
+
+### Preserved
+
+- Product 80 avionics boot splash, saved-name branding, boot radar sweep, and live
+  north marker are unchanged.
+- Selected amber, tracked red, normal cyan, sweep tint, rings, labels, stable ICAO
+  hit testing, dirty-region restoration, and coherent snapshot rendering remain
+  unchanged.
+- ADS-B networking, native/fallback HTTPS, 15-second cadence, Wi-Fi/TLS recovery,
+  stale-response rejection, last-good retention, MQTT, OTA, 200-target capacity,
+  panel timing, DMA, OPI PSRAM, and the 20-scanline RGB bounce buffer are unchanged.
+
+### Validation
+
+- Five focused Product 81 range-symbol regression tests passed.
+- Complete renderer comparison against the Product 80 retained renderer confirmed
+  the intended runtime behavior change is limited to using `screen.headingIndex`
+  for 80-mile contacts instead of forcing heading bucket 0.
+- PlatformIO compile/link, memory totals, upload, physical display testing, and soak
+  testing were not run here.
+
+### Pending verification
+
+- Confirm boot serial output reports `7IN-20260807-PRODUCT81-80MI-HEADING`.
+- At 80 miles, confirm aircraft silhouettes visibly follow heading while remaining
+  readable at 11x11.
+- Confirm 20- and 40-mile symbol appearance and heading behavior remain unchanged.
+- Confirm selection, tracking, labels, sweep smoothness, touch hit testing, and
+  dirty-region restoration remain stable under dense 80-mile traffic.
 
 ## Product 80 - 2026-08-07
 
 **Build:** `7IN-20260807-PRODUCT80-BOOT-SPLASH`  
 **Source baseline:** Product 79 `main` commit
-`997a5813bb1031ac6d5929cf849950ce23d51a2b`  
-**Status:** Uncommitted visual candidate; focused host validation complete;
-PlatformIO and physical verification pending
+`997a5813bb1031ac6d5929cf849950ce23d51a2b`
 
 ### Added
 
-- Added a full-screen avionics-style startup overlay built from transient LVGL
-  objects and lines only; no GIF, video decoder, splash framebuffer, or new bitmap
-  asset is used.
-- Begins with a thin cyan center line expanding outward, then reveals the centered
-  radar-ring/crosshair/aircraft emblem.
-- Keeps only the `N` compass marker on the boot emblem, positioned directly above
-  the outer ring to match the approved cleaner draft.
-- Runs one clockwise radar sweep over 1.6 seconds and spaces the four green contact
-  reveals across that slower pass.
-- Uses the saved System `DISPLAY NAME` as the boot title. The default remains
-  `BILLS AIRCRAFT RADAR`; a successfully saved new display name appears on the next
-  boot. The title automatically steps down through existing Montserrat font sizes
-  to keep longer names centered within the 800-pixel screen.
-- Keeps `ESP32-S3 ADS-B DISPLAY`, `Designed by Bill Carriveau`, and the complete
-  bottom status row centered beneath the title.
-- Adds a single non-interactive `N` marker to the live 430x360 radar canvas. It is
-  centered at the top of the canvas so its center aligns exactly with the radar
-  centerline and it sits immediately above the outer circle without extending above
-  the visible canvas.
-- Adds `DISPLAY READY`, `TOUCH READY`, and `SYSTEM STARTING` status text, changing
-  the final state to `SYSTEM READY` only after required startup completes.
-- Keeps the splash visible for at least 3.8 seconds so the doubled sweep and later
-  title/status phases complete before dismissal. If required startup takes longer,
-  the completed splash remains in place until startup is ready, then fades into the
-  existing operational radar UI.
-- Treats both splash construction and the cosmetic live north marker as nonfatal.
-  If required ADS-B startup fails, the splash is cancelled before the established
-  `STARTUP HALTED` fatal screen is shown.
+- Added the lightweight avionics boot splash with saved System display-name
+  branding, centered radar emblem, north marker, startup status text, and a
+  1.6-second clockwise sweep.
+- Added the small centered `N` marker above the live radar circle.
+- Keeps the splash visible for at least 3.8 seconds while normal startup proceeds.
 
 ### Preserved
 
-- Builds the existing operational UI normally and places the splash above it, so
-  dismissal reveals the actual current Radar page rather than a reconstructed boot
-  mockup.
-- The live north marker is a small LVGL label layered over the existing radar canvas;
-  it does not alter the radar renderer, static-cache/dirty-region logic, contact
-  projection, airport rendering, labels, hit testing, or target state.
-- Adds no boot delay before ADS-B, airport, OTA, or MQTT initialization; the splash
-  animation is serviced by the existing LVGL timing while setup continues.
-- Adds no splash canvas, PSRAM buffer, capacity-scaled storage, network task, or
-  persistent animation task. All splash objects and the temporary LVGL timer are
-  deleted after dismissal.
-- Preserves Product 79 20/40/80-mile aircraft symbols, stable ICAO interaction,
-  selected/tracked behavior, 200-target bounds, radar dirty-region rendering, native
-  and fallback HTTPS, Wi-Fi recovery, MQTT, local/remote OTA, panel timing, DMA, OPI
-  PSRAM, and the 20-scanline RGB bounce buffer.
+- The splash overlays the existing operational UI and does not replace the radar
+  renderer or alter contact projection.
+- Product 79 aircraft symbols, stable ICAO interaction, networking, OTA, MQTT,
+  target capacity, panel timing, DMA, OPI PSRAM, and bounce-buffer protections
+  remain unchanged.
 
-### Validation
+## Product 79 - 2026-08-06
 
-- Fifteen focused Product 80 Python tests passed for Product identity, exact Product
-  79 baseline preservation in `main.cpp` and `build_info.h`, complete changelog
-  preservation, dynamic saved-name boot branding, north-only splash compass,
-  live-radar north-marker geometry, startup ordering, fatal handoff, 3.8-second
-  readiness gating, retained 1.6-second sweep, and forbidden dependencies.
-- The complete `src/boot_splash.cpp` passed strict C++17 syntax checking with
-  `-Wall -Wextra -Werror -pedantic` against focused LVGL 8-style interface stubs.
-- The complete `src/radar_north_marker.cpp` passed the same strict C++17 syntax
-  check against focused LVGL/radar-geometry interface stubs.
-- Static checks confirmed neither Product 80 UI module introduces networking,
-  TLS, private `config.h`, explicit heap allocation, splash canvas allocation,
-  or a new task.
-- The Product 80 main wiring reverses exactly to the committed Product 79 `main.cpp`
-  Git blob when only Product 80 wiring is removed. Product 80 build identity likewise
-  reverses exactly to the committed Product 79 `build_info.h` Git blob.
-- PlatformIO compile/link, generated memory totals, OTA asset generation, upload,
-  physical display/touch testing, and soak testing were not run here.
+**Build:** `7IN-20260806-PRODUCT79-RANGE-SYMBOLS`  
+**Source baseline:** Product 78 `main` commit
+`87e3382d23b68a55f3bc7ec7167641d3a7eceea4`
 
-### Pending verification
+### Changed
 
-- Confirm boot serial output reports `7IN-20260807-PRODUCT80-BOOT-SPLASH`.
-- Confirm only `N` appears on the boot emblem and the live Radar page, with both
-  centered cleanly above their outer circles.
-- Change `DISPLAY NAME` in System, save it, reboot, and confirm the boot title uses
-  the saved name while `Designed by Bill Carriveau` remains unchanged.
-- Confirm the 1.6-second sweep feels appropriately paced and the complete splash
-  remains visually centered on the physical 800x480 panel.
-- Confirm `SYSTEM STARTING` changes to `SYSTEM READY`, then the live radar appears
-  cleanly with no touch-through or screen rolling.
-- Confirm Product 79 20/40/80 symbols, airports, selection/tracking, outward
-  auto-zoom, MQTT, OTA, 15-second ADS-B cadence, and memory diagnostics remain
-  unchanged.
-
-## Product 79 — 40/80-mile aircraft symbols
-
-- Keeps the existing full-size 25×25, 16-heading aircraft contact sprites unchanged at 20 miles.
-- Reuses the same checked-in contact sprites directly at render time, sampling them to 17×17 at 40 miles and 11×11 at 80 miles; no new bitmap assets, startup cache, or frame-loop allocation is added.
-- Preserves heading direction at 40 miles and uses a stable north-oriented type silhouette at 80 miles for consistent low-cost readability.
-- Removes the 40/80-mile dot substitution so contact appearance no longer changes between aircraft symbols and dots.
-- Preserves tracked red, selected amber, normal cyan, sweep tint, rings, stable ICAO hit testing, label priority, dirty-region restoration, target capacity, ADS-B networking, TLS, panel timing, DMA, OPI PSRAM, and the 20-scanline RGB bounce buffer.
+- Keeps the existing full-size 25x25, 16-heading aircraft contact sprites unchanged
+  at 20 miles.
+- Reuses the same checked-in contact sprites directly at render time, sampling them
+  to 17x17 at 40 miles and 11x11 at 80 miles.
+- Preserves heading direction at 40 miles; Product 79 initially used a stable
+  north-oriented type silhouette at 80 miles.
+- Removes the 40/80-mile dot substitution without adding new bitmap assets,
+  startup caches, or frame-loop allocations.
+- Preserves tracked red, selected amber, normal cyan, sweep tint, rings, stable ICAO
+  hit testing, label priority, dirty-region restoration, target capacity, ADS-B
+  networking, TLS, panel timing, DMA, OPI PSRAM, and the 20-scanline RGB bounce
+  buffer.
 
 ## Product 78 - 2026-08-05
 

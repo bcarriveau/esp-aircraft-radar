@@ -1318,8 +1318,7 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
                    : (sweepActive ? sweepBitmapTint : cyan));
     const AircraftBitmapId bitmapId =
         aircraft::bitmapForTarget(workTargets[screen.targetIndex]);
-    const uint8_t renderedHeadingIndex =
-        rangeMiles <= 40.1f ? screen.headingIndex : 0;
+    const uint8_t renderedHeadingIndex = screen.headingIndex;
     if (screen.needsOutline) {
       drawRadarBitmapContactWithOutline(
           screen.x, screen.y, bitmapId, renderedHeadingIndex,
