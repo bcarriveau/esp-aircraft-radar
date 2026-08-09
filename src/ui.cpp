@@ -47,6 +47,8 @@ constexpr float RADAR_RANGES[RANGE_OPTION_COUNT] = {
 constexpr float TRACK_AUTO_ZOOM_EDGE_RATIO = 0.92f;
 constexpr float TRACK_AUTO_ZOOM_LOOKAHEAD_SECONDS = 30.0f;
 constexpr uint32_t SELECTED_AIRCRAFT_TIMEOUT_MS = 30000;
+constexpr lv_coord_t SETTINGS_KEYBOARD_CLEARANCE = 32;
+constexpr lv_coord_t SETTINGS_SCROLL_SPACER_Y = 280;
 constexpr uint8_t LEFT_NEAREST_ICON_INDEX = 0;
 constexpr uint8_t PRIORITY_ICON_INDEX = 1;
 constexpr uint8_t LIST_ICON_BASE_INDEX = 2;
@@ -297,6 +299,18 @@ void styleSettingsField(lv_obj_t* field) {
   lv_obj_set_style_radius(field, 6, 0);
   lv_obj_set_style_pad_all(field, 8, 0);
   lv_obj_set_style_text_color(field, rgb(225, 235, 240), 0);
+  lv_obj_set_style_bg_opa(field, LV_OPA_TRANSP, LV_PART_CURSOR);
+  lv_obj_set_style_border_opa(field, LV_OPA_TRANSP, LV_PART_CURSOR);
+  lv_obj_set_style_bg_opa(
+      field, LV_OPA_TRANSP, LV_PART_CURSOR | LV_STATE_FOCUSED);
+  lv_obj_set_style_border_color(
+      field, rgb(63, 255, 155), LV_PART_CURSOR | LV_STATE_FOCUSED);
+  lv_obj_set_style_border_opa(
+      field, LV_OPA_COVER, LV_PART_CURSOR | LV_STATE_FOCUSED);
+  lv_obj_set_style_border_width(
+      field, 2, LV_PART_CURSOR | LV_STATE_FOCUSED);
+  lv_obj_set_style_border_side(
+      field, LV_BORDER_SIDE_LEFT, LV_PART_CURSOR | LV_STATE_FOCUSED);
   lv_obj_set_style_border_color(field, rgb(63, 255, 155), LV_STATE_FOCUSED);
   lv_obj_set_style_border_width(field, 2, LV_STATE_FOCUSED);
 }
@@ -402,6 +416,19 @@ void setSystemCreditVisible(bool visible) {
   setVisible(systemCreditPanel, visible);
 }
 
+void restoreSettingsCardScroll() {
+  if (!deviceNetworkCard) return;
+  const bool scrollEnabled =
+      lv_obj_has_flag(deviceNetworkCard, LV_OBJ_FLAG_SCROLLABLE);
+  if (!scrollEnabled && lv_obj_get_scroll_y(deviceNetworkCard) == 0) return;
+  lv_obj_add_flag(deviceNetworkCard, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_scroll_to_y(deviceNetworkCard, 0, LV_ANIM_OFF);
+  lv_obj_update_layout(deviceNetworkCard);
+  lv_obj_clear_flag(deviceNetworkCard, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+void closeSettingsKeyboard();
+
 void setSettingsFormVisible(bool visible) {
   setVisible(systemStatusCard, visible);
   setVisible(systemFirmwareButton, visible);
@@ -416,9 +443,7 @@ void setSettingsFormVisible(bool visible) {
   setVisible(resetSettingsButton, visible);
   setVisible(settingsStatusLabel, visible);
   for (lv_obj_t* label : settingsFormLabels) setVisible(label, visible);
-  if (!visible && settingsKeyboard) {
-    lv_obj_add_flag(settingsKeyboard, LV_OBJ_FLAG_HIDDEN);
-  }
+  if (!visible) closeSettingsKeyboard();
 }
 
 void populateSettingsForm() {
@@ -1159,11 +1184,39 @@ void airportSaveEvent(lv_event_t*) {
 }
 
 void closeSettingsKeyboard() {
-  if (!settingsKeyboard) return;
-  lv_obj_t* field = lv_keyboard_get_textarea(settingsKeyboard);
-  lv_keyboard_set_textarea(settingsKeyboard, nullptr);
-  lv_obj_add_flag(settingsKeyboard, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_t* field = nullptr;
+  if (settingsKeyboard) {
+    field = lv_keyboard_get_textarea(settingsKeyboard);
+    lv_keyboard_set_textarea(settingsKeyboard, nullptr);
+    lv_obj_add_flag(settingsKeyboard, LV_OBJ_FLAG_HIDDEN);
+  }
   if (field) lv_obj_clear_state(field, LV_STATE_FOCUSED);
+  restoreSettingsCardScroll();
+}
+
+void revealSettingsField(lv_obj_t* field) {
+  if (!field || !settingsKeyboard || !deviceNetworkCard) return;
+
+  lv_obj_add_flag(deviceNetworkCard, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_scroll_to_y(deviceNetworkCard, 0, LV_ANIM_OFF);
+  lv_obj_update_layout(lv_scr_act());
+
+  lv_area_t fieldArea{};
+  lv_area_t keyboardArea{};
+  lv_obj_get_coords(field, &fieldArea);
+  lv_obj_get_coords(settingsKeyboard, &keyboardArea);
+
+  const lv_coord_t visibleBottom =
+      static_cast<lv_coord_t>(keyboardArea.y1 - SETTINGS_KEYBOARD_CLEARANCE);
+  lv_coord_t requiredScroll = fieldArea.y2 > visibleBottom
+      ? static_cast<lv_coord_t>(fieldArea.y2 - visibleBottom)
+      : 0;
+  const lv_coord_t maxScroll = lv_obj_get_scroll_bottom(deviceNetworkCard);
+  if (requiredScroll > maxScroll) requiredScroll = maxScroll;
+  if (requiredScroll > 0) {
+    lv_obj_scroll_to_y(deviceNetworkCard, requiredScroll, LV_ANIM_OFF);
+    lv_obj_update_layout(deviceNetworkCard);
+  }
 }
 
 void settingsKeyboardEvent(lv_event_t* event) {
@@ -1184,6 +1237,7 @@ void settingsFieldEvent(lv_event_t* event) {
             ? LV_KEYBOARD_MODE_NUMBER : LV_KEYBOARD_MODE_TEXT_LOWER);
     lv_obj_move_foreground(settingsKeyboard);
     lv_obj_clear_flag(settingsKeyboard, LV_OBJ_FLAG_HIDDEN);
+    revealSettingsField(field);
   }
 }
 
@@ -3205,8 +3259,18 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_size(deviceNetworkCard, 456, 205);
   lv_obj_set_pos(deviceNetworkCard, 286, 58);
   styleDashboardCard(deviceNetworkCard);
+  lv_obj_set_scrollbar_mode(deviceNetworkCard, LV_SCROLLBAR_MODE_OFF);
   makeLabel(deviceNetworkCard, "DEVICE & NETWORK", &lv_font_montserrat_14,
             rgb(110, 220, 255), 7, 4);
+
+  lv_obj_t* settingsScrollSpacer = lv_obj_create(deviceNetworkCard);
+  lv_obj_set_size(settingsScrollSpacer, 1, 1);
+  lv_obj_set_pos(settingsScrollSpacer, 0, SETTINGS_SCROLL_SPACER_Y);
+  lv_obj_set_style_bg_opa(settingsScrollSpacer, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(settingsScrollSpacer, 0, 0);
+  lv_obj_set_style_pad_all(settingsScrollSpacer, 0, 0);
+  lv_obj_clear_flag(settingsScrollSpacer, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(settingsScrollSpacer, LV_OBJ_FLAG_SCROLLABLE);
 
   settingsKeyboard = lv_keyboard_create(lv_scr_act());
   lv_obj_set_size(settingsKeyboard, 800, 250);

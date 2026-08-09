@@ -14,11 +14,10 @@ repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current replacement source:** Product 81
-- **Current build marker:** `7IN-20260807-PRODUCT81-80MI-HEADING`
+- **Current replacement source:** Product 83
+- **Current build marker:** `7IN-20260808-PRODUCT83-SETTINGS-KEYBOARD-VISIBILITY`
 - **Source baseline branch:** `main`
-- **Current committed baseline:** Product 80 `ec320cca4ad53294f78cf1e933a54978af414e3a`
-- **Product 79 source commit:** `997a5813bb1031ac6d5929cf849950ce23d51a2b`
+- **Current committed baseline:** Product 82 `d3e769b34eb112d7153c43f75a1dd5d3e69eb276`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD,
   GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
@@ -26,10 +25,113 @@ repository does not provide authoritative evidence.
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 81 is a focused replacement-source candidate based directly on committed
-Product 80 `main` commit `ec320cca4ad53294f78cf1e933a54978af414e3a`.
-It changes only the 80-mile aircraft contact orientation behavior plus Product
-identity/documentation/tests. PlatformIO and physical verification are not claimed.
+Product 83 is a focused replacement-source candidate based directly on committed
+Product 82 `main` commit `d3e769b34eb112d7153c43f75a1dd5d3e69eb276`.
+It changes only the System-page Settings keyboard visibility behavior plus Product
+identity/documentation. PlatformIO and physical verification are not claimed.
+
+### History completeness notes
+
+- Numbered Product history is represented continuously from Product 15 through
+  Product 83 using current Git history first and preserved historical documentation
+  only where standalone Git boundaries are absent.
+- Product 17 is recorded as the documented native-HTTPS precursor inside Product 18;
+  no standalone Product 17 commit or build marker is invented.
+- Products 19-21 remain a combined record because reliable standalone Product 19/20
+  commit/build boundaries are not preserved.
+- Product 33 records the standalone R2 and R5 revisions without inventing missing
+  R3/R4 commits.
+- Product 36, Product 40, Product 46, Product 53, and Product 56 retain their
+  confirmed revision chains where those revisions materially changed the product.
+- Product 83 remains a local replacement-source candidate; Product 82 remains the
+  latest committed GitHub baseline until Product 83 is actually committed.
+
+## Product 83 - 2026-08-08
+
+**Build:** `7IN-20260808-PRODUCT83-SETTINGS-KEYBOARD-VISIBILITY`  
+**Source baseline:** Product 82 `main` commit
+`d3e769b34eb112d7153c43f75a1dd5d3e69eb276`  
+**Status:** Focused replacement-source candidate; focused host validation complete;
+PlatformIO and physical verification pending
+
+### Changed
+
+- The System-page **DEVICE & NETWORK** card temporarily enables bounded vertical
+  scrolling while the on-screen keyboard is active.
+- Focusing Display Name, Wi-Fi SSID, Password, Latitude, or Longitude scrolls only
+  that card enough to keep the active field visible above the 250-pixel keyboard
+  and its edge/shadow clearance.
+- The System page title, header, navigation, System Status card, and maintenance
+  controls retain their normal fixed positions.
+- Keyboard DONE/CANCEL, opening the OTA or MQTT overlay, leaving the System page, or
+  otherwise hiding the Settings form restores the Device & Network card to its
+  normal top position and removes the temporary scrolling state.
+- The temporary card scrollbar remains hidden so keyboard editing does not change
+  the normal System-page visual treatment.
+- Changed curser style to be more visable when in use and hidden when no edit is taking place.
+
+### Preserved
+
+- Existing password masking and the **SHOW/HIDE** password control are unchanged.
+- Latitude/Longitude continue using the numeric keyboard; text fields keep their
+  existing text keyboard behavior.
+- Settings validation, NVS save/reset behavior, Wi-Fi reconnect behavior, and
+  location-change refresh behavior are unchanged.
+- ADS-B networking, native/fallback HTTPS, 15-second cadence, Wi-Fi/TLS recovery,
+  stale-response rejection, last-good retention, MQTT, OTA, radar rendering,
+  stable ICAO selection/tracking, target capacity, panel timing, DMA, OPI PSRAM,
+  and the 20-scanline RGB bounce buffer are unchanged.
+
+### Validation
+
+- Exact Product 82 `src/ui.cpp` and `include/build_info.h` baselines were verified
+  against their Git blob SHAs before editing.
+- Complete changed-file comparison confirmed `src/ui.cpp` changes are limited to
+  Settings keyboard focus/scroll/restore behavior and `include/build_info.h`
+  changes are limited to Product 83 identity/release notes.
+- A focused C++17 scroll/restore behavior model passed with
+  `-Wall -Wextra -Werror -pedantic`, AddressSanitizer, and
+  UndefinedBehaviorSanitizer.
+- LVGL 8.3.11 compatibility was checked for the scroll APIs used.
+- Modified files passed delimiter, trailing-whitespace, build-marker, package,
+  checksum, and forbidden-API checks.
+- PlatformIO compile/link, generated memory totals, upload, physical display/touch
+  testing, and soak testing were not run here.
+
+### Pending verification
+
+- Confirm boot serial output reports
+  `7IN-20260808-PRODUCT83-SETTINGS-KEYBOARD-VISIBILITY`.
+- Tap each editable System field and confirm it remains fully visible above the
+  keyboard.
+- Confirm password SHOW/HIDE and numeric Latitude/Longitude keyboard behavior.
+- Press DONE/CANCEL, leave/re-enter System, and open OTA/MQTT after editing; confirm
+  the Device & Network card always returns to its normal position.
+- Confirm page switching, touch response, radar rendering, networking, and display
+  stability remain unchanged.
+
+## Product 82 - 2026-08-07
+
+**Build:** `7IN-20260807-PRODUCT82-AIRSPACE-HANDOFF`  
+**Commit:** [`d3e769b`](https://github.com/bcarriveau/esp-aircraft-radar/commit/d3e769b34eb112d7153c43f75a1dd5d3e69eb276)  
+**Status:** Committed focused Airspace-selection handoff correction; PlatformIO and
+physical verification are not recorded here
+
+### Fixed
+
+- Resolves a tapped Airspace live-highlight aircraft by stable ICAO before changing
+  the current manual-tracking state.
+- If another aircraft is being manually tracked, stops that tracking only after the
+  tapped highlight has been confirmed as a current aircraft target.
+- Returns to Radar with the tapped aircraft selected in the normal amber state.
+- Keeps **TRACK** as a deliberate second action instead of immediately transferring
+  tracking to the tapped aircraft.
+
+### Preserved
+
+- Stable ICAO selection/tracking semantics and the established Radar action flow.
+- Radar range, rendering, networking, display timing, PSRAM, target capacity, OTA,
+  MQTT, and hardened transport/recovery behavior.
 
 ## Product 81 - 2026-08-07
 
@@ -621,874 +723,749 @@ physically verified Product 73 remote-install implementation
 - Used a full cached-base copy on dense frames as an initial bounded strategy.
 - Added radar render-duration and active frame-gap diagnostics.
 
-### Physical result
-
-- Elapsed-time sweep and static caching improved visible motion.
-- Dense 80-mile frames still copied the full cached base every frame and remained
-  visibly jerky during TLS, leading to Product 66.
-
 ## Product 64 - 2026-08-02
 
-**Build:** `7IN-20260802-PRODUCT64-MEMORY-PHASE2`
-**Commit:** [`21e2e06`](https://github.com/bcarriveau/esp-aircraft-radar/commit/21e2e0649f01bb848c728cf37a7f8b6c6b1ed16a)
-**Status:** Hardware-verified native HTTPS memory path retained
+**Commit:** [`21e2e06`](https://github.com/bcarriveau/esp-aircraft-radar/commit/21e2e0649f01bb848c728cf37a7f8b6c6b1ed16a)  
+**Status:** Measured memory/diagnostic refinement retained by later Products
 
 ### Changed
 
-- Reduced the measured core-0 ADS-B task stack from 16 KiB to 12 KiB, recovering
-  4 KiB permanent internal memory while retaining roughly 7 KiB observed headroom.
-- Added an active fetch-stage label and explicit `tls-handshake` checkpoint so
-  periodic low-water samples blocked in `esp_http_client_open()` retain correct
-  attribution.
-- Moved Firmware / OTA to the System-page header and bounded the title width.
-- Kept the 128 KiB LVGL pool unchanged.
-
-### Hardware result
-
-- Repeated native HTTPS requests restored heap/largest block without progressive
-  loss, and the 12 KiB task retained approximately 7.4 KiB free on the observed path.
+- Reduced the measured core-0 ADS-B task stack from 16 KiB to 12 KiB while retaining
+  the established stack-headroom diagnostics.
+- Improved fetch-stage attribution so time inside native HTTPS open/TLS setup is
+  reported as TLS-handshake work rather than being hidden by unrelated service text.
+- Moved the existing Firmware / OTA control into the System-page header.
+- Preserved the 128 KiB LVGL pool, Product 63 PSRAM parse policy, HTTPS behavior,
+  target bounds, display timing, DMA, OPI PSRAM, and bounce buffer.
 
 ## Product 63 - 2026-08-02
 
-**Build:** `7IN-20260802-PRODUCT63-MEMORY-PHASE1`
-**Commit:** [`cf8504f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/cf8504fb68b069fce096187b3f3012bdacee4866)
-**Status:** PSRAM memory architecture retained
+**Commit:** [`cf8504f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/cf8504fb68b069fce096187b3f3012bdacee4866)  
+**Status:** PSRAM parse-memory policy retained
 
 ### Changed
 
-- Added a PSRAM-only ArduinoJson allocator for both the filter and response document.
-- Removed internal `malloc()` fallback for ADS-B response payload storage.
-- Replaced per-fetch Arduino `String` request/path construction with bounded buffers.
-- Moved the 64-entry airport directory array from internal DRAM to PSRAM; allocation
-  failure disables only the optional directory page.
-- Added fetch-only heap/largest-block lows, lifetime/fetch stage attribution, ADS-B
-  task stack headroom, and LVGL pool use/free/largest/fragmentation diagnostics.
-- Kept the 128 KiB LVGL pool and then-16 KiB task stack unchanged until measurements.
-
-### Hardware evidence
-
-- Native requests restored internal and PSRAM baselines; JSON completion no longer
-  reduced internal heap/largest block.
-- Measurements supported the Product 64 task-stack reduction.
+- Kept both ADS-B ArduinoJson documents and the response payload in PSRAM-only
+  storage.
+- Replaced per-fetch Arduino `String` request construction with bounded character
+  buffers.
+- Moved the optional Airports directory array from internal DRAM to PSRAM.
+- Added fetch-only heap/largest-block lows, stage attribution, LVGL-pool metrics,
+  and ADS-B task-stack headroom diagnostics.
+- Preserved transport policy, radar snapshots, 200-target capacity, and Product 62
+  airport-directory eye behavior.
 
 ## Product 62 - 2026-08-02
 
-**Build:** `7IN-20260802-PRODUCT62-AIRPORT-EYE-COVERAGE`
-**Commit:** [`2bae5aa`](https://github.com/bcarriveau/esp-aircraft-radar/commit/2bae5aadeb4207c4c846cdc1f70e52b333b88214)
-**Status:** Airport-directory visibility fix retained
+**Build:** `7IN-20260802-PRODUCT62-AIRPORT-EYE-COVERAGE`  
+**Commit:** [`2bae5aa`](https://github.com/bcarriveau/esp-aircraft-radar/commit/2bae5aadeb4207c4c846cdc1f70e52b333b88214)  
+**Status:** Bounded airport-directory coverage correction
 
 ### Fixed
 
-- Kept the Airports directory bounded at 64 rows while examining the complete
-  bounded nearby-airport set through an optional PSRAM scratch buffer.
-- Retained every stable airport identifier whose label was rendered on Radar.
-- Replaced only farther non-visible rows and restored distance order afterward.
-- Preserved nearest-64 behavior if the optional scratch allocation fails.
+- Kept the Airports directory bounded at 64 rows while scanning the complete bounded
+  nearby-airport set through an optional PSRAM scratch buffer.
+- Retained every airport whose label was actually rendered on Radar so directory eye
+  indicators correspond to visible labels by stable airport identifier.
+- Replaced only farther non-visible rows when needed, restored distance ordering,
+  and preserved the nearest-64 fallback if optional scratch storage is unavailable.
 
 ## Product 61 - 2026-08-02
 
-**Build:** `7IN-20260802-PRODUCT61-OTA-SOCKET-PACING`
-**Commit:** [`5ab7db0`](https://github.com/bcarriveau/esp-aircraft-radar/commit/5ab7db06de45883eda8e96bd5c8633d2fb63b862)
-**Status:** Physically verified local browser OTA release
+**Build:** `7IN-20260802-PRODUCT61-OTA-SOCKET-PACING`  
+**Commit:** [`5ab7db0`](https://github.com/bcarriveau/esp-aircraft-radar/commit/5ab7db06de45883eda8e96bd5c8633d2fb63b862)  
+**Status:** Physically verified local-browser OTA handoff
 
-### Diagnosed
+### Fixed
 
-- Chrome HAR captures showed rapid connection handoffs resetting `/status` and the
-  first multipart `/upload` before firmware writing began.
-- Successful retries occurred only after a small delay; responses also contained a
-  duplicate `Connection: close` header.
+- Paced the single-client browser handoff between `/prepare`, `/status`, and
+  multipart `/upload`.
+- Added bounded retries for transient control connections and allowed one upload
+  retry only when authenticated status still reported READY with zero transfer bytes.
+- Exposed received/written/firmware byte counters and removed the duplicate
+  application-added `Connection: close` header.
 
-### Changed
+### Physical verification
 
-- Added 500 ms prepare/status and ready/upload pacing.
-- Polls status once per second.
-- Added bounded 300/600 ms network-only control retries.
-- Allows one upload retry only when authenticated status proves zero received and
-  written bytes.
-- Exposed transfer counters and removed the duplicate close header.
-
-### Physical result
-
-- One prepare, one status, and one multipart upload completed without connection
-  reset; the verified image installed, restarted with `Reset reason: 3`, and resumed
-  native ADS-B HTTPS and MQTT with stable resources.
+- A captured Chrome run completed one prepare, one status request, and one upload
+  without connection reset or duplicate transfer.
+- The 2,409,888-byte firmware image verified, the radar restarted with software
+  reset reason 3, and native ADS-B HTTPS plus MQTT resumed with stable memory.
 
 ## Product 60 - 2026-08-02
 
-**Build:** `7IN-20260802-PRODUCT60-OTA-PREPARE-IDEMPOTENT`
-**Commit:** [`9d23ef3`](https://github.com/bcarriveau/esp-aircraft-radar/commit/9d23ef3de361ef4fc900e715a32b484a7a3cc4e9)
+**Build:** `7IN-20260802-PRODUCT60-OTA-PREPARE-IDEMPOTENT`  
+**Commit:** [`9d23ef3`](https://github.com/bcarriveau/esp-aircraft-radar/commit/9d23ef3de361ef4fc900e715a32b484a7a3cc4e9)  
 **Status:** OTA preparation correction retained
 
 ### Fixed
 
-- Repeated authenticated `/prepare` requests during `PREPARING` return HTTP 202;
-  repeated requests during `READY` return HTTP 200.
-- Duplicate requests do not reset the upload session, request maintenance again,
-  or extend the preparation deadline.
-- Added one bounded browser recovery path using `/status` when the first prepare
-  response is lost.
-- Preserved the Product 57 multipart upload route and writer.
+- Made repeated authenticated `/prepare` requests idempotent while the radar is
+  already PREPARING or READY.
+- Added bounded browser recovery when the first preparation response is lost without
+  resetting the upload session or extending the existing preparation deadline.
+- Preserved the established multipart upload writer, package validation, inactive-slot
+  write path, and restart implementation.
 
 ## Product 59 - 2026-08-02
 
-**Build:** `7IN-20260802-PRODUCT59-NETWORK-RECOVERY-MEMORY`
-**Commit:** [`a040fe4`](https://github.com/bcarriveau/esp-aircraft-radar/commit/a040fe46363013f6f18b8c33d74ba8fe6fa19a08)
-**Status:** Memory/recovery ownership retained
+**Build:** `7IN-20260802-PRODUCT59-NETWORK-RECOVERY-MEMORY`  
+**Commit:** [`a040fe4`](https://github.com/bcarriveau/esp-aircraft-radar/commit/a040fe46363013f6f18b8c33d74ba8fe6fa19a08)  
+**Status:** Hard-recovery memory/ownership refinement retained
 
 ### Changed
 
-- Released unused ESP32-S3 BLE controller memory during startup.
-- Required Core-1 MQTT to close its socket, destroy clients, and release bounded
-  buffers before Core 0 recycles the station radio.
-- Added bounded acknowledgement and lwIP settlement; hard recovery is deferred if
-  MQTT cannot acknowledge.
-- Kept the MQTT hold through the reconnect window.
-- Made hard Wi-Fi recovery and OTA maintenance mutually exclusive.
-- Rejected OTA enable/preparation while recovery owns the network and prevented
-  recovery from starting after OTA reservation.
+- Released unused ESP32-S3 BLE-controller memory during startup.
+- Required MQTT to close its socket, destroy clients, and free bounded work buffers
+  before a hard station-radio recycle.
+- Deferred hard recovery when MQTT did not acknowledge the bounded hold instead of
+  tearing the radio down underneath it.
+- Made hard Wi-Fi recovery and the Product 58 OTA window mutually exclusive.
 
 ## Product 58 - 2026-08-02
 
-**Build:** `7IN-20260802-PRODUCT58-OTA-EXCLUSIVE-HOLD`
-**Commit:** [`a6e96d4`](https://github.com/bcarriveau/esp-aircraft-radar/commit/a6e96d4bb5e41ec342b3807039498d5c76bef1c8)
-**Status:** Physically verified across consecutive local OTA cycles
+**Build:** `7IN-20260802-PRODUCT58-OTA-EXCLUSIVE-HOLD`  
+**Commit:** [`a6e96d4`](https://github.com/bcarriveau/esp-aircraft-radar/commit/a6e96d4bb5e41ec342b3807039498d5c76bef1c8)  
+**Status:** Network-exclusive OTA/restart behavior physically exercised
 
 ### Changed
 
-- Made the complete five-minute OTA window network-exclusive from **ENABLE OTA**.
-- ADS-B finishes only an in-flight request and then parks; MQTT disconnects and
-  releases its resources immediately.
-- Suppressed refresh, reconnect, Wi-Fi recovery, and fallback restart while OTA owns
-  the network.
-- Retained ownership through preparation, retry, upload, verification, and restart.
-- Fixed the dual-core restart crash with an interrupt-masked IRAM Core-1 park,
-  atomic acknowledgement, and bounded Core-0 restart task.
-- Added reset-reason diagnostics.
+- Claimed the network for the complete five-minute local OTA window from enable
+  through preparation, upload, verification, and restart.
+- Parked ADS-B after any request already in flight and released MQTT network/work
+  resources while OTA owned the network.
+- Suppressed competing refresh, reconnect, recovery, and fallback-restart actions
+  during OTA ownership.
+- Added the IRAM-safe Core-1 park and bounded Core-0 restart handoff needed for a
+  clean ESP32-S3 software restart.
 
-### Physical result
+### Physical verification
 
-- Two consecutive browser updates alternated inactive partitions and restarted
-  cleanly with `Reset reason: 3`; ADS-B and MQTT resumed normally.
+- Preserved records document consecutive alternating-partition OTA cycles ending in
+  clean software restarts with stable heap/PSRAM.
 
 ## Product 57 - 2026-08-01
 
-**Build:** `7IN-20260801-PRODUCT57-AIRPORT-DATABASE-SETUP`
-**Commit:** [`c30c330`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c30c330ff3182798d690cbd919c322819a2d17f9)
-**Status:** Airport tooling and documentation retained
+**Build:** `7IN-20260801-PRODUCT57-AIRPORT-DATABASE-SETUP`  
+**Commit:** [`c30c330`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c30c330ff3182798d690cbd919c322819a2d17f9)  
+**Status:** Regional airport database tooling retained
 
 ### Added
 
-- Added `tools/Build Airport Database.bat` as the guided Windows entry point.
-- Added a region-independent Python flow for download/cache/local CSV sources.
-- Combined airport and runway data and selected the longest open runway.
-- Added preview counts and estimated flash use before replacement.
-- Added atomic header replacement, validation, and rollback.
-- Added generic database/generator tests and `docs/AIRPORT_DATABASE.md`.
-- Kept the generated regional header tracked while ignoring downloaded CSVs,
-  Python caches, interrupted temporaries, and delivery notes.
-
-## Product 56 R6 - 2026-08-01
-
-**Build:** `7IN-20260801-PRODUCT56-R6-SYSTEM-UI`
-**Commit:** [`49035a6`](https://github.com/bcarriveau/esp-aircraft-radar/commit/49035a62e4684ef1696fb325fbc12b0a8a53cce7)
-**Status:** Hardware-reviewed Product 56 baseline
-
-- Retained the lightweight Product 56 R5 MQTT implementation and final System-page
-  arrangement under the checked-in R6 identity.
-- Preserved physically reviewed System Status, Device & Network, and maintenance
-  control layout and successful preferred native HTTPS behavior with MQTT connected.
-
-## Product 56 R5 - 2026-08-01
-
-**Build:** `7IN-20260801-PRODUCT56-R5-SYSTEM-UI`
-**Status:** Hardware-tested Product 56 final behavior
-
-### Finalized
-
-- Removed the redundant Home Assistant Last Update Age discovery entity and raw field.
-- Added one-time retained discovery cleanup for the obsolete entity.
-- Kept internal data age for `LIVE`, `UPDATING`, `STALE`, and `OFFLINE` status.
-- Finalized the System Status, Device & Network, and two-row maintenance layout.
-- Corrected field spacing, card padding, button placement, and reconnect color.
-
-## Product 56 R3 - 2026-08-01
-
-**Build:** `7IN-20260801-PRODUCT56-R3-LIGHTWEIGHT-MQTT`
-**Commit:** [`01298c9`](https://github.com/bcarriveau/esp-aircraft-radar/commit/01298c97d0068e1c84dde6ddb7e28e9f3dd30b43)
-**Status:** Hardware-tested MQTT memory correction retained
-
-### Changed
-
-- Replaced native ESP-MQTT with task-free PubSubClient 2.8 after Product 56 R2
-  fragmented the largest internal block and prevented later TLS handshakes.
-- Removed native MQTT task, input/output buffers, and outbox.
-- Added a 384-byte internal packet buffer and streamed larger retained messages from
-  bounded PSRAM JSON storage.
-- Limited publication to one message per service interval and paused all MQTT socket
-  work while ADS-B reports an active fetch.
-- Delayed cold-boot MQTT startup until an ADS-B-safe window.
-
-### Hardware result
-
-- Repeated preferred native ADS-B TLS requests continued with MQTT connected and no
-  recurrence of the Product 56 R2 allocation failure.
-
-## Product 56 R2 - 2026-08-01
-
-**Build:** `7IN-20260801-PRODUCT56-R2-MQTT-MEMORY`
-**Commit:** [`66d939a`](https://github.com/bcarriveau/esp-aircraft-radar/commit/66d939a238dd7fdffe37b463fc8acdbcb3e99f2f)
-**Status:** Hardware-tested and superseded by R3
-
-- Reduced native MQTT task stack and I/O buffers.
-- Hardware still showed persistent largest-block collapse after the first ADS-B TLS
-  request, causing later native and fallback TLS allocation failures.
-
-## Product 56 R1 - 2026-08-01
-
-**Build:** `7IN-20260801-PRODUCT56-R1-MEMORY`
-**Commit:** [`ba90a31`](https://github.com/bcarriveau/esp-aircraft-radar/commit/ba90a317085ea938bcf7847b0999623b78dfe03c)
-**Status:** Diagnostic revision superseded by R2/R3
-
-- Added heap, largest-block, and PSRAM checkpoints across ADS-B and MQTT stages.
-- Added current/minimum largest internal block to System.
-- Confirmed native MQTT persistent allocations reduced the contiguous block needed
-  by ADS-B TLS.
+- Added a guided Windows workflow and command-line tooling for rebuilding the
+  compiled regional airport database.
+- Combined OurAirports airport records with longest-open-runway data, previewed
+  category counts/estimated flash use, and validated replacement headers atomically.
+- Restored the previous generated header on validation failure and documented the
+  distinction between nearby coordinate changes and moving to a new region.
+- Kept generated database source tracked while ignoring downloaded CSVs, caches,
+  interrupted temporary files, and delivery-only notes.
 
 ## Product 56 - 2026-08-01
 
-**Build:** `7IN-20260801-PRODUCT56-HA-MQTT`
-**Commit:** [`8b4fca1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/8b4fca13c4893b863b7413eec447fcef3d0b8612)
-**Status:** Initial MQTT implementation, corrected by later revisions
+**Initial commit:** [`8b4fca1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/8b4fca13c4893b863b7413eec447fcef3d0b8612)  
+**Final Product 56 commit:** [`49035a6`](https://github.com/bcarriveau/esp-aircraft-radar/commit/49035a62e4684ef1696fb325fbc12b0a8a53cce7)  
+**Status:** Home Assistant MQTT integration and System UI retained
 
 ### Added
 
-- Added optional, disabled-by-default Home Assistant MQTT discovery and retained
-  availability.
-- Added backlight, shared range, and refresh controls.
-- Added bounded aircraft, tracked, nearest, Airspace, Wi-Fi, build, OTA, and MQTT
-  telemetry.
-- Added supplied dashboard YAML using built-in cards.
-- Added System-page MQTT control and checked NVS enable state.
-- Coordinated MQTT shutdown/resource release with local OTA maintenance.
+- Added optional Home Assistant MQTT discovery, retained availability, controls,
+  telemetry, and a dashboard using built-in Home Assistant cards.
+- Added display-power, shared-range, and refresh controls while keeping MQTT disabled
+  by default and isolated from Wi-Fi ownership/recovery.
+- Coordinated MQTT with OTA maintenance ownership and bounded its snapshot/JSON work.
+
+### Memory revisions
+
+- **R1** [`ba90a31`](https://github.com/bcarriveau/esp-aircraft-radar/commit/ba90a317085ea938bcf7847b0999623b78dfe03c): added ADS-B/MQTT heap, largest-block,
+  PSRAM, and stage diagnostics.
+- **R2** [`66d939a`](https://github.com/bcarriveau/esp-aircraft-radar/commit/66d939a238dd7fdffe37b463fc8acdbcb3e99f2f): reduced native MQTT stack/buffers;
+  hardware logs still showed fragmentation severe enough to break later TLS.
+- **R3** [`01298c9`](https://github.com/bcarriveau/esp-aircraft-radar/commit/01298c97d0068e1c84dde6ddb7e28e9f3dd30b43): replaced native ESP-MQTT with
+  lightweight PubSubClient 2.8, streamed larger payloads from bounded PSRAM, and
+  serialized MQTT work around ADS-B requests.
+- **R4** [`3bc63ec`](https://github.com/bcarriveau/esp-aircraft-radar/commit/3bc63eca837e0df69d94894dc2d7efbcc9be97ee): removed the redundant update-age entity
+  and refined the System page.
+- Final Product 56 System UI/MQTT cleanup was recorded in commit `49035a6`, including
+  successful hardware MQTT operation and repeated preferred native ADS-B TLS cycles
+  without the earlier fragmentation collapse.
 
 ## Product 55 - 2026-08-01
 
-**Build:** `7IN-20260801-PRODUCT55-AIRSPACE`
-**Commit:** [`0bc4142`](https://github.com/bcarriveau/esp-aircraft-radar/commit/0bc41425a89570a1698dbf5d601ae4218b2f15b6)
+**Build:** `7IN-20260801-PRODUCT55-AIRSPACE`  
+**Commit:** [`0bc4142`](https://github.com/bcarriveau/esp-aircraft-radar/commit/0bc41425a89570a1698dbf5d601ae4218b2f15b6)  
 **Status:** Airspace interaction retained
 
-- Made the green `CURRENT RANGE` card cycle the shared 20/40/80-mile range.
-- Replaced dominant category with highest airborne.
-- Added independent rows for nearest, fastest, lowest, and highest airborne.
-- Made each populated row resolve stable ICAO against a fresh snapshot and select
-  the aircraft on Radar.
-- Preserved active tracking as authoritative.
+### Changed
+
+- Added the shared Airspace 20/40/80-mile range toggle.
+- Added stable-ICAO Airspace live-highlight shortcuts that hand aircraft to Radar.
+- Replaced the redundant dominant-category highlight with highest airborne.
+- Preserved radar range ownership, selection/tracking identity, and ADS-B transport.
 
 ## Product 54 - 2026-08-01
 
-**Build:** `7IN-20260801-PRODUCT54-LOCAL-WEB-OTA`
-**Commits:** [`68c4ef2`](https://github.com/bcarriveau/esp-aircraft-radar/commit/68c4ef20d46910cf95286172299c1fb5e617baf6),
-[`3dd1d65`](https://github.com/bcarriveau/esp-aircraft-radar/commit/3dd1d65519076a8d0f5b925a30cf4b3ba0c50df0),
-[`fa802c2`](https://github.com/bcarriveau/esp-aircraft-radar/commit/fa802c232d808b6a9543de893f86da37fac7ef06)
-**Status:** Local browser OTA foundation retained
+**Primary commit:** [`68c4ef2`](https://github.com/bcarriveau/esp-aircraft-radar/commit/68c4ef20d46910cf95286172299c1fb5e617baf6)  
+**Compatibility fix:** [`3dd1d65`](https://github.com/bcarriveau/esp-aircraft-radar/commit/3dd1d65519076a8d0f5b925a30cf4b3ba0c50df0)  
+**Release-copy update:** [`fa802c2`](https://github.com/bcarriveau/esp-aircraft-radar/commit/fa802c232d808b6a9543de893f86da37fac7ef06)  
+**Status:** Guarded local browser OTA foundation retained
 
 ### Added
 
-- Added temporarily armed, access-code protected local HTTP OTA.
-- Added a generated 512-byte hardware/build/size/SHA package header.
-- Added streamed inactive-partition writing without a firmware-sized allocation.
-- Added exact hardware, ESP32-S3 image, embedded build marker, length, SHA, finalization,
-  and boot-partition validation.
-- Added Core-0 ADS-B maintenance acknowledgement before upload.
-- Added post-build package generation and project-local release copy.
+- Generated hardware-bound `.radarota` packages and streamed validated ESP32-S3
+  firmware into the inactive OTA application slot.
+- Added package length, hardware, image/chip, embedded build ID, SHA-256,
+  `esp_ota_end()`, and boot-partition validation gates.
+- Added an acknowledged core-0 ADS-B maintenance hold and a temporarily armed
+  System-page firmware update overlay.
+- Corrected Arduino-ESP32 3.0.7 enum/SHA API compatibility and copied only the
+  upload-ready package to `release/firmware.radarota` after successful builds.
 
-### Compile corrections
+## Product 53 - 2026-07-27 to 2026-08-01
 
-- Avoided Arduino's `DISABLED` macro collision.
-- Used the mbedTLS SHA API supplied by Arduino-ESP32 3.0.7.
-- Value-initialized OTA status objects safely.
+**Initial commit:** [`d3b1ea0`](https://github.com/bcarriveau/esp-aircraft-radar/commit/d3b1ea0d3cff6fe8a070148a9791858175b927e0)  
+**Status:** Airports directory/profile and per-airport controls retained
 
-## Product 53 R6 R1 - 2026-07-31
+### Evolution
 
-**Build:** `7IN-20260731-PRODUCT53R6R1-AIRPORT-TAP-FIX`
-**Commit:** [`e915314`](https://github.com/bcarriveau/esp-aircraft-radar/commit/e915314ccf594ab3f5b56010464329b6d2def9e0)
-**Status:** Airport table tap correction retained
-
-- Processed filtered table `LV_EVENT_VALUE_CHANGED` while LVGL's selected cell is
-  still valid rather than waiting for `RELEASED/CLICKED` after it is cleared.
-- Preserved movement, duration, scroll-begin, and press-lost cancellation gates.
-- Restored deliberate profile opening and label editing.
-- Added missing radar-tap dismissal of temporary airport focus.
-
-## Product 53 R6 - 2026-07-31
-
-**Build:** `7IN-20260731-PRODUCT53R6-AIRPORT-TOUCH`
-**Commit:** [`acb4475`](https://github.com/bcarriveau/esp-aircraft-radar/commit/acb44759d095f592976361b0ac243f9620aac989)
-**Status:** Superseded by R6 R1
-
-- Added explicit `EDIT / DONE` protection for `AUTO / SHOW / HIDE` changes.
-- Added bounded no-scroll/no-excess-motion row actions.
-- Added `SHOW ON RADAR`, automatic range choice, and temporary stable-identifier
-  airport highlight.
-- Hardware showed deliberate row taps did not complete because of LVGL event timing;
-  corrected by R6 R1.
-
-## Product 53 R5 - 2026-07-29
-
-**Build:** `7IN-20260729-PRODUCT53R5-AIRPORT-EYE`
-**Commit:** [`38c9215`](https://github.com/bcarriveau/esp-aircraft-radar/commit/38c921573e4ecade30a0b35b4231970bf3f75e9c)
-**Status:** Airport eye indicator retained
-
-- Added an open-eye indicator beside `AUTO` or `SHOW` when the stable airport
-  identifier was actually rendered on the latest completed radar frame.
-- Added bounded PSRAM storage for the completed-frame visible identifier set.
-- Kept preference and current visibility as separate concepts.
-
-## Product 53 R4 - 2026-07-29
-
-**Build:** `7IN-20260729-PRODUCT53R4-AIRPORT-CONTROL`
-**Commit:** [`2e86492`](https://github.com/bcarriveau/esp-aircraft-radar/commit/2e864923ae767292a74a04c6303472ec95cfa307)
-**Status:** Per-airport control retained
-
-- Replaced bearing with `AUTO / SHOW / HIDE` label control.
-- Added checked versioned NVS storage for up to 64 stable-identifier exceptions.
-- Prioritized manual `SHOW`, suppressed `HIDE`, and retained `AUTO` defaults.
-- Expanded the bounded directory from 32 to 64 rows.
-
-## Product 53 R3 - 2026-07-29
-
-**Build:** `7IN-20260729-PRODUCT53R3-AIRPORT-LABELS`
-**Commit:** [`3e1849d`](https://github.com/bcarriveau/esp-aircraft-radar/commit/3e1849d2ba3ed37db3471929a7c555cff173db82)
-**Status:** Fit-based airport label policy retained
-
-- Removed small 9/8/6 airport-label quotas.
-- Attempted every enabled airport label that fit deterministic collision rules.
-- Added PSRAM placement storage and actual rendered-label diagnostics.
-- Kept major/public enabled by default and private/heliports disabled.
-
-## Product 53 R2 - 2026-07-27
-
-**Build:** `7IN-20260727-PRODUCT53R2-AIRPORT-TABLE`
-**Commit:** [`e314db7`](https://github.com/bcarriveau/esp-aircraft-radar/commit/e314db791e8b9d6c4dd5d9dfefb151d514a88757)
-**Status:** Directory table correction retained
-
-- Rebalanced the directory into single-line ID, airport, type, distance, bearing,
-  and runway columns.
-- Applied text cropping to every cell and kept full values in Airport Profile.
-
-## Product 53 - 2026-07-27
-
-**Build:** `7IN-20260727-PRODUCT53-PAGE-REDESIGN`
-**Commit:** [`d3b1ea0`](https://github.com/bcarriveau/esp-aircraft-radar/commit/d3b1ea0d3cff6fe8a070148a9791858175b927e0)
-**Status:** Airports/System page foundation retained
-
-- Rebuilt Airports as a directory-first operational page.
-- Added Airport Profile and a separate Display Options view.
-- Preserved scroll position during periodic refresh.
-- Enlarged/reorganized System cards and maintenance controls.
+- Product 53 introduced an operational nearby-airports directory, Airport Profile,
+  display-settings subpage, preserved directory scroll position, and a compact
+  System maintenance strip.
+- **R2** [`e314db7`](https://github.com/bcarriveau/esp-aircraft-radar/commit/e314db791e8b9d6c4dd5d9dfefb151d514a88757) tightened single-line cropped table
+  cells and column sizing.
+- **R3** [`3e1849d`](https://github.com/bcarriveau/esp-aircraft-radar/commit/3e1849d2ba3ed37db3471929a7c555cff173db82) removed old label quotas and reported
+  actual rendered label counts.
+- **R4** [`2e86492`](https://github.com/bcarriveau/esp-aircraft-radar/commit/2e864923ae767292a74a04c6303472ec95cfa307) added bounded stable-ID
+  `AUTO / SHOW / HIDE` controls and expanded the directory to 64 rows.
+- **R5** [`38c9215`](https://github.com/bcarriveau/esp-aircraft-radar/commit/38c921573e4ecade30a0b35b4231970bf3f75e9c) added eye indicators for airport labels
+  actually rendered on Radar.
+- **R6** [`acb4475`](https://github.com/bcarriveau/esp-aircraft-radar/commit/acb44759d095f592976361b0ac243f9620aac989) locked edits behind EDIT/DONE, hardened
+  scrolling/touch handling, and added SHOW ON RADAR with automatic range choice.
+- **R6R1** [`e915314`](https://github.com/bcarriveau/esp-aircraft-radar/commit/e915314ccf594ab3f5b56010464329b6d2def9e0) corrected LVGL table tap timing while
+  preserving movement/scroll/press-loss safety gates.
 
 ## Product 52 - 2026-07-27
 
-**Build:** `7IN-20260727-PRODUCT52-UI-POLISH`
-**Commit:** [`f7de409`](https://github.com/bcarriveau/esp-aircraft-radar/commit/f7de4097362282315adfe906855029d222870abe)
-**Status:** Physically reviewed; airport label/layout refinements retained
+**Commit:** [`f7de409`](https://github.com/bcarriveau/esp-aircraft-radar/commit/f7de4097362282315adfe906855029d222870abe)  
+**Status:** Airport-label/System layout polish retained
 
-- Added deterministic airport-to-airport collision resolution.
-- Kept all airport symbols independent of label placement.
-- Subdued airport labels below aircraft.
-- Rebalanced System cards, maintenance fit, and Save Airports sizing.
+- Resolved airport-label collisions deterministically within the static map layer.
+- Kept airport symbols and all aircraft rendering above subdued airport labels.
+- Rebalanced the System status, Device & Network, and maintenance areas for 800x480.
 
 ## Product 51 - 2026-07-27
 
-**Build:** `7IN-20260727-PRODUCT51-AIRPORT-UI`
-**Commit:** [`c02bc66`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c02bc6662d6714eab9f9559f80e49e35f2033f58)
-**Status:** Physically reviewed; stable airport map layer retained
+**Commit:** [`c02bc66`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c02bc6662d6714eab9f9559f80e49e35f2033f58)  
+**Status:** Static airport map-layer behavior retained
 
-- Made airport identifiers a fixed background layer drawn before symbols and aircraft.
-- Removed moving-aircraft collision decisions from airport label placement.
-- Reorganized System into status, device/network, and maintenance cards.
+- Drew airport identifiers as a fixed background map layer beneath aircraft contacts
+  and tags.
+- Softened normal airport-label styling and reorganized the System page into status,
+  Device & Network, and maintenance cards.
 
 ## Product 50 - 2026-07-27
 
-**Build:** `7IN-20260727-PRODUCT50-AIRPORT-OVERLAY`
-**Commit:** [`90da002`](https://github.com/bcarriveau/esp-aircraft-radar/commit/90da002df5d816c851f68eb3597f321a6fc512f4)
-**Status:** Offline airport architecture retained
+**Commit:** [`90da002`](https://github.com/bcarriveau/esp-aircraft-radar/commit/90da002df5d816c851f68eb3597f321a6fc512f4)  
+**Status:** Offline airport-awareness foundation retained
 
 ### Added
 
-- Added bounded offline airport cache, runway-oriented symbols, heliport symbol,
-  labels, and per-category 20/40/80 settings.
-- Replaced Setup navigation with Airports and moved settings under System.
-- Added checked NVS persistence and a regional starter database/generator.
-- Fixed an Arduino `radians` macro collision by renaming the helper.
+- Added a bounded offline airport cache and runway-oriented radar symbols.
+- Added collision-aware airport labels below aircraft label priorities.
+- Added per-category 20/40/80-mile symbol/label settings with checked NVS storage.
+- Replaced the Setup navigation tab with Airports and moved device/network setup into
+  System.
 
 ## Product 49 - 2026-07-27
 
-**Build:** `7IN-20260727-PRODUCT49-20MI-LABEL-SELECTION`
-**Commit:** [`2813ee1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)
-**Status:** Exact label-touch behavior retained
+**Build:** `7IN-20260727-PRODUCT49-20MI-LABEL-SELECTION`  
+**Commit:** [`29cb94c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/29cb94c1ab6d899483ebcd0269ea6f291fa3d85f)  
+**Status:** 20-mile label-selection behavior retained
 
-- Made every visible 20-mile label a stable ICAO selection target.
-- Gave exact label rectangles priority over aircraft icons.
-- Added a four-pixel padded phase only after exact rectangles miss.
-- Resolved overlapping padded areas by tracked, selected, rectangle distance,
-  center distance, and stable ICAO.
-- Kept 40/80-mile behavior unchanged.
+### Changed
+
+- Made each visible 20-mile aircraft label a first-class stable-ICAO touch target.
+- Gave exact label rectangles priority, then a four-pixel padded edge resolution,
+  then existing aircraft-icon hit testing.
+- Resolved padded-label overlaps deterministically while preserving tracked,
+  selected, and normal hit-test priority.
 
 ## Product 48 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT48-TRACKS-SCROLL-CLAMP`
-**Commit:** [`f299720`](https://github.com/bcarriveau/esp-aircraft-radar/commit/f299720257042fe9d38cc20d4dfdcc3a7eb7b0b4)
-**Status:** Tracks-page reliability fix retained
+**Build:** `7IN-20260726-PRODUCT48-TRACKS-SCROLL-CLAMP`  
+**Commit:** [`f299720`](https://github.com/bcarriveau/esp-aircraft-radar/commit/f299720257042fe9d38cc20d4dfdcc3a7eb7b0b4)  
+**Status:** Tracks scroll reliability fix retained
 
-- Prevented a stale large-list scroll offset from leaving a shortened Tracks table
-  apparently empty.
-- Preserved valid offsets, clamped invalid offsets, and cancelled stale scroll
-  animation before restoring the bounded position.
+### Fixed
+
+- Prevented Tracks from appearing empty after a long list was replaced by a much
+  shorter list while LVGL retained an invalid old scroll offset.
+- Preserved a valid scroll position and clamped only offsets beyond the new table
+  range.
 
 ## Product 47 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT47-VERTICAL-STATE-BITMAPS`
-**Commit:** [`2059f34`](https://github.com/bcarriveau/esp-aircraft-radar/commit/2059f34f1e3825d5912e01a241a5f635a48c825f)
-**Status:** Vertical-state display retained
+**Commit:** [`2059f34`](https://github.com/bcarriveau/esp-aircraft-radar/commit/2059f34f1e3825d5912e01a241a5f635a48c825f)  
+**Status:** Aviation vertical-state indicator retained
 
-- Added distinct climbing, level, and descending fuselage assets.
-- Added a PSRAM LVGL canvas, plain-language state, and rounded FT/MIN.
-- Added stable-ICAO hysteresis with +/-200 ft/min entry and +/-100 ft/min return.
+### Added
 
-## Product 46 R2 - 2026-07-26
-
-**Build:** `7IN-20260726-PRODUCT46-R2-SUBTLE-SWEEP-TINT`
-**Commit:** [`c75141f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c75141f93468b8118c4c63ddd39c780584b712d5)
-**Status:** Sweep styling retained
-
-- Replaced an expanded yellow halo with same-footprint muted yellow sweep tint.
-- Kept tags cyan and selected/tracked contacts amber/red.
+- Added the small fuselage climbing/level/descending indicator for the selected or
+  tracked aircraft.
+- Displayed rounded vertical rate in FT/MIN with deterministic hysteresis keyed to
+  stable ICAO identity.
+- Kept the indicator bounded to the priority aircraft and PSRAM-backed artwork.
 
 ## Product 46 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT46-RADAR-OVERLAP-STABILITY`
-**Commit:** [`58aee5b`](https://github.com/bcarriveau/esp-aircraft-radar/commit/58aee5b0fda1e364aec68d277ea1d00ffa9a71c3)
-**Status:** Contact overlap behavior retained
+**Build:** `7IN-20260726-PRODUCT46-RADAR-OVERLAP-STABILITY`  
+**Commit:** [`58aee5b`](https://github.com/bcarriveau/esp-aircraft-radar/commit/58aee5b0fda1e364aec68d277ea1d00ffa9a71c3)  
+**R2 build:** `7IN-20260726-PRODUCT46-R2-SUBTLE-SWEEP-TINT`  
+**R2 commit:** [`c75141f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c75141f93468b8118c4c63ddd39c780584b712d5)  
+**Status:** Overlap stability and subtle sweep treatment retained
 
-- Stopped deleting lower-priority 20-mile contacts during overlap.
-- Layered contacts by tracked, selected, distance, stable ICAO, and final index.
-- Added a subtle silhouette around the higher-priority bitmap.
-- Removed overlap-driven tag suppression.
+### Fixed
+
+- Stopped overlap handling from marking lower-priority 20-mile aircraft invisible.
+- Layered contacts deterministically by tracked, selected, distance, stable ICAO,
+  and final target-index tie-breaker while retaining collision-aware labels.
+- R2 replaced the enlarged sweep halo with a same-size muted yellow tint so normal
+  cyan aircraft do not flash or grow as the sweep passes.
 
 ## Product 45 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT45-EXPLICIT-CLASSIFIER-API`
-**Commit:** [`c704ca1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c704ca1d15e4da26c48b768cfa04726b9be865c2)
-**Status:** Classifier safety cleanup retained
+**Build:** `7IN-20260726-PRODUCT45-EXPLICIT-CLASSIFIER-API`  
+**Commit:** [`c704ca1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c704ca1d15e4da26c48b768cfa04726b9be865c2)  
+**Status:** Explicit target-aware classifier APIs retained
 
-- Removed the template that recovered a `Target` by subtracting `offsetof` from a
-  `char[9]` member reference.
-- Converted aircraft details, Tracks, Airspace, previews, side icons, and radar to
-  explicit target-aware classifier APIs.
-- Added standalone `char[9]` and ambiguous-family regression coverage.
+### Changed
+
+- Replaced implicit member-recovery classifier calls with explicit Target-aware
+  category, bitmap, and kind APIs.
+- Removed the unsafe pattern that could reinterpret an unrelated `char[9]` as a
+  containing Target.
+- Preserved classifier output, generated aircraft database, and radar/UI behavior.
 
 ## Product 44 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT44-NVS-WRITE-VERIFY`
-**Commit:** [`ec3ac4f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/ec3ac4fcee8e2764c315be959e7a78d2ac9488d9)
-**Status:** NVS reliability retained
+**Commit:** [`ec3ac4f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/ec3ac4fcee8e2764c315be959e7a78d2ac9488d9)  
+**Status:** NVS write-verification behavior retained
 
-- Checked namespace open and every required string/float write.
-- Correctly handled successful empty-string writes.
-- Made initialization, save, and reset report failure accurately.
-- Continued with compile defaults when NVS is unavailable while disabling save/reset.
-- Added `NVS: READY/ERROR` diagnostics without printing private values.
+### Fixed
+
+- Checked settings storage initialization and expected NVS write lengths.
+- Made save/reset success conditional on actual writes and exposed NVS READY/ERROR
+  state on System.
+- Continued with compile-time defaults if storage is unavailable while disabling or
+  clearly marking saving rather than reporting false success.
 
 ## Product 43 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT43-WIFI-TIMESTAMP-SYNC`
-**Commit:** [`cbe6d0f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/cbe6d0fae79ebd15d5d68d09b8aa78cf940e0a42)
-**Status:** Cross-core synchronization fix retained
+**Commit:** [`cbe6d0f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/cbe6d0fae79ebd15d5d68d09b8aa78cf940e0a42)  
+**Status:** Cross-core Wi-Fi timestamp synchronization retained
 
-- Removed `volatile` from the cross-core Wi-Fi attempt timestamp.
-- Protected all access with the existing command critical section.
-- Made due evaluation and reservation atomic.
+- Removed the formal cross-core data race around the Wi-Fi attempt timestamp by
+  synchronizing accesses through the existing command lock.
+- Preserved networking behavior and recovery thresholds.
 
 ## Product 42 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT42-STALE-TRANSPORT-SUCCESS`
-**Commit:** [`251fbc4`](https://github.com/bcarriveau/esp-aircraft-radar/commit/251fbc42fb2350a616dbdbb40c7a72a6f97e5f97)
-**Status:** Stale-response bookkeeping retained
+**Commit:** [`251fbc4`](https://github.com/bcarriveau/esp-aircraft-radar/commit/251fbc42fb2350a616dbdbb40c7a72a6f97e5f97)  
+**Status:** Stale-result transport-success handling retained
 
-- Treated a fully completed stale response as transport success.
-- Reset failure streak/outage recovery without publishing obsolete data.
-- Kept discarded-response diagnostics separate and did not advance tracking misses.
+### Fixed
+
+- Treated a fully successful response discarded only because its generation is stale
+  as proof that Wi-Fi/DNS/TCP/TLS/HTTP/body/JSON transport succeeded.
+- Reset transport failure/outage state while still rejecting the obsolete payload and
+  keeping stale/discard diagnostics separate.
 
 ## Product 41 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT41-FAST-BODY-RECOVERY`
-**Commit:** [`8438633`](https://github.com/bcarriveau/esp-aircraft-radar/commit/843863321b5fb2458d8fe60350a585e597129245)
-**Status:** Response-body recovery retained
+**Commit:** [`8438633`](https://github.com/bcarriveau/esp-aircraft-radar/commit/843863321b5fb2458d8fe60350a585e597129245)  
+**Status:** Partial-body fail-fast recovery retained
 
-- Treated the first bounded native EAGAIN/EWOULDBLOCK/timeout body read as terminal
-  instead of repeating known-dead three-second reads.
-- Hard-recycled the station radio after a partial native body and retried promptly.
-- Preserved successful 15-second cadence and request serialization.
-
-## Product 40 R3 - 2026-07-26
-
-**Build:** `7IN-20260726-PRODUCT40-AIRCRAFT-DB-HTTPS-RECOVERY-R3`
-**Commit:** [`0b099db`](https://github.com/bcarriveau/esp-aircraft-radar/commit/0b099db0f80efbaae1625dbadde68a6ebc86e01a)
-**Status:** Superseded by Product 41
-
-- Stopped native retries and fallback after a partial ADS-B response body.
-- Returned immediately to Wi-Fi recovery while preserving eligible fallback for
-  connection/header failures.
-
-## Product 40 R2 - 2026-07-26
-
-**Build:** `7IN-20260726-PRODUCT40-AIRCRAFT-DB-HTTPS-RECOVERY-R2`
-**Commit:** [`c2a853f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c2a853f7cb7dd6190e7bb368f97bc57a22fc366f)
-**Status:** Superseded by Product 40 R3
-
-- Combined the generated aircraft database with corrected native/fallback sequencing.
-- Completed native attempts before one independent verified fallback.
-- Kept fallback disabled for status, oversize, allocation, DNS/Wi-Fi, JSON, and
-  partial-body failures.
+- Stopped repeating dead native body reads after the first bounded body timeout.
+- Hard-recycled the station radio after a partial response body and retried through
+  the serialized scheduler.
+- Preserved native HTTPS preference, verified fallback policy, capacity, and aircraft
+  classification.
 
 ## Product 40 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT40-AIRCRAFT-TYPE-DATABASE`
-**Commit:** [`244f337`](https://github.com/bcarriveau/esp-aircraft-radar/commit/244f337ed6f88d2bccd5fd8a7500376ba22493b6)
-**Status:** Generated aircraft database retained
+**Initial commit:** [`244f337`](https://github.com/bcarriveau/esp-aircraft-radar/commit/244f337ed6f88d2bccd5fd8a7500376ba22493b6)  
+**R2 commit:** [`c2a853f`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c2a853f7cb7dd6190e7bb368f97bc57a22fc366f)  
+**R3 commit:** [`0b099db`](https://github.com/bcarriveau/esp-aircraft-radar/commit/0b099db0f80efbaae1625dbadde68a6ebc86e01a)  
+**Status:** Generated aircraft database and HTTPS retry/recovery corrections retained
 
-- Added 2,697 unique sorted aircraft designators and 11,716 collision-checked
-  description aliases from a pinned source snapshot.
-- Added deterministic generation, metadata, checksums, duplicate/collision tests,
-  and sensitive-model regression coverage.
-- Used exact designator binary search first, conservative fallback second, and
-  retained `UNKNOWN` for ambiguity.
-- Used no runtime heap, PSRAM, or network lookup.
+### Changed
+
+- Added a generated database containing 2,697 exact aircraft designators and 11,716
+  checked description aliases while preserving collision-sensitive classifications.
+- R2 completed both native HTTPS attempts before one eligible verified-fallback
+  attempt, let transient body stalls run to bounded deadlines, and prevented fallback
+  for ordinary HTTP status, oversize, allocation, DNS/Wi-Fi, or JSON failures.
+- R3 stopped retry/fallback after a partial response-body transport failure and
+  returned immediately to the existing Wi-Fi recovery ladder.
 
 ## Product 39 - 2026-07-26
 
-**Build:** `7IN-20260726-PRODUCT39-STARTUP-FAILURE-PROPAGATION`
-**Commit:** [`35b9eca`](https://github.com/bcarriveau/esp-aircraft-radar/commit/35b9ecae8d5c5949950c5512fc3359d575bd1210)
+**Build:** `7IN-20260726-PRODUCT39-STARTUP-FAILURE-PROPAGATION`  
+**Commit:** [`35b9eca`](https://github.com/bcarriveau/esp-aircraft-radar/commit/35b9ecae8d5c5949950c5512fc3359d575bd1210)  
 **Status:** Startup reliability retained
 
-- Made UI and ADS-B startup return explicit success/failure.
-- Allocated the core-0 incoming buffer before task creation.
-- Checked `xTaskCreatePinnedToCore()` and cleaned up on failure.
-- Started networking and set startup complete only after required components were
-  ready.
-- Added a stable `STARTUP HALTED` screen for post-display fatal failures.
+### Fixed
+
+- Made UI and ADS-B startup report explicit success/failure.
+- Allocated the core-0 incoming buffer before task creation and checked
+  `xTaskCreatePinnedToCore()`.
+- Declared startup complete only after all required components were ready and added
+  a stable STARTUP HALTED screen instead of continuing partially initialized.
 
 ## Product 38 - 2026-07-25
 
-**Build:** `7IN-20260725-PRODUCT38-LOCATION-INVALIDATION`
-**Commit:** [`34a3c2d`](https://github.com/bcarriveau/esp-aircraft-radar/commit/34a3c2d6dc7193b6b3a38490cfefb9ddbfd72c1c)
+**Build:** `7IN-20260725-PRODUCT38-LOCATION-INVALIDATION`  
+**Commit:** [`34a3c2d`](https://github.com/bcarriveau/esp-aircraft-radar/commit/34a3c2d6dc7193b6b3a38490cfefb9ddbfd72c1c)  
 **Status:** Location invalidation retained
 
-- Immediately invalidated old visible aircraft when saved radar coordinates changed.
-- Advanced generation/version and showed location-updating state until current data.
-- Retained tracked ICAO internally without counting configuration invalidation as a
-  miss.
+- Cleared the published visible-aircraft snapshot immediately when saved radar-center
+  coordinates changed.
+- Advanced location/generation state and showed LOCATION CHANGED / UPDATING until a
+  current-generation snapshot published.
+- Preserved the tracked ICAO internally without counting the configuration change as
+  a lost-aircraft miss.
 
 ## Product 37 - 2026-07-25
 
-**Build:** `7IN-20260725-PRODUCT37-FALLBACK-HTTPS-HARDENED`
-**Commit:** [`63892b1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/63892b11529f609370176159353c4dd67dddd23a)
-**Status:** Hardened fallback retained
+**Build:** `7IN-20260725-PRODUCT37-FALLBACK-HTTPS-HARDENED`  
+**Commit:** [`63892b1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/63892b11529f609370176159353c4dd67dddd23a)  
+**Status:** Hardened verified fallback retained
 
 ### Changed
 
 - Removed insecure fallback behavior and attached the Espressif CA bundle with
   hostname verification.
-- Removed whole-response Arduino `String` buffering and duplicate copies.
-- Added PSRAM-first bounded streaming reader with 250,000-byte decoded limit.
-- Added bounded request writes, header/line/chunk limits, header/idle/total deadlines,
-  and valid length/chunked/required-close body support.
-- Rejected conflicting lengths, duplicate/unsupported encodings, mixed framing,
-  malformed CRLF, forbidden trailers, and oversized bodies.
-- Limited fallback to eligible TCP/TLS/header transport failures.
-
-## Product 36 R4 - 2026-07-25
-
-**Build:** `7IN-20260725-PRODUCT36-RADAR-OVERLAP-PRIORITY-R4`
-**Commit:** [`9de21e3`](https://github.com/bcarriveau/esp-aircraft-radar/commit/9de21e3d7ac242cdbc57c240b1328b05bc6f53c3)
-**Status:** Superseded; priority concepts refined by Product 46
-
-- Added deterministic overlap priority for tracked, selected, and normal contacts.
-- Refined contact order, tag clearance, and touch behavior in dense 20-mile traffic.
-
-## Product 36 R3 - 2026-07-25
-
-**Build:** `7IN-20260725-PRODUCT36-RADAR-HEADING-SPRITES-R3`
-**Commit:** [`022e7b3`](https://github.com/bcarriveau/esp-aircraft-radar/commit/022e7b3e99311b7ab53effe7399d45b3e1459055)
-**Status:** Heading-sprite architecture retained
-
-- Added 25x25 contact sprites and sixteen precomputed 22.5-degree heading variants
-  per category.
-- Selected variants from ADS-B track with north fallback.
-- Avoided runtime rotation, temporary allocation, and per-contact LVGL objects.
-
-## Product 36 R2 - 2026-07-25
-
-**Build:** `7IN-20260725-PRODUCT36-RADAR-BITMAP-CONTACTS-R2`
-**Commit:** [`9494747`](https://github.com/bcarriveau/esp-aircraft-radar/commit/9494747a6b1f8d1233ce03d8c40db140322dd529)
-**Status:** Superseded by Product 36 R3
-
-- Refined recognizable category silhouettes while keeping the change asset/render-only.
+- Replaced whole-response Arduino `String` buffering with PSRAM-first bounded
+  streaming.
+- Added bounded request/header/line/chunk parsing, response-size limits, deadlines,
+  valid length/chunked/required-close support, and strict rejection of ambiguous or
+  malformed framing.
+- Limited fallback to eligible transport-specific failures.
 
 ## Product 36 - 2026-07-25
 
-**Build:** `7IN-20260725-PRODUCT36-RADAR-BITMAP-CONTACTS`
-**Commit:** [`3ea59bb`](https://github.com/bcarriveau/esp-aircraft-radar/commit/3ea59bbefd674b3728beb98af0a692e56ebb5819)
-**Status:** First bitmap-contact candidate
+**Initial build:** `7IN-20260725-PRODUCT36-RADAR-BITMAP-CONTACTS`  
+**Initial commit:** [`3ea59bb`](https://github.com/bcarriveau/esp-aircraft-radar/commit/3ea59bbefd674b3728beb98af0a692e56ebb5819)  
+**Status:** Radar bitmap-contact architecture evolved through R4
 
-- Replaced plain 20-mile dots with category-specific bitmap contacts.
-- Kept 40/80-mile contacts compact and preserved selection/tracking colors.
+### Evolution
+
+- Product 36 replaced plain 20-mile dots with category-specific aircraft bitmap
+  contacts while leaving 40/80-mile contacts compact.
+- **R2** [`9494747`](https://github.com/bcarriveau/esp-aircraft-radar/commit/9494747a6b1f8d1233ce03d8c40db140322dd529) refined recognizable category silhouettes.
+- **R3** `7IN-20260725-PRODUCT36-RADAR-HEADING-SPRITES-R3`, commit
+  [`022e7b3`](https://github.com/bcarriveau/esp-aircraft-radar/commit/022e7b3e99311b7ab53effe7399d45b3e1459055), added 25x25 contact sprites with
+  sixteen precomputed 22.5-degree heading variants and no runtime rotation/allocation.
+- **R4** `7IN-20260725-PRODUCT36-RADAR-OVERLAP-PRIORITY-R4`, commit
+  [`9de21e3`](https://github.com/bcarriveau/esp-aircraft-radar/commit/9de21e3d7ac242cdbc57c240b1328b05bc6f53c3), added deterministic overlap priority
+  and refined dense-contact tag/touch behavior.
 
 ## Product 35 - 2026-07-25
 
-**Build:** `7IN-20260725-PRODUCT35-DESCRIPTION-TYPE-FALLBACK`
-**Commit:** [`0441bd7`](https://github.com/bcarriveau/esp-aircraft-radar/commit/0441bd70f85abb2da72314540b6c0abb15f9683c)
-**Status:** Description fallback retained under later database/classifier APIs
+**Build:** `7IN-20260725-PRODUCT35-DESCRIPTION-TYPE-FALLBACK`  
+**Commit:** [`0441bd7`](https://github.com/bcarriveau/esp-aircraft-radar/commit/0441bd70f85abb2da72314540b6c0abb15f9683c)  
+**Status:** Description fallback retained under later generated database/API cleanup
 
-- Added conservative description classification only when exact type classification
-  remained unknown.
-- Added target-aware helpers and ambiguity regression tests.
-- Used no heap, `String`, regex, or network lookup.
+- Kept exact ICAO type-code lookup authoritative.
+- When exact classification remained UNKNOWN, used the already-downloaded ADSB.fi
+  aircraft description against conservative local flash rules.
+- Added no extra DNS/TLS/web request and left ambiguous descriptions UNKNOWN.
 
 ## Product 34 - 2026-07-25
 
-**Build:** `7IN-20260725-PRODUCT34-TRACK-LOSS-RECOVERY`
-**Commit:** [`239a7a5`](https://github.com/bcarriveau/esp-aircraft-radar/commit/239a7a5af8442562e8024f5dec98b6f58c9eddc2)
+**Build:** `7IN-20260725-PRODUCT34-TRACK-LOSS-RECOVERY`  
+**Commit:** [`239a7a5`](https://github.com/bcarriveau/esp-aircraft-radar/commit/239a7a5af8442562e8024f5dec98b6f58c9eddc2)  
 **Status:** Tracking-loss behavior retained
 
-- Added a three-successful-current-generation-update grace period.
-- Kept tracking through one/two confirmed misses and showed `TRACK SIGNAL LOST`.
-- Cleared tracking atomically after the third confirmed miss.
-- Did not count failures, stale discards, location/range invalidation, or manual stop.
-- Moved PlatformIO work outside Google Drive and skipped downloaded packages in
-  cppcheck.
+### Fixed
 
-## Product 33 R5 - 2026-07-24
+- Added a three-successful-current-generation-update grace period before clearing a
+  tracked aircraft that temporarily disappears from the feed.
+- Showed TRACK SIGNAL LOST during the grace period, reset the miss counter immediately
+  if the ICAO returned, and did not count failed requests, stale results, configuration
+  invalidation, manual stop, or selection changes as misses.
+- Kept the associated PlatformIO/cppcheck tooling isolated from the project source
+  tree and third-party package headers.
 
-**Build:** `7IN-20260724-PRODUCT33-UI-POLISH-R5`
-**Commit:** [`14fe9f4`](https://github.com/bcarriveau/esp-aircraft-radar/commit/14fe9f46b8c131ed1a22f5adb93e898f3188e3b1)
-**Status:** Superseded by Product 34
+## Product 33 - 2026-07-24
 
-- Corrected Setup spacing.
-- Made the old nearest-other heading reflect populated row count.
-- Hid unused rows/icons/ICAO slots and completed Airspace fit cleanup.
-- Preserved stable ICAO row actions.
+**R2 build:** `7IN-20260724-PRODUCT33-UI-POLISH-R2`  
+**R2 commit:** [`52367df`](https://github.com/bcarriveau/esp-aircraft-radar/commit/52367dfa5f85491f2813a3d7103c0aa4a5cf6953)  
+**R5 build:** `7IN-20260724-PRODUCT33-UI-POLISH-R5`  
+**R5 commit:** [`14fe9f4`](https://github.com/bcarriveau/esp-aircraft-radar/commit/14fe9f46b8c131ed1a22f5adb93e898f3188e3b1)  
+**Status:** UI fit/polish retained; no standalone R3/R4 Git history is invented
 
-## Product 33 R2 - 2026-07-24
+### Changed
 
-**Build:** `7IN-20260724-PRODUCT33-UI-POLISH-R2`
-**Commit:** [`52367df`](https://github.com/bcarriveau/esp-aircraft-radar/commit/52367dfa5f85491f2813a3d7103c0aa4a5cf6953)
-**Status:** Superseded by R5
-
-- Improved Setup styling, nearest-other heading, Airspace live-highlights fit, and
-  credit card.
-- Removed Airspace highlight scrolling and kept all sections visible.
+- Improved Setup field styling/spacing, nearest-other heading placement, Airspace
+  live-highlights fit, and project credit presentation.
+- R5 corrected longitude spacing and made the selected/tracked secondary heading
+  reflect the actual populated row count: NO OTHER or NEAREST 1/2/3.
+- Preserved stable ICAO identity and bounded three-entry nearest-other storage.
 
 ## Product 32 - 2026-07-24
 
-**Build:** `7IN-20260724-PRODUCT32-UI-DASHBOARD`
-**Commit:** [`a4cc594`](https://github.com/bcarriveau/esp-aircraft-radar/commit/a4cc594f52c8d8e562cd751dbb528a744d72d00e)
+**Build:** `7IN-20260724-PRODUCT32-UI-DASHBOARD`  
+**Commit:** [`a4cc594`](https://github.com/bcarriveau/esp-aircraft-radar/commit/a4cc594f52c8d8e562cd751dbb528a744d72d00e)  
 **Status:** Airspace dashboard retained
-
-- Added Airspace totals, range, category counts/percentages, and live highlights.
-- Added up to three secondary aircraft rows with stable ICAO identity.
-- Removed duplicate Setup range controls and kept the compact radar selector.
-- Expanded fixed side-icon storage in PSRAM.
-
-## Product 31 - 2026-07-23
-
-**Build:** `7IN-20260723-PRODUCT31-NEAREST-HEADING-ARROW`
-**Commit:** [`1747cb1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/1747cb169969dff12f3a5d794f561b56dc2acc83)
-**Status:** Side bitmap/heading behavior retained
-
-- Added aircraft-type side icons to idle, selected/tracked, and nearest-five rows.
-- Added a rotating idle-nearest heading arrow and heading value.
-- Used independent persistent point storage and stable ICAO actions.
-
-## Product 30 - 2026-07-23
-
-**Build:** `7IN-20260723-PRODUCT30-200-TARGET-PSRAM`
-**Commit:** [`50821ba`](https://github.com/bcarriveau/esp-aircraft-radar/commit/50821badc68efb2e0c8dab597d1db5f1267628ab)
-**Status:** Current target-capacity/memory baseline
-
-- Increased bounded storage to 200 retained targets.
-- Moved all capacity-scaled target, snapshot, hit, contact, and label-collision
-  buffers to required PSRAM.
-- Preserved returned tracked aircraft, then retained nearest first.
-- Added received/eligible/stored/dropped/visible diagnostics and clean startup failure
-  on required PSRAM allocation failure.
-- Corrected an earlier attempt that consumed contiguous internal RAM needed by TLS.
-
-## Product 29 - 2026-07-23
-
-**Build:** `7IN-20260723-PRODUCT29-UI-STATE-FIXES`
-**Commit:** [`237d06a`](https://github.com/bcarriveau/esp-aircraft-radar/commit/237d06a2b79b0ca76960ad594c435ee0947716a2)
-**Status:** UI-state behavior retained
-
-- Matched label-box allocation/bounds to capacity.
-- Used stable rendered ICAO for nearest cards/lists.
-- Added explicit Radar/Tracks detail origins and correct return-tab behavior.
-- Paused/refreshed selected timeout around details and closed overlays on tab changes.
-
-## Product 28 - 2026-07-23
-
-**Build:** `7IN-20260723-PRODUCT28-RADAR-STATE-FLOW`
-**Commit:** [`61f104c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/61f104ca4a8adb6bf7d9ffb6caf3509ddb05797c)
-**Status:** Superseded by Product 29
-
-- Restored idle nearest information to the left panel.
-- Gave selected/tracked details right-panel priority.
-- Moved STOP TRACK into the tracked card and added explicit detail returns.
-- Preserved selection after stop when practical.
-
-## Product 27 - 2026-07-23
-
-**Build:** `7IN-20260723-PRODUCT27-RADAR-LAYOUT`
-**Commit:** [`2dda7ae`](https://github.com/bcarriveau/esp-aircraft-radar/commit/2dda7ae4606dff08fcd34d303610f9d920185362)
-**Status:** Superseded
-
-- Reworked idle, selected, and tracked panel layout.
-- Added INFO, TRACK, CLEAR, and right-panel STOP TRACK.
-- Kept the compact range selector and made nearest-list taps select aircraft.
-
-## Product 26 - 2026-07-22
-
-**Build:** `7IN-20260722-PRODUCT26-RADAR-INTERACTION`
-**Commit:** [`298c87a`](https://github.com/bcarriveau/esp-aircraft-radar/commit/298c87ab43d83ae51e0276fb152789e05ad7423e)
-**Status:** Themed tag/direct interaction foundation retained
-
-- Added dark-navy 20-mile tags with cyan identifiers and teal borders.
-- Added stable ICAO hit regions and tracked/selected/closest priority.
-- Added temporary amber selection, INFO/TRACK, and compact 20/40/80 selector.
-
-## Product 25 - 2026-07-22
-
-**Build:** `7IN-20260722-PRODUCT25-NVS-DEFAULTS`
-**Commit:** [`1c1d555`](https://github.com/bcarriveau/esp-aircraft-radar/commit/1c1d5557dd1ae34ba9ea47a39e381c0a86bbbeee)
-**Status:** First-soak cleanup retained
-
-- Eliminated expected first-run missing-key Preferences errors.
-- Initialized missing title, Wi-Fi, latitude, and longitude keys without replacing
-  saved values.
-
-## Product 24 - 2026-07-21
-
-**Build:** `7IN-20260721-PRODUCT24-TRANSPORT-RECOVERY`
-**Commit:** [`dec570e`](https://github.com/bcarriveau/esp-aircraft-radar/commit/dec570eab7324ae6cc00747a037af2090cdf94bd)
-**Status:** Recovery architecture retained and later hardened
-
-- Added bounded retries for stalled/incomplete bodies.
-- Closed native clients before retry/fallback and preserved most-advanced failure.
-- Reconnected after incomplete downloads, escalated to radio recycle, retried promptly,
-  moved last-resort restart to the main loop, and retained last-good aircraft.
-
-## Product 23 - 2026-07-21
-
-**Build:** `7IN-20260721-PRODUCT23-HEADING-CRASH-FIX`
-**Commit:** [`faa9bc2`](https://github.com/bcarriveau/esp-aircraft-radar/commit/faa9bc28b8524ff9fb850636e1bf356f508d71da)
-**Status:** Physical crash fix confirmed
-
-- Replaced unsupported floating-point LVGL formatting with integer headings/range.
-- Fixed the core-1 `LoadProhibited` crash after aircraft population.
-
-## Product 22 - 2026-07-21
-
-**Build:** `7IN-20260721-PRODUCT22-LARGE-RESPONSE`
-**Commit:** [`3203bd3`](https://github.com/bcarriveau/esp-aircraft-radar/commit/3203bd3a4263b7c1f65a839466a083d7b9cd8c90)
-**Status:** Large-response handling retained
-
-- Retried temporary native body EAGAIN/EWOULDBLOCK/timeouts within independent idle
-  and total deadlines.
-- Physical testing completed a 105,690-byte response with 189 parsed aircraft.
-
-## Products 19-21 - 2026-07-21
-
-**Final build:** `7IN-20260721-PRODUCT21-TRACKED-HEADING`
-**Commit:** [`5d5b0b6`](https://github.com/bcarriveau/esp-aircraft-radar/commit/5d5b0b62cd828349b1120b1be9e24c8bb98cd6e9)
-**Status:** Combined record; individual Product boundaries not preserved
-
-- Removed 160 miles and limited ranges to 20/40/80.
-- Added predictive outward auto-zoom, popup keyboard, non-wrapping identifiers,
-  tracked left-panel information, rotating heading arrow/value, and detail selection
-  for the represented aircraft.
-- Kept tracked presentation through temporary omissions.
-
-## Product 18 - 2026-07-21
-
-**Build:** `7IN-20260721-PRODUCT18-CERT-BUNDLE`
-**Commit:** [`69dce61`](https://github.com/bcarriveau/esp-aircraft-radar/commit/69dce612211326a4a41f0f66becc8eb7d46191f9)
-**Status:** First physically working native TLS baseline
-
-- Attached Espressif's CA bundle to native HTTPS with hostname verification.
-- Corrected Product 17's missing verification configuration.
-- Added secure fallback and reduced unnecessary Wi-Fi reconnect churn.
-
-## Product 17 - 2026-07-21
-
-**Standalone commit:** Not preserved
-**Status:** Confirmed precursor documented by Product 18 history
-
-- Replaced Arduino secure-client/manual HTTP with native ESP-IDF streaming HTTPS.
-- Re-resolved DNS and created a fresh client per retry.
-- Preserved deadlines, size guards, PSRAM body, generations, and single-snapshot
-  publication.
-- Initial physical test failed because server verification was not configured;
-  Product 18 corrected it.
-
-## Product 16 - 2026-07-21
-
-**Build:** `7IN-20260721-PRODUCT16-TLS-STABLE`
-**Commit:** [`c81b34e`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c81b34e5d640e734723964f895c9bb4ec49c1af8)
-**Status:** Superseded by native HTTPS Products 17-18
-
-- Used resolved IP for TCP while retaining hostname SNI.
-- Increased TLS allowance, logged exact mbedTLS errors, and avoided recycling a
-  healthy station for TLS/HTTP/body/JSON failures.
-- Physical TLS timeouts led to Product 17.
-
-## Product 15 - 2026-07-21
-
-**Build:** `7IN-20260721-PRODUCT15-HARDENED`
-**Commit:** [`b2a0a49`](https://github.com/bcarriveau/esp-aircraft-radar/commit/b2a0a492c424cf192edf71eb7f5dd496ec0bbab8)
-**Tag:** `product-15-hardened`
-**Status:** First hardened version-controlled and permanent rollback baseline
 
 ### Added
 
-- Added modular PlatformIO/C++/LVGL firmware for the exact Waveshare 7-inch device.
-- Added core-0 ADS-B networking and Wi-Fi recovery ownership.
-- Added true 15-second start-to-start polling with non-overlapping requests.
-- Added bounded connect, header, body-idle, and total deadlines.
-- Added classified Wi-Fi, DNS, TCP, TLS, HTTP, body, JSON, and stale failures.
-- Added request generations, obsolete-response rejection, last-good retention,
-  thread-safe publication, and coherent radar snapshots.
-- Added collision-aware 20-mile labels, stable ICAO tracking, Setup validation,
-  protected reset behavior, diagnostics, aircraft categories, and unknown artwork.
-- Added private configuration example while excluding `include/config.h`.
+- Added visual Airspace total/range/category cards and nearest, fastest, lowest, and
+  category highlights.
+- Added up to three secondary aircraft rows with stable ICAO identity.
+- Removed duplicate Setup range controls so the compact Radar 20/40/80 selector
+  remained the range control.
+- Expanded fixed side-icon storage in PSRAM and added the project credit card.
 
-### Display and memory baseline
+## Product 31 - 2026-07-23
 
-- Arduino-ESP32 3.0.7 high-performance XIP/PSRAM framework.
-- OPI PSRAM with `BOARD_HAS_PSRAM`.
-- Waveshare RGB timing, DMA, anti-rolling protections, and 20-scanline bounce buffer.
+**Build:** `7IN-20260723-PRODUCT31-NEAREST-HEADING-ARROW`  
+**Commit:** [`1747cb1`](https://github.com/bcarriveau/esp-aircraft-radar/commit/1747cb169969dff12f3a5d794f561b56dc2acc83)  
+**Status:** Side bitmap/heading behavior retained
+
+- Added aircraft-type bitmap icons to idle, selected/tracked, and nearest-five areas.
+- Added a rotating idle-nearest heading arrow/value with independent persistent point
+  storage and stable ICAO actions.
+
+## Product 30 - 2026-07-23
+
+**Build:** `7IN-20260723-PRODUCT30-200-TARGET-PSRAM`  
+**Commit:** [`50821ba`](https://github.com/bcarriveau/esp-aircraft-radar/commit/50821badc68efb2e0c8dab597d1db5f1267628ab)  
+**Status:** 200-target capacity/memory architecture retained
+
+### Changed
+
+- Increased deterministic retained-aircraft capacity to 200.
+- Moved all capacity-scaled target, snapshot, hit, screen-contact, and label-collision
+  buffers to required PSRAM with clean startup failure when unavailable.
+- Preserved a returned tracked aircraft first, then filled remaining capacity nearest
+  first.
+- Added received/eligible/stored/dropped/visible diagnostics and corrected an earlier
+  internal-RAM attempt that starved TLS of contiguous memory.
+
+## Product 29 - 2026-07-23
+
+**Build:** `7IN-20260723-PRODUCT29-UI-STATE-FIXES`  
+**Commit:** [`237d06a`](https://github.com/bcarriveau/esp-aircraft-radar/commit/237d06a2b79b0ca76960ad594c435ee0947716a2)  
+**Status:** UI-state behavior retained
+
+- Matched label-box allocation/bounds to target capacity.
+- Used stable rendered ICAO identifiers for nearest cards/lists.
+- Added explicit Radar/Tracks detail origins and correct return-tab behavior.
+- Paused/refreshed the temporary selection timeout around details and closed overlays
+  cleanly on tab changes.
+
+## Product 28 - 2026-07-23
+
+**Build:** `7IN-20260723-PRODUCT28-RADAR-STATE-FLOW`  
+**Commit:** [`61f104c`](https://github.com/bcarriveau/esp-aircraft-radar/commit/61f104ca4a8adb6bf7d9ffb6caf3509ddb05797c)  
+**Status:** Superseded by Product 29; state-flow concepts retained
+
+- Restored idle nearest-aircraft information to the left panel.
+- Gave selected/tracked details priority in the right panel and moved STOP TRACK into
+  the tracked card.
+- Added explicit detail returns and preserved selection after stop when practical.
+
+## Product 27 - 2026-07-23
+
+**Build:** `7IN-20260723-PRODUCT27-RADAR-LAYOUT`  
+**Commit:** [`2dda7ae`](https://github.com/bcarriveau/esp-aircraft-radar/commit/2dda7ae4606dff08fcd34d303610f9d920185362)  
+**Status:** Radar interaction layout foundation retained
+
+- Reworked idle, selected, and tracked panel layout.
+- Added INFO, TRACK, CLEAR, and right-panel STOP TRACK actions.
+- Kept the compact range selector and made nearest-list taps select aircraft instead
+  of immediately changing pages.
+
+## Product 26 - 2026-07-22
+
+**Build:** `7IN-20260722-PRODUCT26-RADAR-INTERACTION`  
+**Commit:** [`298c87a`](https://github.com/bcarriveau/esp-aircraft-radar/commit/298c87ab43d83ae51e0276fb152789e05ad7423e)  
+**Status:** Themed tag/direct-interaction foundation retained
+
+### Added
+
+- Added dark-navy 20-mile aircraft tags with cyan identifiers and themed borders.
+- Added stable ICAO canvas hit regions with tracked, selected, then closest priority.
+- Added temporary amber selection with INFO/TRACK and the compact 20/40/80-mile radar
+  range selector.
+
+## Product 25 - 2026-07-22
+
+**Build:** `7IN-20260722-PRODUCT25-NVS-DEFAULTS`  
+**Commit:** [`1c1d555`](https://github.com/bcarriveau/esp-aircraft-radar/commit/1c1d5557dd1ae34ba9ea47a39e381c0a86bbbeee)  
+**Status:** First-soak NVS cleanup retained
+
+### Fixed
+
+- Eliminated expected first-run Preferences errors for missing settings keys.
+- Initialized missing device title, Wi-Fi SSID/password, latitude, and longitude from
+  configured defaults without replacing already-saved values.
+
+## Product 24 - 2026-07-21
+
+**Build:** `7IN-20260721-PRODUCT24-TRANSPORT-RECOVERY`  
+**Commit:** [`dec570e`](https://github.com/bcarriveau/esp-aircraft-radar/commit/dec570eab7324ae6cc00747a037af2090cdf94bd)  
+**Status:** Recovery architecture retained and later hardened
+
+### Fixed
+
+- Added bounded retries for stalled/incomplete ADS-B response bodies and preserved the
+  most advanced failure stage.
+- Closed native connections before retry/fallback, reconnected Wi-Fi after incomplete
+  downloads, escalated to station-radio recycle, and retried promptly after recovery.
+- Moved last-resort restart execution safely to the main loop and preserved last-good
+  aircraft during transport failures.
+
+## Product 23 - 2026-07-21
+
+**Build:** `7IN-20260721-PRODUCT23-HEADING-CRASH-FIX`  
+**Commit:** [`faa9bc2`](https://github.com/bcarriveau/esp-aircraft-radar/commit/faa9bc28b8524ff9fb850636e1bf356f508d71da)  
+**Status:** Physical crash fix confirmed
+
+### Fixed
+
+- Replaced unsupported floating-point LVGL formatting with integer heading/range text.
+- Fixed the core-1 LoadProhibited crash that appeared after aircraft data populated.
 
 ### Verification
 
-- Compile/link passed.
-- Product 15 remains the permanent hardened rollback baseline.
+- Compile/link passed and repeated physical aircraft updates confirmed the heading
+  crash no longer occurred.
 
----
+## Product 22 - 2026-07-21
 
-## History boundary
+**Build:** `7IN-20260721-PRODUCT22-LARGE-RESPONSE`  
+**Commit:** [`3203bd3`](https://github.com/bcarriveau/esp-aircraft-radar/commit/3203bd3a4263b7c1f65a839466a083d7b9cd8c90)  
+**Status:** Large-response handling retained
 
-The authoritative numbered GitHub Product history begins at Product 15. Product
-15 preserved the proven RGB anti-rolling configuration from Product 14, but this
-repository does not contain authoritative Product 1-14 history. Those earlier
-releases are intentionally omitted rather than reconstructed from memory, previous
-chats, or uncertain files.
+### Fixed
+
+- Retried temporary EAGAIN/EWOULDBLOCK/timeout conditions during native HTTPS body
+  reads without discarding a valid large response prematurely.
+- Retained independent no-progress and total-response deadlines.
+
+### Physical result
+
+- A preserved runtime test completed a 105,690-byte response containing 189 parsed
+  aircraft with the then-bounded 100 published targets.
+
+## Products 19-21 - 2026-07-21
+
+**Product 21 build:** `7IN-20260721-PRODUCT21-TRACKED-HEADING`  
+**Product 21 commit:** [`5d5b0b6`](https://github.com/bcarriveau/esp-aircraft-radar/commit/5d5b0b62cd828349b1120b1be9e24c8bb98cd6e9)  
+**Status:** Combined preserved UI evolution; reliable standalone Product 19/20 boundaries are not claimed
+
+### Changed across the preserved 19-21 sequence
+
+- Added the tracked-aircraft panel and rotating heading arrow/value.
+- Capped the radar range at 80 miles and added outward auto-zoom as a tracked aircraft
+  approached the radar boundary.
+- Added the popup on-screen keyboard for Setup fields and prevented aircraft
+  identifiers from wrapping.
+- Removed the redundant upper-left radar status overlay during this UI sequence.
+- Kept the tracked panel active while waiting for fresh aircraft data.
+
+### History note
+
+- Repository documentation identifies Product 20 with the redundant status-overlay
+  removal and Product 21 with the tracked-heading candidate, but Git history does not
+  preserve authoritative standalone Product 19 and Product 20 commit/build boundaries.
+- Product 18 remained the physically confirmed TLS baseline while this UI sequence was
+  developed.
+
+## Product 18 - 2026-07-21
+
+**Build:** `7IN-20260721-PRODUCT18-CERT-BUNDLE`  
+**Commit:** [`69dce61`](https://github.com/bcarriveau/esp-aircraft-radar/commit/69dce612211326a4a41f0f66becc8eb7d46191f9)  
+**Status:** First physically working native-TLS baseline
+
+### Fixed
+
+- Attached Espressif's full CA certificate bundle to the native ESP-IDF HTTPS client
+  and kept hostname verification enabled.
+- Corrected the Product 17 native-client configuration that failed locally before a
+  network TLS handshake because no server-verification method was configured.
+- Added a fallback HTTPS path and reduced unnecessary Wi-Fi reconnect churn while
+  preserving core-0 HTTPS ownership, response limits, deadlines, PSRAM payload,
+  generation rejection, and single-snapshot publication.
+
+### Verification
+
+- Compile/link and initial physical native-TLS testing passed, establishing Product 18
+  as the working transport baseline for the following UI revisions.
+
+## Product 17 - 2026-07-21
+
+**Standalone commit/build marker:** Not preserved  
+**Status:** Documented precursor inside the Product 18 commit
+
+### Changed
+
+- Replaced Arduino `NetworkClientSecure` plus the hand-written HTTP parser with
+  ESP-IDF's native streaming HTTPS client.
+- Re-resolved DNS and created a fresh native client for each retry while keeping all
+  HTTPS work on the existing core-0 network task.
+- Preserved response/body deadlines, response-size guards, PSRAM payload storage,
+  generation rejection, and single-snapshot publication.
+- Added native ESP-IDF/socket/RSSI and TCP-versus-TLS failure diagnostics.
+
+### Known issue
+
+- The first physical test failed before network TLS negotiation because the native
+  client did not yet have a server-verification method configured; Product 18 added
+  the CA certificate bundle.
+
+## Product 16 - 2026-07-21
+
+**Build:** `7IN-20260721-PRODUCT16-TLS-STABLE`  
+**Commit:** [`c81b34e`](https://github.com/bcarriveau/esp-aircraft-radar/commit/c81b34e5d640e734723964f895c9bb4ec49c1af8)  
+**Status:** Superseded by native HTTPS Products 17-18
+
+### Changed
+
+- Used the already-resolved ADS-B server IP for TCP while retaining the hostname for
+  TLS SNI.
+- Increased the TLS handshake allowance from 10 to 20 seconds and logged exact
+  mbedTLS error codes/text.
+- Recycled Wi-Fi only for Wi-Fi, DNS, or TCP failures rather than deliberately
+  disconnecting a healthy station after TLS/HTTP/body/JSON failures.
+
+### Verification
+
+- Complete compile/link passed; physical testing still encountered TLS timeouts,
+  leading to the native HTTPS work documented in Products 17-18.
+
+## Product 15 - 2026-07-21
+
+**Build:** `7IN-20260721-PRODUCT15-HARDENED`  
+**Commit:** [`b2a0a49`](https://github.com/bcarriveau/esp-aircraft-radar/commit/b2a0a492c424cf192edf71eb7f5dd496ec0bbab8)  
+**Tag:** `product-15-hardened`  
+**Status:** Permanent hardened rollback baseline
+
+### Established
+
+- First hardened modular version-controlled baseline for the exact Waveshare
+  ESP32-S3-Touch-LCD-7 project.
+- Core-0 ADS-B network ownership, generation-safe publication, stale-result rejection,
+  last-good aircraft retention, failure diagnostics, and bounded recovery behavior.
+- Arduino-ESP32 3.0.7 high-performance XIP/OPI PSRAM configuration and the proven
+  Waveshare RGB timing/DMA anti-rolling path with the 20-scanline bounce buffer.
+- LVGL-based radar/System/Setup architecture and the reliability boundary from which
+  later Product history is tracked.
+
+### Verification at baseline creation
+
+- The initial repository baseline recorded successful compile/link verification.
+- The `product-15-hardened` tag remains the recommended permanent rollback point.
