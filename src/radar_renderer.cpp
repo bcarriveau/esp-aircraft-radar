@@ -136,6 +136,33 @@ lv_color_t bitmapColor(uint16_t pixel) {
   return rgb(red, green, blue);
 }
 
+void drawAircraftBitmapIcon(lv_obj_t* canvas, lv_color_t* buffer,
+                            uint16_t width, uint16_t height,
+                            AircraftBitmapId bitmapId) {
+  if (!canvas || !buffer || width == 0 || height == 0) return;
+  const lv_color_t background = rgb(10, 18, 25);
+  const size_t pixelCount = static_cast<size_t>(width) * height;
+  for (size_t pixel = 0; pixel < pixelCount; ++pixel) {
+    buffer[pixel] = background;
+  }
+
+  const uint16_t* sprite = aircraftBitmap(bitmapId);
+  for (uint16_t destinationY = 0; destinationY < height; ++destinationY) {
+    const int sourceY =
+        destinationY * AIRCRAFT_BITMAP_H / height;
+    for (uint16_t destinationX = 0; destinationX < width; ++destinationX) {
+      const int sourceX =
+          destinationX * AIRCRAFT_BITMAP_W / width;
+      const uint16_t pixel = pgm_read_word(
+          sprite + sourceY * AIRCRAFT_BITMAP_W + sourceX);
+      if (!pixel) continue;
+      buffer[static_cast<size_t>(destinationY) * width + destinationX] =
+          bitmapColor(pixel);
+    }
+  }
+  lv_obj_invalidate(canvas);
+}
+
 struct ScreenContact {
   uint8_t targetIndex;
   uint8_t hitIndex;
@@ -521,29 +548,8 @@ void drawAircraftPreview(lv_obj_t* canvas, lv_color_t* buffer,
 
 void drawSideBitmapIcon(lv_obj_t* canvas, lv_color_t* buffer,
                         AircraftBitmapId bitmapId) {
-  if (!canvas || !buffer) return;
-  const lv_color_t background = rgb(10, 18, 25);
-  for (int i = 0; i < SIDE_ICON_WIDTH * SIDE_ICON_HEIGHT; ++i) {
-    buffer[i] = background;
-  }
-
-  const uint16_t* sprite = aircraftBitmap(bitmapId);
-  for (int destinationY = 0; destinationY < SIDE_ICON_HEIGHT;
-       ++destinationY) {
-    const int sourceY =
-        destinationY * AIRCRAFT_BITMAP_H / SIDE_ICON_HEIGHT;
-    for (int destinationX = 0; destinationX < SIDE_ICON_WIDTH;
-         ++destinationX) {
-      const int sourceX =
-          destinationX * AIRCRAFT_BITMAP_W / SIDE_ICON_WIDTH;
-      const uint16_t pixel = pgm_read_word(
-          sprite + sourceY * AIRCRAFT_BITMAP_W + sourceX);
-      if (!pixel) continue;
-      buffer[destinationY * SIDE_ICON_WIDTH + destinationX] =
-          bitmapColor(pixel);
-    }
-  }
-  lv_obj_invalidate(canvas);
+  drawAircraftBitmapIcon(canvas, buffer, SIDE_ICON_WIDTH, SIDE_ICON_HEIGHT,
+                         bitmapId);
 }
 
 void drawTrackBitmapIcon(lv_draw_ctx_t* drawContext, int centerX, int centerY,
@@ -1419,14 +1425,16 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
 }
 
 void updateSideIcon(lv_obj_t* canvas, lv_color_t* buffer,
-                    const aircraft::Target* target, bool visible) {
+                    const aircraft::Target* target, bool visible,
+                    uint16_t width = SIDE_ICON_WIDTH,
+                    uint16_t height = SIDE_ICON_HEIGHT) {
   if (!canvas || !buffer) return;
   if (!visible || !target) {
     lv_obj_add_flag(canvas, LV_OBJ_FLAG_HIDDEN);
     return;
   }
-  drawSideBitmapIcon(canvas, buffer,
-                     aircraft::bitmapForTarget(*target));
+  drawAircraftBitmapIcon(canvas, buffer, width, height,
+                         aircraft::bitmapForTarget(*target));
   lv_obj_clear_flag(canvas, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -1918,7 +1926,8 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
                                radarView.verticalStateLabel, nullptr);
   }
   updateSideIcon(radarView.priorityIcon, radarView.priorityIconBuffer,
-                 primaryTarget, priorityAircraft && primaryTarget);
+                 primaryTarget, priorityAircraft && primaryTarget,
+                 radarView.priorityIconWidth, radarView.priorityIconHeight);
 
   for (int i = 0; i < 5; ++i) {
     if (radarView.listHexes[i]) radarView.listHexes[i][0] = 0;

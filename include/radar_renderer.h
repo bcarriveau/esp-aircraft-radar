@@ -38,6 +38,8 @@ struct View {
   lv_obj_t* nearestSummaryLabel = nullptr;
   lv_obj_t* priorityIcon = nullptr;
   lv_color_t* priorityIconBuffer = nullptr;
+  uint16_t priorityIconWidth = SIDE_ICON_WIDTH;
+  uint16_t priorityIconHeight = SIDE_ICON_HEIGHT;
   lv_obj_t* headingArrow = nullptr;
   lv_obj_t* headingLabel = nullptr;
   lv_obj_t* verticalStateIcon = nullptr;

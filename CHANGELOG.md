@@ -14,10 +14,10 @@ repository does not provide authoritative evidence.
 
 ## Current status
 
-- **Current replacement source:** Product 83
-- **Current build marker:** `7IN-20260808-PRODUCT83-SETTINGS-KEYBOARD-VISIBILITY`
+- **Current replacement source:** Product 84
+- **Current build marker:** `7IN-20260809-PRODUCT84-LARGE-PRIORITY-AIRCRAFT-ICON`
 - **Source baseline branch:** `main`
-- **Current committed baseline:** Product 82 `d3e769b34eb112d7153c43f75a1dd5d3e69eb276`
+- **Current committed baseline:** Product 83 `e1a0c39535ccd1d4a52391f860e7cb51d74a4638`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262 RGB LCD,
   GT911 touch, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
@@ -25,15 +25,16 @@ repository does not provide authoritative evidence.
 - **Hardened rollback baseline:** Product 15
 - **Recommended rollback tag:** `product-15-hardened`
 
-Product 83 is a focused replacement-source candidate based directly on committed
-Product 82 `main` commit `d3e769b34eb112d7153c43f75a1dd5d3e69eb276`.
-It changes only the System-page Settings keyboard visibility behavior plus Product
-identity/documentation. PlatformIO and physical verification are not claimed.
+Product 84 is a focused replacement-source candidate based directly on committed
+Product 83 `main` commit `e1a0c39535ccd1d4a52391f860e7cb51d74a4638`.
+It enlarges only the selected/tracked priority aircraft-type icon by reusing the
+existing checked-in 96x64 aircraft sprites. PlatformIO and physical verification
+are not claimed.
 
 ### History completeness notes
 
 - Numbered Product history is represented continuously from Product 15 through
-  Product 83 using current Git history first and preserved historical documentation
+  Product 84 using current Git history first and preserved historical documentation
   only where standalone Git boundaries are absent.
 - Product 17 is recorded as the documented native-HTTPS precursor inside Product 18;
   no standalone Product 17 commit or build marker is invented.
@@ -43,16 +44,90 @@ identity/documentation. PlatformIO and physical verification are not claimed.
   R3/R4 commits.
 - Product 36, Product 40, Product 46, Product 53, and Product 56 retain their
   confirmed revision chains where those revisions materially changed the product.
-- Product 83 remains a local replacement-source candidate; Product 82 remains the
-  latest committed GitHub baseline until Product 83 is actually committed.
+- Product 84 remains a local replacement-source candidate; Product 83 is the latest
+  committed GitHub baseline until Product 84 is actually committed.
+
+## Product 84 - 2026-08-09
+
+**Build:** `7IN-20260809-PRODUCT84-LARGE-PRIORITY-AIRCRAFT-ICON`  
+**Source baseline:** Product 83 `main` commit
+`e1a0c39535ccd1d4a52391f860e7cb51d74a4638`  
+**Status:** Focused replacement-source candidate; focused host/static validation
+complete; PlatformIO and physical verification pending
+
+### Changed
+
+- Enlarged only the selected/tracked priority aircraft-type icon from the shared
+  28x19 side-icon presentation to a dedicated 48x32 canvas.
+- Reuses the existing checked-in 96x64 RGB565 aircraft-type sprites and samples them
+  directly to 48x32; no new aircraft artwork or duplicate bitmap table is added.
+- Added one fixed 48x32 RGB565 PSRAM buffer for the priority icon and removed its old
+  slot from the shared side-icon buffer. Shared side-icon storage drops from 16 to
+  15 slots, for a net fixed PSRAM increase of 2,008 bytes.
+- Kept the normal nearest, nearest-five, selected/tracked neighbor, and Airspace
+  aircraft icons at their existing 28x19 dimensions.
+- Generalized the existing renderer-side bitmap sampler so normal icons and the
+  enlarged priority icon use one bounded drawing path rather than duplicated code.
+- Keeps priority-icon refresh inside the established target/range/tracking version
+  gated radar-summary update; no new frame-loop allocation, task, timer, snapshot, or
+  target lookup was introduced.
+
+### Preserved
+
+- The separate 80x36 climbing/level/descending fuselage indicator and FT/MIN text are
+  unchanged.
+- Selected and tracked panel text, heading arrow, INFO/TRACK/CLEAR/STOP TRACK actions,
+  stable ICAO identity, lost-track grace, outward auto-zoom, and MPH display are
+  unchanged.
+- 20/40/80-mile radar contacts, labels, hit testing, coherent snapshot rendering,
+  dirty-region restoration, airport rendering, Tracks, Airspace, System, MQTT, and
+  OTA behavior are unchanged.
+- ADS-B networking, native/fallback HTTPS, 15-second cadence, Wi-Fi/TLS recovery,
+  stale-response rejection, last-good retention, 200-target capacity, panel timing,
+  DMA, OPI PSRAM, and the 20-scanline RGB bounce buffer are unchanged.
+
+### Validation
+
+- Exact committed Product 83 baselines were verified by Git blob SHA before editing
+  for `src/ui.cpp`, `src/radar_renderer.cpp`, `include/radar_renderer.h`,
+  `include/build_info.h`, and the complete `CHANGELOG.md`.
+- A focused C++17 icon-scaling/index/memory model passed with
+  `-Wall -Wextra -Werror -pedantic`, AddressSanitizer, and
+  UndefinedBehaviorSanitizer. It verified bounded 96x64-to-48x32 and 96x64-to-28x19
+  source sampling, the 15-slot shared side-icon index layout, and the 2,008-byte net
+  fixed PSRAM increase.
+- Static checks confirmed the dedicated 48x32 canvas remains inside the intended
+  right-panel content bounds and does not overlap the summary area.
+- Complete changed C++/header files passed lexical delimiter and trailing-whitespace
+  checks; the custom icon dimensions are supplied only for the priority icon.
+- Changed-source scans found no `HTTPClient::GET()` or `setInsecure()` and confirmed
+  `MAX_TARGETS` usage counts are unchanged in the affected files.
+- Complete changed-file comparison confirmed scope is limited to priority-icon UI
+  storage/layout/rendering, Product identity, and repository changelog documentation.
+- PlatformIO compile/link, generated memory totals, OTA package generation, upload,
+  physical display/touch testing, and soak testing were not run here.
+
+### Pending verification
+
+- Confirm boot serial output reports
+  `7IN-20260809-PRODUCT84-LARGE-PRIORITY-AIRCRAFT-ICON`.
+- Select several aircraft categories and confirm the larger type icon is clear,
+  correctly classified, and does not cover the callsign or aircraft summary.
+- Start and stop tracking and confirm the same 48x32 icon layout is retained without
+  panel movement or action-button changes.
+- Confirm the white climb/level/descent fuselage and FT/MIN indication remain
+  unchanged and aligned.
+- Confirm normal 28x19 list/Airspace icons, 20/40/80 radar symbols, selection,
+  tracking, page switching, networking, and display stability remain unchanged.
 
 ## Product 83 - 2026-08-08
 
 **Build:** `7IN-20260808-PRODUCT83-SETTINGS-KEYBOARD-VISIBILITY`  
+**Commit:** [`e1a0c39`](https://github.com/bcarriveau/esp-aircraft-radar/commit/e1a0c39535ccd1d4a52391f860e7cb51d74a4638)  
 **Source baseline:** Product 82 `main` commit
 `d3e769b34eb112d7153c43f75a1dd5d3e69eb276`  
-**Status:** Focused replacement-source candidate; focused host validation complete;
-PlatformIO and physical verification pending
+**Status:** Committed focused System-settings keyboard visibility update; host
+validation recorded; PlatformIO and physical verification are not recorded here
 
 ### Changed
 

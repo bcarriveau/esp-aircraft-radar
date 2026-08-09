@@ -50,16 +50,17 @@ constexpr uint32_t SELECTED_AIRCRAFT_TIMEOUT_MS = 30000;
 constexpr lv_coord_t SETTINGS_KEYBOARD_CLEARANCE = 32;
 constexpr lv_coord_t SETTINGS_SCROLL_SPACER_Y = 280;
 constexpr uint8_t LEFT_NEAREST_ICON_INDEX = 0;
-constexpr uint8_t PRIORITY_ICON_INDEX = 1;
-constexpr uint8_t LIST_ICON_BASE_INDEX = 2;
+constexpr uint8_t LIST_ICON_BASE_INDEX = 1;
 constexpr uint8_t PRIORITY_OTHER_ICON_BASE_INDEX =
     LIST_ICON_BASE_INDEX + NEAREST_LIST_COUNT;
 constexpr uint8_t AIRSPACE_ICON_BASE_INDEX =
     PRIORITY_OTHER_ICON_BASE_INDEX + PRIORITY_OTHER_COUNT;
 constexpr uint8_t RADAR_SIDE_ICON_COUNT =
     AIRSPACE_ICON_BASE_INDEX + AIRSPACE_CATEGORY_COUNT;
-static_assert(RADAR_SIDE_ICON_COUNT == 16,
+static_assert(RADAR_SIDE_ICON_COUNT == 15,
               "Radar side-icon indexes do not match allocation");
+constexpr uint16_t PRIORITY_AIRCRAFT_ICON_WIDTH = 48;
+constexpr uint16_t PRIORITY_AIRCRAFT_ICON_HEIGHT = 32;
 
 constexpr AircraftBitmapId AIRSPACE_CATEGORY_BITMAPS[AIRSPACE_CATEGORY_COUNT] = {
   AircraftBitmapId::AIRLINER,
@@ -79,6 +80,7 @@ constexpr const char* AIRSPACE_HIGHLIGHT_NAMES[AIRSPACE_HIGHLIGHT_COUNT] = {
 
 aircraft::Target* uiTargets = nullptr;
 lv_color_t* radarSideIconBuffers = nullptr;
+lv_color_t* priorityAircraftIconBuffer = nullptr;
 lv_color_t* verticalStateIconBuffer = nullptr;
 
 lv_obj_t* radarCanvas = nullptr;
@@ -2422,6 +2424,20 @@ bool buildRadarPanels(lv_obj_t* root) {
                 (unsigned)(RADAR_SIDE_ICON_COUNT * radar::SIDE_ICON_WIDTH *
                            radar::SIDE_ICON_HEIGHT * sizeof(lv_color_t)));
 
+  if (!priorityAircraftIconBuffer) {
+    priorityAircraftIconBuffer = static_cast<lv_color_t*>(heap_caps_calloc(
+        PRIORITY_AIRCRAFT_ICON_WIDTH * PRIORITY_AIRCRAFT_ICON_HEIGHT,
+        sizeof(lv_color_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  }
+  if (!priorityAircraftIconBuffer) {
+    Serial.println("FATAL: priority aircraft icon PSRAM allocation failed");
+    return false;
+  }
+  Serial.printf("Priority aircraft icon buffer in PSRAM: %u bytes\n",
+                (unsigned)(PRIORITY_AIRCRAFT_ICON_WIDTH *
+                           PRIORITY_AIRCRAFT_ICON_HEIGHT *
+                           sizeof(lv_color_t)));
+
   if (!verticalStateIconBuffer) {
     verticalStateIconBuffer = static_cast<lv_color_t*>(heap_caps_calloc(
         radar::VERTICAL_STATE_ICON_WIDTH * radar::VERTICAL_STATE_ICON_HEIGHT,
@@ -2601,9 +2617,12 @@ bool buildRadarPanels(lv_obj_t* root) {
   aircraftModeLabel = makeLabel(right, "NEAREST 5 AIRCRAFT",
                                 &lv_font_montserrat_16,
                                 rgb(110, 220, 255), 3, 3);
-  priorityAircraftIcon = makeRadarSideIcon(
-      right, PRIORITY_ICON_INDEX, 148, 38);
-  if (!priorityAircraftIcon) return false;
+  priorityAircraftIcon = lv_canvas_create(right);
+  lv_canvas_set_buffer(priorityAircraftIcon, priorityAircraftIconBuffer,
+                       PRIORITY_AIRCRAFT_ICON_WIDTH,
+                       PRIORITY_AIRCRAFT_ICON_HEIGHT, LV_IMG_CF_TRUE_COLOR);
+  lv_obj_set_pos(priorityAircraftIcon, 134, 34);
+  lv_obj_add_flag(priorityAircraftIcon, LV_OBJ_FLAG_HIDDEN);
   nearestCallsignLabel = makeLabel(right, "--", &lv_font_montserrat_20,
                                    rgb(255, 205, 90), 4, 40);
   lv_obj_set_width(nearestCallsignLabel, 136);
@@ -2744,7 +2763,9 @@ bool buildRadarPanels(lv_obj_t* root) {
   view.nearestCallsignLabel = nearestCallsignLabel;
   view.nearestSummaryLabel = nearestSummaryLabel;
   view.priorityIcon = priorityAircraftIcon;
-  view.priorityIconBuffer = radarSideIconBuffer(PRIORITY_ICON_INDEX);
+  view.priorityIconBuffer = priorityAircraftIconBuffer;
+  view.priorityIconWidth = PRIORITY_AIRCRAFT_ICON_WIDTH;
+  view.priorityIconHeight = PRIORITY_AIRCRAFT_ICON_HEIGHT;
   view.headingArrow = headingArrow;
   view.headingLabel = headingLabel;
   view.verticalStateIcon = verticalStateIcon;
