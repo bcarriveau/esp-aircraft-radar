@@ -32,3 +32,5 @@ __pycache__/
 /COMMIT_MESSAGE.txt
 /PACKAGE_README.txt
 /SHA256SUMS.txt
+
+*.code-workspace

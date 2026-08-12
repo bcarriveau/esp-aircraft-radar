@@ -1157,7 +1157,6 @@ void drawRadarBitmapContact(int centerX, int centerY,
 
       const int x = startX + destinationX;
       const int y = startY + destinationY;
-      if (x >= RANGE_CONTROL_X1 && y >= RANGE_CONTROL_Y1) continue;
       putPixel(x, y, color);
     }
   }
