@@ -24,7 +24,7 @@ __pycache__/
 /tools/airport_data_cache/
 /tools/.airport-data-cache/
 
-# Generated persistent airport package prototype (location-specific regional data)
+# Generated persistent regional airport package (user/location-specific data)
 /release/airports.radarapt
 
 # Interrupted atomic airport-output replacements
@@ -38,5 +38,14 @@ __pycache__/
 /PACKAGE_README.txt
 /SHA256SUMS.txt
 /APPLY_AIRPORT_STAGE2.ps1
+/APPLY_AIRPORT_STAGE3.ps1
+/APPLY_AIRPORT_STAGE4.ps1
+/APPLY_AIRPORT_STAGE5.ps1
+/APPLY_AIRPORT_STAGE6.ps1
+/APPLY_AIRPORT_STAGE7.ps1
+/APPLY_AIRPORT_PRODUCT90.ps1
+/APPLY_AIRPORT_PRODUCT91.ps1
+/APPLY_AIRPORT_PRODUCT92.ps1
+/APPLY_AIRPORT_CLEANUP.ps1
 
 *.code-workspace
