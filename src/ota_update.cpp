@@ -23,6 +23,7 @@
 #include "airport_store.h"
 #include "build_info.h"
 #include "mqtt_service.h"
+#include "settings.h"
 
 namespace ota_update {
 namespace {
@@ -133,7 +134,7 @@ progress{width:100%;height:22px;margin-top:18px}.status{min-height:70px;margin-t
 <label for="code">Six-digit access code shown on the radar</label><input id="code" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code">
 
 <div class="section"><h2>Build for this location</h2><div class="hint">Your browser downloads the public OurAirports data and builds the regional package locally. The center coordinates are used only for filtering and are not stored in the package.</div>
-<div class="row"><div><label for="lat">Latitude</label><input id="lat" inputmode="decimal" placeholder="42.83047"></div><div><label for="lon">Longitude</label><input id="lon" inputmode="decimal" placeholder="-88.16204"></div></div>
+<div class="row"><div><label for="lat">Latitude</label><input id="lat" inputmode="decimal" placeholder="e.g. 40.00000"></div><div><label for="lon">Longitude</label><input id="lon" inputmode="decimal" placeholder="e.g. -95.00000"></div></div>
 <div class="row"><div><label for="radius">Coverage radius</label><select id="radius"><option value="120" selected>120 miles — recommended</option><option value="90">90 miles</option><option value="160">160 miles</option><option value="200">200 miles</option><option value="300">300 miles</option><option value="500">500 miles</option></select></div><div><label for="name">Region name</label><input id="name" maxlength="63" placeholder="HOME REGION"></div></div>
 <button id="buildInstall">BUILD &amp; INSTALL AIRPORT DATABASE</button><button id="download" class="ghost" disabled>DOWNLOAD GENERATED PACKAGE</button>
 </div>
@@ -169,7 +170,8 @@ const el=id=>document.getElementById(id),code=()=>el('code').value.trim(),sleep=
 async function callOnce(path,options={}){options.headers=Object.assign({},options.headers||{}, {'X-OTA-Code':code()});options.cache='no-store';const r=await fetch(path,options);const t=await r.text();let j={message:t};try{j=JSON.parse(t)}catch(e){}if(!r.ok){const e=new Error(j.message||('HTTP '+r.status));e.httpStatus=r.status;throw e}return j}
 async function call(path,options={},attempts=3){let lastError;for(let attempt=0;attempt<attempts;attempt++){try{return await callOnce(path,options)}catch(e){lastError=e;if(e.httpStatus||attempt+1>=attempts)throw e;await sleep(300*(attempt+1))}}throw lastError}
 async function waitReady(){await sleep(500);for(let i=0;i<45;i++){const j=await call('/status',{},3);el('status').textContent=j.message||j.state;if(j.state==='READY')return j;if(j.state==='ERROR')throw new Error(j.message);await sleep(1000)}throw new Error('Radar did not enter upload-ready state')}
-async function refresh(){if(!/^\d{6}$/.test(code()))return;try{const j=await call('/airports/status',{},3);el('store').textContent=j.store_state;el('region').textContent=j.database_date||'Not installed';el('records').textContent=String(j.records||0);el('coverage').textContent=j.coverage||'—'}catch(e){el('status').textContent=e.message}}
+let homeCoordinatesLoaded=false;
+async function refresh(){if(!/^\d{6}$/.test(code())){homeCoordinatesLoaded=false;return}try{const j=await call('/airports/status',{},3);el('store').textContent=j.store_state;el('region').textContent=j.database_date||'Not installed';el('records').textContent=String(j.records||0);el('coverage').textContent=j.coverage||'—';if(!homeCoordinatesLoaded&&j.home_coordinates_valid){el('lat').value=Number(j.home_latitude).toFixed(5);el('lon').value=Number(j.home_longitude).toFixed(5);homeCoordinatesLoaded=true;el('status').textContent='Saved radar location loaded. Review the radius, then build and install.'}}catch(e){el('status').textContent=e.message}}
 function uploadBlobOnce(blob,name='airports.radarapt'){return new Promise((resolve,reject)=>{const x=new XMLHttpRequest();let transferStarted=false;x.open('POST','/airports/upload');x.setRequestHeader('X-OTA-Code',code());x.upload.onprogress=e=>{if(e.loaded>0)transferStarted=true;if(e.lengthComputable)el('progress').value=Math.round(e.loaded*100/e.total)};x.onload=()=>{let j={message:x.responseText};try{j=JSON.parse(x.responseText)}catch(e){};if(x.status>=200&&x.status<300){resolve(j);return}const err=new Error(j.message||('HTTP '+x.status));err.httpStatus=x.status;err.transferStarted=transferStarted;reject(err)};x.onerror=()=>{const err=new Error('Upload connection reset');err.transferStarted=transferStarted;reject(err)};const f=new FormData();f.append('airports',blob,name);x.send(f)})}
 async function uploadBlob(blob,name='airports.radarapt'){let lastError;for(let attempt=0;attempt<2;attempt++){try{return await uploadBlobOnce(blob,name)}catch(e){lastError=e;if(e.httpStatus||e.transferStarted||attempt+1>=2)throw e;await sleep(500);const ota=await call('/status',{},3),airport=await call('/airports/status',{},3),received=Number(airport.received_bytes||0);if(ota.state!=='READY'||received!==0)throw new Error('Upload connection lost after transfer may have started; check radar status before retrying.');el('status').textContent='Upload connection reset before transfer; retrying once...';el('progress').value=0;await sleep(500)}}throw lastError}
 async function installBlob(blob){el('status').textContent='Waiting for network services to become idle...';await call('/prepare',{method:'POST'},3);await waitReady();el('status').textContent='Radar ready. Settling web connection before upload...';await sleep(500);el('status').textContent='Uploading and validating airport database...';const j=await uploadBlob(blob);el('status').textContent=j.message;el('progress').value=100;await refresh()}
@@ -295,19 +297,28 @@ void sendAirportStatus(int code, const char* message) {
     date[i] = (c == '"' || c == '\\' || static_cast<uint8_t>(c) < 0x20U)
         ? '_' : c;
   }
-  char body[512];
+  const float homeLatitude = settings::homeLatitude();
+  const float homeLongitude = settings::homeLongitude();
+  const bool homeCoordinatesValid =
+      settings::coordinatesValid(homeLatitude, homeLongitude);
+  char body[640];
   snprintf(body, sizeof(body),
            "{\"message\":\"%s\",\"store_state\":\"%s\","
            "\"records\":%lu,\"radius_miles\":%u,"
            "\"database_date\":\"%s\",\"coverage\":\"%s\","
-           "\"max_package_bytes\":%lu,\"received_bytes\":%lu}",
+           "\"max_package_bytes\":%lu,\"received_bytes\":%lu,"
+           "\"home_coordinates_valid\":%s,"
+           "\"home_latitude\":%.6f,\"home_longitude\":%.6f}",
            message ? message : "",
            airport_store::stateName(),
            static_cast<unsigned long>(airport_store::recordCount()),
            static_cast<unsigned>(airport_store::radiusMiles()),
            date, coverage,
            static_cast<unsigned long>(airport_store::maxPackageSize()),
-           static_cast<unsigned long>(airportUploadReceived));
+           static_cast<unsigned long>(airportUploadReceived),
+           homeCoordinatesValid ? "true" : "false",
+           static_cast<double>(homeLatitude),
+           static_cast<double>(homeLongitude));
   server.sendHeader("Cache-Control", "no-store");
   server.send(code, "application/json", body);
 }
