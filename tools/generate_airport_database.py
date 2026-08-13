@@ -4,8 +4,10 @@
 This is the lower-level command-line generator. Most Windows users should run
 ``tools/Build Airport Database.bat`` instead.
 
-The generated header contains public airport data only. The generation center is
-used to select records but is deliberately not written to the header.
+During the airport-separation transition this generator can emit both the
+current compiled C++ header and the future persistent ``.radarapt`` package.
+The generation center is used to select records but is deliberately not written
+to either output.
 """
 
 from __future__ import annotations
@@ -20,6 +22,8 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Iterable
+
+from airport_package import build_package, write_package_atomic
 
 EARTH_RADIUS_MILES = 3958.7613
 DEFAULT_RADIUS_MILES = 120.0
@@ -123,10 +127,6 @@ def classify(row: dict[str, str]) -> int | None:
     if facility_type != "small_airport":
         return None
 
-    # OurAirports does not have one worldwide public/private field. This project
-    # uses a conservative US-friendly heuristic: scheduled service, an ICAO/GPS
-    # K-code, or a short local code is treated as public. Other small fields are
-    # categorized as private. Users can still hide/show individual labels later.
     scheduled = (row.get("scheduled_service") or "").strip().lower() == "yes"
     icao = clean_ident(row.get("icao_code") or "")
     gps = clean_ident(row.get("gps_code") or "")
@@ -219,7 +219,12 @@ def load_airports(
                 continue
             latitude = _parse_float(row.get("latitude_deg"))
             longitude = _parse_float(row.get("longitude_deg"))
-            if latitude is None or longitude is None or not (-90 <= latitude <= 90) or not (-180 <= longitude <= 180):
+            if (
+                latitude is None
+                or longitude is None
+                or not (-90 <= latitude <= 90)
+                or not (-180 <= longitude <= 180)
+            ):
                 stats.invalid_rows += 1
                 continue
             distance = distance_miles(center_lat, center_lon, latitude, longitude)
@@ -341,6 +346,22 @@ def build_header(
     return "".join(lines)
 
 
+def build_binary_package(
+    airports: list[Airport],
+    database_date: str,
+    coverage: str,
+    radius_miles: float,
+) -> bytes:
+    validate_airports(airports)
+    return build_package(
+        airports,
+        database_date=clean_coverage(database_date),
+        coverage=clean_coverage(coverage),
+        radius_miles=int(round(radius_miles)),
+        generator_version=GENERATOR_VERSION,
+    )
+
+
 def write_header_atomic(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
@@ -367,6 +388,11 @@ def main() -> None:
     parser.add_argument(
         "--output", type=Path, default=Path("include/generated_airport_database.h")
     )
+    parser.add_argument(
+        "--package-output",
+        type=Path,
+        help="also write a persistent airport package (.radarapt)",
+    )
     parser.add_argument("--latitude", type=float, required=True)
     parser.add_argument("--longitude", type=float, required=True)
     parser.add_argument("--radius", type=float, default=DEFAULT_RADIUS_MILES)
@@ -383,9 +409,16 @@ def main() -> None:
         args.radius,
     )
     content = build_header(airports, args.date, args.coverage, args.radius)
+    package_content = (
+        build_binary_package(airports, args.date, args.coverage, args.radius)
+        if args.package_output is not None
+        else None
+    )
     counts = category_counts(airports)
     if not args.dry_run:
         write_header_atomic(args.output, content)
+        if args.package_output is not None and package_content is not None:
+            write_package_atomic(args.package_output, package_content)
     action = "Would generate" if args.dry_run else "Generated"
     print(f"{action} {len(airports)} airports for a {args.radius:.0f}-mile region")
     print(
@@ -397,6 +430,8 @@ def main() -> None:
         print(f"Skipped duplicate display identifiers: {stats.duplicate_idents}")
     if not args.dry_run:
         print(f"Wrote: {args.output}")
+        if args.package_output is not None:
+            print(f"Wrote: {args.package_output}")
 
 
 if __name__ == "__main__":

@@ -18,11 +18,13 @@ from generate_airport_database import (
     DEFAULT_RADIUS_MILES,
     MAX_RADIUS_MILES,
     MIN_RADIUS_MILES,
+    build_binary_package,
     build_header,
     category_counts,
     load_airports,
     write_header_atomic,
 )
+from airport_package import write_package_atomic
 
 AIRPORTS_URL = "https://davidmegginson.github.io/ourairports-data/airports.csv"
 RUNWAYS_URL = "https://davidmegginson.github.io/ourairports-data/runways.csv"
@@ -146,10 +148,26 @@ def select_source() -> tuple[Path, Path]:
 
 
 def run_database_test(root: Path) -> None:
-    command = [sys.executable, str(root / "tests" / "test_airport_database.py")]
-    result = subprocess.run(command, cwd=root, check=False)
-    if result.returncode != 0:
-        raise RuntimeError("The generated database did not pass validation")
+    for test_name in ("test_airport_database.py", "test_airport_package.py", "test_airport_generator.py"):
+        command = [sys.executable, str(root / "tests" / test_name)]
+        result = subprocess.run(command, cwd=root, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(f"Airport validation failed: {test_name}")
+
+
+def _restore_file(path: Path, previous: bytes | None) -> None:
+    if previous is None:
+        path.unlink(missing_ok=True)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".restore", dir=path.parent
+    )
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(previous)
+        handle.flush()
+        os.fsync(handle.fileno())
+    Path(temporary_name).replace(path)
 
 
 def main() -> int:
@@ -180,9 +198,10 @@ def main() -> int:
     airports, stats = load_airports(
         airports_csv, runways_csv, latitude, longitude, radius
     )
-    content = build_header(airports, date.today().isoformat(), coverage, radius)
+    database_date = date.today().isoformat()
+    content = build_header(airports, database_date, coverage, radius)
+    package_content = build_binary_package(airports, database_date, coverage, radius)
     counts = category_counts(airports)
-    estimated_bytes = len(airports) * 56
 
     print("\nPreview")
     print("-" * 40)
@@ -192,45 +211,45 @@ def main() -> int:
     for index, name in enumerate(CATEGORY_NAMES):
         print(f"{name.title() + ':':<20}{counts[index]}")
     print(f"Runway details:      {stats.runway_matches}")
-    print(f"Approx. flash data:  {estimated_bytes / 1024:.1f} KiB")
+    print(f"Compiled record data:{len(airports) * 56 / 1024:8.1f} KiB approx.")
+    print(f"Binary package:      {len(package_content) / 1024:8.1f} KiB")
     print("Runtime cache:       nearest 192 within 90 miles (category bounded)")
     if stats.duplicate_idents:
         print(f"Duplicate IDs skipped: {stats.duplicate_idents}")
-    print("\nThe exact home coordinates are not written to the generated header.")
+    print("\nThe exact home coordinates are not written to either generated output.")
 
-    confirm = input("\nReplace include/generated_airport_database.h? [y/N]: ").strip().lower()
+    confirm = input(
+        "\nReplace the compiled airport header and generate release/airports.radarapt? [y/N]: "
+    ).strip().lower()
     if confirm not in {"y", "yes"}:
         print("No files were changed.")
         return 0
 
-    output = root / "include" / "generated_airport_database.h"
-    previous = output.read_bytes() if output.exists() else None
+    header_output = root / "include" / "generated_airport_database.h"
+    package_output = root / "release" / "airports.radarapt"
+    previous_header = header_output.read_bytes() if header_output.exists() else None
+    previous_package = package_output.read_bytes() if package_output.exists() else None
     try:
-        write_header_atomic(output, content)
-        print("\nRunning database validation ...", flush=True)
+        write_header_atomic(header_output, content)
+        write_package_atomic(package_output, package_content)
+        print("\nRunning airport validation ...", flush=True)
         run_database_test(root)
     except Exception:
-        if previous is not None:
-            descriptor, temporary_name = tempfile.mkstemp(
-                prefix=f".{output.name}.", suffix=".restore", dir=output.parent
-            )
-            with os.fdopen(descriptor, "wb") as handle:
-                handle.write(previous)
-                handle.flush()
-                os.fsync(handle.fileno())
-            Path(temporary_name).replace(output)
-            print("The previous generated header was restored.")
-        else:
-            output.unlink(missing_ok=True)
+        _restore_file(header_output, previous_header)
+        _restore_file(package_output, previous_package)
+        print("The previous airport outputs were restored.")
         raise
 
     print("\nSUCCESS - AIRPORT DATABASE READY")
+    print(f"\nCompiled header: {header_output.relative_to(root)}")
+    print(f"Persistent package prototype: {package_output.relative_to(root)}")
+    print("\nCurrent Product 85 firmware still uses the compiled header.")
+    print("The .radarapt file is the verified transition artifact for the")
+    print("future persistent-partition/browser upload work.")
     print("\nNext steps:")
-    print("  1. Build the normal PlatformIO project.")
-    print("  2. Upload by USB or use the generated release/firmware.radarota.")
+    print("  1. Build the normal PlatformIO project as before.")
+    print("  2. Keep release/airports.radarapt for the separation tests.")
     print("  3. Enter the same home coordinates on the radar's System page.")
-    print("\nChanging coordinates later within this region does not require")
-    print("running this tool again. Run it again only for a different region.")
     return 0
 
 
