@@ -139,9 +139,9 @@ progress{width:100%;height:22px;margin-top:18px}.status{min-height:70px;margin-t
 </div>
 
 <details><summary>Advanced: install an existing .radarapt file</summary><label for="file">Airport package (.radarapt)</label><input id="file" type="file" accept=".radarapt,application/octet-stream"><button id="manualInstall" class="secondary">INSTALL SELECTED PACKAGE</button></details>
-<a class="button secondary" href="/update">FIRMWARE UPDATE</a>
+<a class="button secondary" href="/update">BACK TO FIRMWARE UPDATE</a>
 <progress id="progress" max="100" value="0"></progress><div class="status" id="status">Enter the access code and location, then tap BUILD &amp; INSTALL.</div>
-<div class="warn">Airport data is awareness-only, not for navigation. During installation the complete package is buffered in PSRAM and validated before flash is erased. Restart the radar after a successful install to activate the new region.</div>
+<div class="warn">Airport data is awareness-only, not for navigation. During installation the complete package is buffered in PSRAM and validated before flash is erased. After verification the radar restarts automatically and activates the new region.</div>
 <script>
 // AIRPORT_BROWSER_BUILDER_BEGIN
 const AIRPORTS_URL='https://raw.githubusercontent.com/davidmegginson/ourairports-data/main/airports.csv';
@@ -726,11 +726,12 @@ void handleAirportUploadData() {
 
       airportUploadAccepted = false;
       setAirportUploadResponse(
-          200, "Airport database verified and installed. Restart radar to activate it.");
-      setMessage("Airport database installed; restart radar to activate it");
-      currentState = State::READY;
+          200, "Airport database verified and installed. Radar is restarting.");
+      setMessage("Airport database installed; radar is restarting");
+      currentState = State::SUCCESS;
+      restartAtMs = millis() + RESTART_DELAY_MS;
       Serial.printf(
-          "Airport database installed: %lu bytes, %lu records, %u-mile region, %s, %s\n",
+          "Airport database installed: %lu bytes, %lu records, %u-mile region, %s, %s; restart scheduled\n",
           static_cast<unsigned long>(airportUploadReceived),
           static_cast<unsigned long>(airport_store::recordCount()),
           static_cast<unsigned>(airport_store::radiusMiles()),
