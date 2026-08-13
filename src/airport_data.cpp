@@ -4,6 +4,7 @@
 #include <math.h>
 #include <string.h>
 
+#include "airport_store.h"
 #include "generated_airport_database.h"
 
 namespace airport_data {
@@ -18,6 +19,7 @@ static_assert(CATEGORY_LIMITS[0] + CATEGORY_LIMITS[1] + CATEGORY_LIMITS[2] +
 NearbyAirport* nearbyAirports = nullptr;
 uint16_t nearbyAirportCount = 0;
 bool databaseReady = false;
+bool persistentDatabaseReady = false;
 float cacheLatitude = 0.0f;
 float cacheLongitude = 0.0f;
 
@@ -48,12 +50,34 @@ void distanceAndBearing(float fromLatitude, float fromLongitude,
                          360.0f);
 }
 
-void readRecord(uint16_t index, generated_airports::Record& record) {
+uint32_t sourceRecordCount() {
+  return persistentDatabaseReady
+      ? airport_store::recordCount()
+      : generated_airports::RECORD_COUNT;
+}
+
+bool readSourceRecord(uint32_t index, airport_package_format::Record& record) {
+  record = airport_package_format::Record{};
+  if (persistentDatabaseReady) {
+    return airport_store::readRecord(index, record);
+  }
+  if (index >= generated_airports::RECORD_COUNT) return false;
+
+  generated_airports::Record generated{};
 #if defined(ARDUINO_ARCH_ESP32)
-  memcpy_P(&record, &generated_airports::RECORDS[index], sizeof(record));
+  memcpy_P(&generated, &generated_airports::RECORDS[index], sizeof(generated));
 #else
-  memcpy(&record, &generated_airports::RECORDS[index], sizeof(record));
+  memcpy(&generated, &generated_airports::RECORDS[index], sizeof(generated));
 #endif
+  memcpy(record.ident, generated.ident, sizeof(record.ident));
+  memcpy(record.name, generated.name, sizeof(record.name));
+  record.latitudeE6 = generated.latitudeE6;
+  record.longitudeE6 = generated.longitudeE6;
+  record.elevationFt = generated.elevationFt;
+  record.runwayLengthFt = generated.runwayLengthFt;
+  record.runwayHeadingDegrees = generated.runwayHeadingDegrees;
+  record.category = generated.category;
+  return true;
 }
 
 bool insertForCategory(const NearbyAirport& candidate,
@@ -117,6 +141,21 @@ bool initialize(float homeLatitude, float homeLongitude) {
   }
   Serial.printf("Airport cache in PSRAM: %u bytes\n",
                 (unsigned)(MAX_NEARBY_AIRPORTS * sizeof(NearbyAirport)));
+
+  persistentDatabaseReady = airport_store::initialize();
+  if (persistentDatabaseReady) {
+    Serial.printf(
+        "Airport persistent store: READY, %u records, %u-mile region, %s, %s\n",
+        (unsigned)airport_store::recordCount(),
+        (unsigned)airport_store::radiusMiles(),
+        airport_store::databaseDate(),
+        airport_store::databaseCoverage());
+  } else {
+    Serial.printf(
+        "Airport persistent store: %s; using compiled fallback (%u records)\n",
+        airport_store::stateName(),
+        (unsigned)generated_airports::RECORD_COUNT);
+  }
   return rebuild(homeLatitude, homeLongitude);
 }
 
@@ -135,14 +174,22 @@ bool rebuild(float homeLatitude, float homeLongitude) {
   const float longitudeScale = fmaxf(0.05f, cosf(degreesToRadians(homeLatitude)));
   const float longitudeSpan =
       fminf(180.0f, CACHE_RADIUS_MILES / (69.0f * longitudeScale) + 0.1f);
-  for (uint16_t i = 0; i < generated_airports::RECORD_COUNT; ++i) {
-    generated_airports::Record record{};
-    readRecord(i, record);
+  const uint32_t recordCount = sourceRecordCount();
+
+  for (uint32_t i = 0; i < recordCount; ++i) {
+    airport_package_format::Record record{};
+    if (!readSourceRecord(i, record)) {
+      databaseReady = false;
+      nearbyAirportCount = 0;
+      Serial.printf("Airport database read failed at record %u\n", (unsigned)i);
+      return false;
+    }
+
     const float latitude = record.latitudeE6 / 1000000.0f;
     const float longitude = record.longitudeE6 / 1000000.0f;
 
     // Cheap rectangular rejection before trigonometry. Longitude span expands
-    // toward the poles so generated regional databases remain location-safe.
+    // toward the poles so regional databases remain location-safe.
     if (fabsf(latitude - homeLatitude) > latitudeSpan ||
         fabsf(longitude - homeLongitude) > longitudeSpan) {
       continue;
@@ -168,8 +215,9 @@ bool rebuild(float homeLatitude, float homeLongitude) {
   cacheLongitude = homeLongitude;
   databaseReady = true;
   Serial.printf(
-      "Airport database ready: %u records, %u within %.0f miles of %.5f,%.5f\n",
-      (unsigned)generated_airports::RECORD_COUNT,
+      "Airport database ready: %u records (%s), %u within %.0f miles of %.5f,%.5f\n",
+      (unsigned)recordCount,
+      persistentDatabaseReady ? "persistent" : "compiled fallback",
       (unsigned)nearbyAirportCount, CACHE_RADIUS_MILES,
       homeLatitude, homeLongitude);
   return true;
@@ -182,7 +230,8 @@ uint16_t cachedCount() { return ready() ? nearbyAirportCount : 0; }
 void copyStatus(Status& status) {
   status = Status{};
   status.ready = ready();
-  status.databaseCount = generated_airports::RECORD_COUNT;
+  status.databaseCount = static_cast<uint16_t>(
+      sourceRecordCount() > 65535U ? 65535U : sourceRecordCount());
   status.cachedCount = cachedCount();
   status.centerLatitude = cacheLatitude;
   status.centerLongitude = cacheLongitude;
@@ -234,8 +283,16 @@ uint8_t rangeIndex(float rangeMiles) {
   return 2;
 }
 
-const char* databaseDate() { return generated_airports::DATABASE_DATE; }
+const char* databaseDate() {
+  return persistentDatabaseReady
+      ? airport_store::databaseDate()
+      : generated_airports::DATABASE_DATE;
+}
 
-const char* databaseCoverage() { return generated_airports::DATABASE_COVERAGE; }
+const char* databaseCoverage() {
+  return persistentDatabaseReady
+      ? airport_store::databaseCoverage()
+      : generated_airports::DATABASE_COVERAGE;
+}
 
 }  // namespace airport_data
