@@ -13,6 +13,7 @@ constexpr const char* PARTITION_LABEL = "airports";
 constexpr esp_partition_subtype_t PARTITION_SUBTYPE =
     static_cast<esp_partition_subtype_t>(0x40);
 constexpr size_t HASH_CHUNK_SIZE = 512;
+constexpr size_t FLASH_ERASE_SECTOR_SIZE = 4096;
 
 const esp_partition_t* partitionHandle = nullptr;
 State storeState = State::UNAVAILABLE;
@@ -273,8 +274,17 @@ bool installPackage(const uint8_t* package, size_t packageSize,
 
   // No flash is modified before the complete buffered package has passed
   // metadata, size, SHA-256, and per-record validation.
+  const size_t eraseSize =
+      (packageSize + FLASH_ERASE_SECTOR_SIZE - 1U) &
+      ~(FLASH_ERASE_SECTOR_SIZE - 1U);
+  if (eraseSize == 0 || eraseSize > partitionHandle->size) {
+    setError(errorMessage, errorMessageCapacity,
+             "Airport package erase span is invalid");
+    return false;
+  }
+
   const esp_err_t eraseResult =
-      esp_partition_erase_range(partitionHandle, 0, partitionHandle->size);
+      esp_partition_erase_range(partitionHandle, 0, eraseSize);
   if (eraseResult != ESP_OK) {
     char message[128];
     snprintf(message, sizeof(message), "Airport partition erase failed: %s",

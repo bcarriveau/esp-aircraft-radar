@@ -20,6 +20,7 @@
 #include <cstring>
 
 #include "adsb_network.h"
+#include "airport_store.h"
 #include "build_info.h"
 #include "mqtt_service.h"
 
@@ -80,7 +81,7 @@ body{margin:0;display:grid;place-items:center;min-height:100vh;padding:18px;box-
 main{width:min(620px,100%);background:#0a1821;border:1px solid #23505b;border-radius:12px;padding:24px;box-sizing:border-box}
 h1{margin:0 0 6px;color:#6edcff;font-size:26px}.sub{color:#64aab5;margin-bottom:22px}
 label{display:block;margin:14px 0 6px;color:#8bddea}input{width:100%;box-sizing:border-box;padding:11px;border-radius:7px;border:1px solid #286672;background:#0c1c26;color:#fff}
-button{margin-top:16px;padding:11px 16px;border:0;border-radius:7px;background:#188054;color:white;font-weight:700;cursor:pointer}button.secondary{background:#144452;margin-left:8px}button:disabled{opacity:.45;cursor:not-allowed}
+button,a.button{display:inline-block;margin-top:16px;padding:11px 16px;border:0;border-radius:7px;background:#188054;color:white;font-weight:700;cursor:pointer;text-decoration:none}button.secondary,a.secondary{background:#144452;margin-left:8px}button:disabled{opacity:.45;cursor:not-allowed}
 progress{width:100%;height:20px;margin-top:18px}.status{min-height:54px;margin-top:16px;padding:12px;background:#07141c;border-radius:7px;white-space:pre-wrap}.warn{color:#ffd66a;font-size:13px;margin-top:18px}
 </style>
 </head>
@@ -89,6 +90,7 @@ progress{width:100%;height:20px;margin-top:18px}.status{min-height:54px;margin-t
 <label for="code">Six-digit access code shown on the radar</label><input id="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
 <label for="file">Radar OTA package</label><input id="file" type="file" accept=".radarota,application/octet-stream">
 <button id="install">PREPARE &amp; INSTALL</button><button class="secondary" id="cancel">CANCEL OTA</button>
+<a class="button secondary" href="/airports">AIRPORT DATABASE</a>
 <progress id="progress" max="100" value="0"></progress><div class="status" id="status">Select the generated firmware.radarota file.</div>
 <div class="warn">Do not remove power while firmware is being written. This page accepts only a Bill's 7-inch Radar .radarota package.</div>
 <script>
@@ -103,6 +105,44 @@ function uploadOnce(file){return new Promise((resolve,reject)=>{const x=new XMLH
 async function upload(file){let lastError;for(let attempt=0;attempt<2;attempt++){try{return await uploadOnce(file)}catch(e){lastError=e;if(attempt>0)break;await sleep(500);const j=await call('/status',{},3);const received=Number(j.received_bytes||0),written=Number(j.written_bytes||0);if(j.state!=='READY'||received!==0||written!==0)throw new Error('Upload connection lost after transfer may have started; check radar status before retrying.');status.textContent='Upload connection reset before transfer; retrying once...';progress.value=0;await sleep(500)}}throw lastError}
 install.onclick=async()=>{const file=document.getElementById('file').files[0];if(!/^\d{6}$/.test(code())){status.textContent='Enter the six-digit access code.';return}if(!file||!file.name.toLowerCase().endsWith('.radarota')){status.textContent='Choose firmware.radarota.';return}install.disabled=true;progress.value=0;try{status.textContent='Waiting for network services to become idle...';await prepareUpload();await waitReady();status.textContent='Uploading and validating firmware...';await sleep(500);const j=await upload(file);status.textContent=j.message||'Update complete. Radar is restarting.';progress.value=100}catch(e){status.textContent=e.message}finally{install.disabled=false}};
 document.getElementById('cancel').onclick=async()=>{try{const j=await call('/cancel',{method:'POST'});status.textContent=j.message}catch(e){status.textContent=e.message}};
+</script></main></body></html>
+)HTML";
+
+const char AIRPORT_PAGE[] PROGMEM = R"HTML(
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Bill's Aircraft Radar Airports</title>
+<style>
+:root{color-scheme:dark;font-family:Arial,sans-serif;background:#041019;color:#e1ebf0}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));display:flex;justify-content:center}
+main{width:min(680px,100%);align-self:flex-start;background:#0a1821;border:1px solid #23505b;border-radius:14px;padding:clamp(16px,4vw,26px)}
+h1{margin:0 0 5px;color:#6edcff;font-size:clamp(23px,6vw,30px)}.sub{color:#64aab5;margin-bottom:18px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}.card{background:#07141c;border:1px solid #163b45;border-radius:9px;padding:12px}.k{color:#64aab5;font-size:12px;text-transform:uppercase}.v{font-size:16px;margin-top:4px;overflow-wrap:anywhere}
+label{display:block;margin:16px 0 7px;color:#8bddea;font-weight:700}input{width:100%;font-size:16px;padding:14px;border-radius:8px;border:1px solid #286672;background:#0c1c26;color:#fff}
+button,a.button{width:100%;display:block;margin-top:12px;padding:15px 16px;min-height:50px;border:0;border-radius:8px;background:#188054;color:white;font-size:16px;font-weight:800;text-align:center;text-decoration:none;cursor:pointer}a.secondary,button.secondary{background:#144452}button:disabled{opacity:.45;cursor:not-allowed}
+progress{width:100%;height:22px;margin-top:18px}.status{min-height:62px;margin-top:14px;padding:13px;background:#07141c;border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere}.warn{color:#ffd66a;font-size:13px;line-height:1.45;margin-top:16px}
+@media(max-width:500px){.grid{grid-template-columns:1fr}main{border-radius:10px}}
+</style>
+</head>
+<body><main>
+<h1>BILL'S AIRCRAFT RADAR</h1><div class="sub">Airport Database</div>
+<div class="grid"><div class="card"><div class="k">Persistent store</div><div id="store" class="v">Checking...</div></div><div class="card"><div class="k">Installed region</div><div id="region" class="v">—</div></div><div class="card"><div class="k">Records</div><div id="records" class="v">—</div></div><div class="card"><div class="k">Coverage</div><div id="coverage" class="v">—</div></div></div>
+<label for="code">Six-digit access code shown on the radar</label><input id="code" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code">
+<label for="file">Airport package (.radarapt)</label><input id="file" type="file" accept=".radarapt,application/octet-stream">
+<button id="install">PREPARE &amp; INSTALL AIRPORT DATABASE</button>
+<a class="button secondary" href="/update">FIRMWARE UPDATE</a>
+<progress id="progress" max="100" value="0"></progress><div class="status" id="status">Choose the regional airports.radarapt package.</div>
+<div class="warn">The complete file is buffered in PSRAM and validated before flash is erased. If the upload is interrupted before validation, the current persistent airport database is not changed. Restart the radar after a successful install to activate the new region.</div>
+<script>
+const el=id=>document.getElementById(id),code=()=>el('code').value.trim(),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function call(path,options={}){options.headers=Object.assign({},options.headers||{}, {'X-OTA-Code':code()});options.cache='no-store';const r=await fetch(path,options);const t=await r.text();let j={message:t};try{j=JSON.parse(t)}catch(e){}if(!r.ok){const e=new Error(j.message||('HTTP '+r.status));e.httpStatus=r.status;throw e}return j}
+async function waitReady(){await sleep(400);for(let i=0;i<45;i++){const j=await call('/status');el('status').textContent=j.message||j.state;if(j.state==='READY')return;if(j.state==='ERROR')throw new Error(j.message);await sleep(1000)}throw new Error('Radar did not enter upload-ready state')}
+async function refresh(){if(!/^\d{6}$/.test(code()))return;try{const j=await call('/airports/status');el('store').textContent=j.store_state;el('region').textContent=j.database_date||'Not installed';el('records').textContent=String(j.records||0);el('coverage').textContent=j.coverage||'—'}catch(e){el('status').textContent=e.message}}
+function upload(file){return new Promise((resolve,reject)=>{const x=new XMLHttpRequest();x.open('POST','/airports/upload');x.setRequestHeader('X-OTA-Code',code());x.upload.onprogress=e=>{if(e.lengthComputable)el('progress').value=Math.round(e.loaded*100/e.total)};x.onload=()=>{let j={message:x.responseText};try{j=JSON.parse(x.responseText)}catch(e){};x.status>=200&&x.status<300?resolve(j):reject(new Error(j.message||('HTTP '+x.status)))};x.onerror=()=>reject(new Error('Upload connection reset'));const f=new FormData();f.append('airports',file,file.name);x.send(f)})}
+el('code').addEventListener('input',refresh);
+el('install').onclick=async()=>{const file=el('file').files[0];if(!/^\d{6}$/.test(code())){el('status').textContent='Enter the six-digit access code.';return}if(!file||!file.name.toLowerCase().endsWith('.radarapt')){el('status').textContent='Choose an airports.radarapt package.';return}el('install').disabled=true;el('progress').value=0;try{el('status').textContent='Waiting for network services to become idle...';await call('/prepare',{method:'POST'});await waitReady();el('status').textContent='Uploading and validating airport database...';const j=await upload(file);el('status').textContent=j.message;el('progress').value=100;await refresh()}catch(e){el('status').textContent=e.message}finally{el('install').disabled=false}};
 </script></main></body></html>
 )HTML";
 
@@ -144,6 +184,13 @@ bool buildIdSeen = false;
 int uploadResponseCode = 500;
 char uploadResponseMessage[128] = "Upload did not complete";
 
+uint8_t* airportUploadBuffer = nullptr;
+size_t airportUploadCapacity = 0;
+size_t airportUploadReceived = 0;
+bool airportUploadAccepted = false;
+int airportUploadResponseCode = 500;
+char airportUploadResponseMessage[160] = "Airport upload did not complete";
+
 void setMessage(const char* message) {
   snprintf(statusMessage, sizeof(statusMessage), "%s",
            message ? message : "");
@@ -153,6 +200,23 @@ void setUploadResponse(int code, const char* message) {
   uploadResponseCode = code;
   snprintf(uploadResponseMessage, sizeof(uploadResponseMessage), "%s",
            message ? message : "");
+}
+
+void setAirportUploadResponse(int code, const char* message) {
+  airportUploadResponseCode = code;
+  snprintf(airportUploadResponseMessage, sizeof(airportUploadResponseMessage),
+           "%s", message ? message : "");
+}
+
+void resetAirportUploadSession() {
+  if (airportUploadBuffer) {
+    heap_caps_free(airportUploadBuffer);
+    airportUploadBuffer = nullptr;
+  }
+  airportUploadCapacity = 0;
+  airportUploadReceived = 0;
+  airportUploadAccepted = false;
+  setAirportUploadResponse(500, "Airport upload did not complete");
 }
 
 bool codeMatches() {
@@ -178,9 +242,38 @@ void sendJson(int code, const char* message) {
            static_cast<unsigned long>(payloadWritten),
            static_cast<unsigned long>(packageHeader.firmwareSize), BUILD_ID);
   server.sendHeader("Cache-Control", "no-store");
-  // Arduino-ESP32 WebServer already adds exactly one Connection: close header.
-  // Adding another duplicates the header and makes Chrome's short control-request
-  // handoff less deterministic on this single-client embedded server.
+  server.send(code, "application/json", body);
+}
+
+void sendAirportStatus(int code, const char* message) {
+  char coverage[65]{};
+  const char* sourceCoverage = airport_store::databaseCoverage();
+  for (size_t i = 0; sourceCoverage && sourceCoverage[i] && i < sizeof(coverage) - 1; ++i) {
+    const char c = sourceCoverage[i];
+    coverage[i] = (c == '"' || c == '\\' || static_cast<uint8_t>(c) < 0x20U)
+        ? '_' : c;
+  }
+  char date[17]{};
+  const char* sourceDate = airport_store::databaseDate();
+  for (size_t i = 0; sourceDate && sourceDate[i] && i < sizeof(date) - 1; ++i) {
+    const char c = sourceDate[i];
+    date[i] = (c == '"' || c == '\\' || static_cast<uint8_t>(c) < 0x20U)
+        ? '_' : c;
+  }
+  char body[512];
+  snprintf(body, sizeof(body),
+           "{\"message\":\"%s\",\"store_state\":\"%s\","
+           "\"records\":%lu,\"radius_miles\":%u,"
+           "\"database_date\":\"%s\",\"coverage\":\"%s\","
+           "\"max_package_bytes\":%lu,\"received_bytes\":%lu}",
+           message ? message : "",
+           airport_store::stateName(),
+           static_cast<unsigned long>(airport_store::recordCount()),
+           static_cast<unsigned>(airport_store::radiusMiles()),
+           date, coverage,
+           static_cast<unsigned long>(airport_store::maxPackageSize()),
+           static_cast<unsigned long>(airportUploadReceived));
+  server.sendHeader("Cache-Control", "no-store");
   server.send(code, "application/json", body);
 }
 
@@ -510,15 +603,120 @@ void handleUploadData() {
   }
 }
 
+void handleAirportUploadData() {
+  HTTPUpload& upload = server.upload();
+  switch (upload.status) {
+    case UPLOAD_FILE_START: {
+      resetAirportUploadSession();
+      if (!codeMatches()) {
+        setAirportUploadResponse(403, "Access code rejected");
+        return;
+      }
+      if (currentState != State::READY || !adsb::maintenanceHoldActive() ||
+          !mqtt_service::maintenanceHoldActive()) {
+        setAirportUploadResponse(409,
+                                 "Radar is not ready for airport upload");
+        return;
+      }
+      if (!upload.filename.endsWith(".radarapt")) {
+        setAirportUploadResponse(415, "Select an airports.radarapt package");
+        return;
+      }
+      airportUploadCapacity = airport_store::maxPackageSize();
+      if (airportUploadCapacity == 0) {
+        setAirportUploadResponse(503, "Airport partition is unavailable");
+        return;
+      }
+      airportUploadBuffer = static_cast<uint8_t*>(heap_caps_malloc(
+          airportUploadCapacity, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+      if (!airportUploadBuffer) {
+        airportUploadCapacity = 0;
+        setAirportUploadResponse(507,
+                                 "PSRAM allocation for airport upload failed");
+        return;
+      }
+      airportUploadAccepted = true;
+      currentState = State::UPLOADING;
+      setMessage("Receiving airport database into PSRAM");
+      setAirportUploadResponse(500, "Airport upload did not complete");
+      Serial.printf("Airport upload started: %s, capacity=%u bytes\n",
+                    upload.filename.c_str(),
+                    static_cast<unsigned>(airportUploadCapacity));
+      break;
+    }
+
+    case UPLOAD_FILE_WRITE:
+      if (!airportUploadAccepted || upload.currentSize == 0) break;
+      if (airportUploadReceived > airportUploadCapacity ||
+          upload.currentSize > airportUploadCapacity - airportUploadReceived) {
+        airportUploadAccepted = false;
+        setAirportUploadResponse(413,
+                                 "Airport package exceeds partition capacity");
+        setMessage("Airport package is too large");
+        currentState = State::ERROR;
+        break;
+      }
+      memcpy(airportUploadBuffer + airportUploadReceived,
+             upload.buf, upload.currentSize);
+      airportUploadReceived += upload.currentSize;
+      delay(0);
+      break;
+
+    case UPLOAD_FILE_END: {
+      if (!airportUploadAccepted || !airportUploadBuffer) break;
+      if (upload.totalSize != airportUploadReceived) {
+        airportUploadAccepted = false;
+        setAirportUploadResponse(400,
+                                 "Airport package upload length mismatch");
+        setMessage("Airport upload was truncated");
+        currentState = State::ERROR;
+        break;
+      }
+
+      char installError[160]{};
+      const bool installed = airport_store::installPackage(
+          airportUploadBuffer, airportUploadReceived,
+          installError, sizeof(installError));
+      if (!installed) {
+        airportUploadAccepted = false;
+        setAirportUploadResponse(
+            400, installError[0] ? installError
+                                 : "Airport package validation failed");
+        setMessage("Airport database install failed");
+        currentState = State::ERROR;
+        Serial.printf("Airport install failed: %s\n",
+                      installError[0] ? installError : "validation failure");
+        break;
+      }
+
+      airportUploadAccepted = false;
+      setAirportUploadResponse(
+          200, "Airport database verified and installed. Restart radar to activate it.");
+      setMessage("Airport database installed; restart radar to activate it");
+      currentState = State::READY;
+      Serial.printf(
+          "Airport database installed: %lu bytes, %lu records, %u-mile region, %s, %s\n",
+          static_cast<unsigned long>(airportUploadReceived),
+          static_cast<unsigned long>(airport_store::recordCount()),
+          static_cast<unsigned>(airport_store::radiusMiles()),
+          airport_store::databaseDate(), airport_store::databaseCoverage());
+      break;
+    }
+
+    case UPLOAD_FILE_ABORTED:
+      airportUploadAccepted = false;
+      setAirportUploadResponse(400, "Airport upload was interrupted");
+      setMessage("Airport upload was interrupted; stored database unchanged");
+      currentState = State::ERROR;
+      break;
+  }
+}
+
 void handlePrepare() {
   if (!codeMatches()) {
     sendJson(403, "Access code rejected");
     return;
   }
-  // Preparation is idempotent. A browser may retry a POST when the first
-  // response is lost even though the radar already accepted it. Treat repeated
-  // PREPARING and READY requests as success without resetting the upload
-  // session, extending the deadline, or touching the maintenance holds.
   if (currentState == State::PREPARING) {
     sendJson(202, statusMessage);
     return;
@@ -532,6 +730,7 @@ void handlePrepare() {
     return;
   }
   resetUploadSession();
+  resetAirportUploadSession();
   if (!adsb::requestMaintenanceHold()) {
     sendJson(409, "Wi-Fi recovery in progress; try preparation again");
     return;
@@ -551,15 +750,26 @@ void handleStatus() {
   sendJson(200, statusMessage);
 }
 
+void handleAirportStatus() {
+  if (!codeMatches()) {
+    sendAirportStatus(403, "Access code rejected");
+    return;
+  }
+  sendAirportStatus(200, airport_store::ready()
+      ? "Persistent airport database ready"
+      : "Persistent airport database not installed");
+}
+
 void handleCancel() {
   if (!codeMatches()) {
     sendJson(403, "Access code rejected");
     return;
   }
   if (currentState == State::UPLOADING || currentState == State::SUCCESS) {
-    sendJson(409, "An active firmware operation cannot be cancelled");
+    sendJson(409, "An active operation cannot be cancelled");
     return;
   }
+  resetAirportUploadSession();
   currentState = State::INACTIVE;
   armedUntilMs = 0;
   prepareDeadlineMs = 0;
@@ -574,6 +784,15 @@ void handleUploadComplete() {
   sendJson(uploadResponseCode, uploadResponseMessage);
 }
 
+void handleAirportUploadComplete() {
+  const int responseCode = airportUploadResponseCode;
+  char responseMessage[sizeof(airportUploadResponseMessage)];
+  snprintf(responseMessage, sizeof(responseMessage), "%s",
+           airportUploadResponseMessage);
+  sendAirportStatus(responseCode, responseMessage);
+  resetAirportUploadSession();
+}
+
 void configureRoutes() {
   if (routesConfigured) return;
   const char* headerKeys[] = {ACCESS_CODE_HEADER};
@@ -586,10 +805,17 @@ void configureRoutes() {
     server.sendHeader("Cache-Control", "no-store");
     server.send_P(200, "text/html", UPDATE_PAGE);
   });
+  server.on("/airports", HTTP_GET, []() {
+    server.sendHeader("Cache-Control", "no-store");
+    server.send_P(200, "text/html", AIRPORT_PAGE);
+  });
   server.on("/prepare", HTTP_POST, handlePrepare);
   server.on("/status", HTTP_GET, handleStatus);
+  server.on("/airports/status", HTTP_GET, handleAirportStatus);
   server.on("/cancel", HTTP_POST, handleCancel);
   server.on("/upload", HTTP_POST, handleUploadComplete, handleUploadData);
+  server.on("/airports/upload", HTTP_POST,
+            handleAirportUploadComplete, handleAirportUploadData);
   server.onNotFound([]() { sendJson(404, "Not found"); });
   routesConfigured = true;
 }
@@ -603,13 +829,11 @@ void stopServer() {
     MDNS.end();
     mdnsRunning = false;
   }
+  resetAirportUploadSession();
   stopServerPending = false;
 }
 
 __attribute__((noinline)) bool IRAM_ATTR parkCoreOneForRestart() {
-  // esp_restart_noos() disables both caches before it resets and stalls the
-  // other CPU. Core 1 must therefore acknowledge only after it is executing
-  // entirely from IRAM with all maskable interrupts disabled.
   const uint32_t enabledInterrupts = xthal_get_intenable();
   xt_ints_off(0xFFFFFFFFU);
   uint32_t expectedState = RESTART_LOOP_WAITING;
@@ -808,6 +1032,8 @@ bool enable() {
   mqtt_service::requestMaintenanceHold();
 
   resetUploadSession();
+  resetAirportUploadSession();
+  airport_store::initialize();
   snprintf(accessCode, sizeof(accessCode), "%06lu",
            static_cast<unsigned long>(esp_random() % 1000000U));
   armedUntilMs = millis() + ENABLE_WINDOW_MS;
@@ -823,9 +1049,6 @@ bool enable() {
   currentState = State::ARMED;
   setMessage("Pausing background network services for OTA");
 
-  // The OTA window owns the network immediately. ADS-B finishes only a request
-  // already in flight, then parks its Core-0 task. MQTT closes its socket and
-  // frees its client and work buffers before any upload is permitted.
   if (!serverRunning) {
     server.begin();
     serverRunning = true;
@@ -836,6 +1059,8 @@ bool enable() {
   }
   Serial.printf("OTA enabled for five minutes: http://%s/update\n",
                 WiFi.localIP().toString().c_str());
+  Serial.printf("Airport database page: http://%s/airports\n",
+                WiFi.localIP().toString().c_str());
   Serial.println(
       "OTA exclusive window requested: ADS-B and MQTT are pausing");
   return true;
@@ -844,6 +1069,7 @@ bool enable() {
 void disable() {
   if (currentState == State::UPLOADING || currentState == State::SUCCESS) return;
   resetUploadSession();
+  resetAirportUploadSession();
   stopServer();
   releaseMaintenanceHold();
   releaseMaintenanceAfterStopPending = false;
@@ -909,6 +1135,7 @@ void service() {
   if (serverRunning && currentState != State::UPLOADING &&
       currentState != State::SUCCESS && WiFi.status() != WL_CONNECTED) {
     resetUploadSession();
+    resetAirportUploadSession();
     stopServer();
     releaseMaintenanceHold();
     releaseMaintenanceAfterStopPending = false;
@@ -921,14 +1148,7 @@ void service() {
         "OTA exclusive hold released after external Wi-Fi disconnect");
   }
   if (restartAtMs && (int32_t)(now - restartAtMs) >= 0) {
-    // The upload response has already had time to reach the browser. Clear the
-    // trigger before touching any network owner so this shutdown path cannot run
-    // twice if a callback or delayed task yields back into the loop.
     restartAtMs = 0;
-
-    // Keep both maintenance holds active. Shut down the HTTP listener and mDNS
-    // before restarting so neither WebServer nor the TCP/IP event path owns a
-    // live callback or RX buffer while esp_restart() tears the system down.
     stopServer();
     armedUntilMs = 0;
     prepareDeadlineMs = 0;
@@ -939,9 +1159,6 @@ void service() {
   }
   if (restartExecuteAtMs &&
       (int32_t)(now - restartExecuteAtMs) >= 0) {
-    // Clear first, then make the one permitted creation attempt. A failed
-    // allocation leaves the verified boot partition selected and both
-    // maintenance holds active for a safe manual power cycle.
     restartExecuteAtMs = 0;
     createRestartTaskOnce();
   }
