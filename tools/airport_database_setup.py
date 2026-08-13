@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Friendly, guided airport database setup for Bill's Aircraft Radar."""
+"""Friendly regional airport-package builder for Bill's Aircraft Radar.
+
+This tool is intentionally PC-side. It downloads/reads the public OurAirports
+CSV data, filters a bounded regional dataset around coordinates supplied by the
+user, and writes only ``release/airports.radarapt``.
+
+It does not modify firmware, the compiled fallback airport header, radar NVS
+settings, or the user's saved radar location.
+"""
 
 from __future__ import annotations
 
@@ -19,12 +27,10 @@ from generate_airport_database import (
     MAX_RADIUS_MILES,
     MIN_RADIUS_MILES,
     build_binary_package,
-    build_header,
     category_counts,
     load_airports,
-    write_header_atomic,
 )
-from airport_package import write_package_atomic
+from airport_package import parse_package, write_package_atomic
 
 AIRPORTS_URL = "https://davidmegginson.github.io/ourairports-data/airports.csv"
 RUNWAYS_URL = "https://davidmegginson.github.io/ourairports-data/runways.csv"
@@ -33,7 +39,11 @@ DOWNLOAD_TIMEOUT_SECONDS = 90
 
 def project_root() -> Path:
     root = Path(__file__).resolve().parents[1]
-    required = [root / "platformio.ini", root / "include" / "generated_airport_database.h"]
+    required = [
+        root / "platformio.ini",
+        root / "tools" / "generate_airport_database.py",
+        root / "tools" / "airport_package.py",
+    ]
     missing = [str(path.relative_to(root)) for path in required if not path.exists()]
     if missing:
         raise RuntimeError(
@@ -51,7 +61,9 @@ def cache_directory() -> Path:
     return base / "BillsAircraftRadar" / "airport-data"
 
 
-def ask_float(prompt: str, minimum: float, maximum: float, default: float | None = None) -> float:
+def ask_float(
+    prompt: str, minimum: float, maximum: float, default: float | None = None
+) -> float:
     while True:
         suffix = f" [{default:g}]" if default is not None else ""
         raw = input(f"{prompt}{suffix}: ").strip()
@@ -70,7 +82,7 @@ def ask_float(prompt: str, minimum: float, maximum: float, default: float | None
 
 def ask_choice() -> str:
     print("\nAirport data source:")
-    print("  1. Download the latest official data (recommended)")
+    print("  1. Download the latest OurAirports data (recommended)")
     print("  2. Use the last downloaded copy")
     print("  3. Use airports.csv and runways.csv already on this computer")
     while True:
@@ -83,18 +95,24 @@ def ask_choice() -> str:
 def _download(url: str, destination: Path) -> None:
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": "Bills-Aircraft-Radar-Airport-Setup/1.0"},
+        headers={"User-Agent": "Bills-Aircraft-Radar-Airport-Package-Builder/1.0"},
     )
-    with urllib.request.urlopen(request, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
+    with urllib.request.urlopen(
+        request, timeout=DOWNLOAD_TIMEOUT_SECONDS
+    ) as response:
         with destination.open("wb") as handle:
             shutil.copyfileobj(response, handle, length=1024 * 1024)
     if destination.stat().st_size < 1024:
-        raise RuntimeError(f"Downloaded file is unexpectedly small: {destination.name}")
+        raise RuntimeError(
+            f"Downloaded file is unexpectedly small: {destination.name}"
+        )
 
 
 def download_latest(cache: Path) -> tuple[Path, Path]:
     cache.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="airport-download-", dir=cache) as temporary_name:
+    with tempfile.TemporaryDirectory(
+        prefix="airport-download-", dir=cache
+    ) as temporary_name:
         temporary = Path(temporary_name)
         airports_temp = temporary / "airports.csv"
         runways_temp = temporary / "runways.csv"
@@ -113,14 +131,20 @@ def cached_files(cache: Path) -> tuple[Path, Path]:
     airports = cache / "airports.csv"
     runways = cache / "runways.csv"
     if not airports.is_file() or not runways.is_file():
-        raise RuntimeError("No complete cached airport download exists yet. Choose option 1 first.")
+        raise RuntimeError(
+            "No complete cached airport download exists yet. Choose option 1 first."
+        )
     return airports, runways
 
 
 def custom_files() -> tuple[Path, Path]:
     while True:
-        airports = Path(input("Path to airports.csv: ").strip().strip('"')).expanduser()
-        runways = Path(input("Path to runways.csv: ").strip().strip('"')).expanduser()
+        airports = Path(
+            input("Path to airports.csv: ").strip().strip('"')
+        ).expanduser()
+        runways = Path(
+            input("Path to runways.csv: ").strip().strip('"')
+        ).expanduser()
         if airports.is_file() and runways.is_file():
             return airports, runways
         print("Both files must exist. Please try again.")
@@ -134,64 +158,87 @@ def select_source() -> tuple[Path, Path]:
             return download_latest(cache)
         except (OSError, RuntimeError, urllib.error.URLError) as error:
             print(f"\nDownload failed: {error}")
-            try:
-                airports, runways = cached_files(cache)
-            except RuntimeError:
-                raise
+            airports, runways = cached_files(cache)
             answer = input("Use the previous cached copy instead? [Y/n]: ").strip().lower()
             if answer in {"", "y", "yes"}:
                 return airports, runways
-            raise RuntimeError("Airport setup cancelled because current data could not be downloaded")
+            raise RuntimeError(
+                "Airport package build cancelled because current data "
+                "could not be downloaded"
+            )
     if choice == "2":
         return cached_files(cache)
     return custom_files()
 
 
-def run_database_test(root: Path) -> None:
-    for test_name in ("test_airport_database.py", "test_airport_package.py", "test_airport_generator.py"):
-        command = [sys.executable, str(root / "tests" / test_name)]
-        result = subprocess.run(command, cwd=root, check=False)
+def run_package_tests(root: Path) -> None:
+    for test_name in (
+        "test_airport_package.py",
+        "test_airport_generator.py",
+    ):
+        path = root / "tests" / test_name
+        if not path.is_file():
+            raise RuntimeError(f"Required validation is missing: {test_name}")
+        result = subprocess.run(
+            [sys.executable, str(path)], cwd=root, check=False
+        )
         if result.returncode != 0:
-            raise RuntimeError(f"Airport validation failed: {test_name}")
+            raise RuntimeError(f"Airport package validation failed: {test_name}")
 
 
-def _restore_file(path: Path, previous: bytes | None) -> None:
-    if previous is None:
-        path.unlink(missing_ok=True)
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".restore", dir=path.parent
-    )
-    with os.fdopen(descriptor, "wb") as handle:
-        handle.write(previous)
-        handle.flush()
-        os.fsync(handle.fileno())
-    Path(temporary_name).replace(path)
+def validate_written_package(
+    package_output: Path,
+    expected_records: int,
+    expected_radius: int,
+) -> None:
+    parsed = parse_package(package_output.read_bytes())
+    header = parsed.header
+    if header.record_count != expected_records:
+        raise RuntimeError(
+            "Written airport package record count does not match generated data"
+        )
+    if header.radius_miles != expected_radius:
+        raise RuntimeError(
+            "Written airport package radius does not match requested coverage"
+        )
+    if len(parsed.records) != expected_records:
+        raise RuntimeError(
+            "Written airport package record payload is incomplete"
+        )
 
 
 def main() -> int:
-    print("=" * 66)
-    print(" BILL'S AIRCRAFT RADAR - AIRPORT DATABASE SETUP")
-    print("=" * 66)
-    print("\nUse this only when moving the radar to a different region.")
-    print("For a nearby move inside the current region, change coordinates on")
-    print("the radar's System page instead.\n")
-    print("Enter decimal degrees. In the United States, longitude is normally negative.\n")
+    print("=" * 70)
+    print(" BILL'S AIRCRAFT RADAR - REGIONAL AIRPORT PACKAGE BUILDER")
+    print("=" * 70)
+    print(
+        "\nThis creates the airports.radarapt file used by the radar's "
+        "Airport Database web page."
+    )
+    print(
+        "It does NOT rebuild firmware and does NOT change the radar's saved "
+        "home location."
+    )
+    print(
+        "\nEnter decimal degrees. In the United States, longitude is normally negative."
+    )
 
     root = project_root()
-    latitude = ask_float("Home latitude", -90.0, 90.0)
-    longitude = ask_float("Home longitude", -180.0, 180.0)
+    latitude = ask_float("Package center latitude", -90.0, 90.0)
+    longitude = ask_float("Package center longitude", -180.0, 180.0)
     radius = ask_float(
         "Database coverage radius in miles",
         MIN_RADIUS_MILES,
         MAX_RADIUS_MILES,
         DEFAULT_RADIUS_MILES,
     )
-    print("\n120 miles is recommended: the radar displays up to 80 miles and")
-    print("keeps a 90-mile nearby cache, leaving reasonable movement margin.")
-    coverage = input("Short region name [CUSTOM REGIONAL DATABASE]: ").strip()
-    coverage = coverage or "CUSTOM REGIONAL DATABASE"
+    print(
+        "\n120 miles is recommended: the radar displays up to 80 miles and "
+        "keeps a 90-mile nearby cache."
+    )
+    coverage = input(
+        "Short region name [CUSTOM REGIONAL DATABASE]: "
+    ).strip() or "CUSTOM REGIONAL DATABASE"
 
     airports_csv, runways_csv = select_source()
     print("\nReading and matching airport/runway data ...")
@@ -199,57 +246,61 @@ def main() -> int:
         airports_csv, runways_csv, latitude, longitude, radius
     )
     database_date = date.today().isoformat()
-    content = build_header(airports, database_date, coverage, radius)
-    package_content = build_binary_package(airports, database_date, coverage, radius)
+    package_content = build_binary_package(
+        airports, database_date, coverage, radius
+    )
     counts = category_counts(airports)
 
-    print("\nPreview")
-    print("-" * 40)
+    print("\nPackage preview")
+    print("-" * 44)
     print(f"Coverage name:       {coverage.upper()}")
     print(f"Coverage radius:     {radius:.0f} miles")
     print(f"Total records:       {len(airports)}")
     for index, name in enumerate(CATEGORY_NAMES):
         print(f"{name.title() + ':':<20}{counts[index]}")
     print(f"Runway details:      {stats.runway_matches}")
-    print(f"Compiled record data:{len(airports) * 56 / 1024:8.1f} KiB approx.")
-    print(f"Binary package:      {len(package_content) / 1024:8.1f} KiB")
-    print("Runtime cache:       nearest 192 within 90 miles (category bounded)")
+    print(f"Package size:        {len(package_content) / 1024:8.1f} KiB")
     if stats.duplicate_idents:
         print(f"Duplicate IDs skipped: {stats.duplicate_idents}")
-    print("\nThe exact home coordinates are not written to either generated output.")
+    print(
+        "\nThe package does not store the center/home coordinates used "
+        "to select this region."
+    )
 
-    confirm = input(
-        "\nReplace the compiled airport header and generate release/airports.radarapt? [y/N]: "
-    ).strip().lower()
+    confirm = input("\nCreate release\\airports.radarapt? [y/N]: ").strip().lower()
     if confirm not in {"y", "yes"}:
         print("No files were changed.")
         return 0
 
-    header_output = root / "include" / "generated_airport_database.h"
     package_output = root / "release" / "airports.radarapt"
-    previous_header = header_output.read_bytes() if header_output.exists() else None
-    previous_package = package_output.read_bytes() if package_output.exists() else None
+    package_output.parent.mkdir(parents=True, exist_ok=True)
+    previous = package_output.read_bytes() if package_output.exists() else None
+
     try:
-        write_header_atomic(header_output, content)
         write_package_atomic(package_output, package_content)
-        print("\nRunning airport validation ...", flush=True)
-        run_database_test(root)
+        validate_written_package(
+            package_output, len(airports), int(round(radius))
+        )
+        print("\nRunning airport-package validation ...", flush=True)
+        run_package_tests(root)
     except Exception:
-        _restore_file(header_output, previous_header)
-        _restore_file(package_output, previous_package)
-        print("The previous airport outputs were restored.")
+        if previous is None:
+            package_output.unlink(missing_ok=True)
+        else:
+            write_package_atomic(package_output, previous)
+        print("The previous airports.radarapt was restored.")
         raise
 
-    print("\nSUCCESS - AIRPORT DATABASE READY")
-    print(f"\nCompiled header: {header_output.relative_to(root)}")
-    print(f"Persistent package prototype: {package_output.relative_to(root)}")
-    print("\nCurrent Product 85 firmware still uses the compiled header.")
-    print("The .radarapt file is the verified transition artifact for the")
-    print("future persistent-partition/browser upload work.")
-    print("\nNext steps:")
-    print("  1. Build the normal PlatformIO project as before.")
-    print("  2. Keep release/airports.radarapt for the separation tests.")
-    print("  3. Enter the same home coordinates on the radar's System page.")
+    print("\nSUCCESS - AIRPORT PACKAGE READY")
+    print(f"\nFile: {package_output}")
+    print(
+        "\nNow open the radar's Airport Database web page, choose this file, "
+        "and install it."
+    )
+    print(
+        "After a successful upload, restart the radar so the persistent "
+        "regional database becomes the active source."
+    )
     return 0
 
 
@@ -257,7 +308,7 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except KeyboardInterrupt:
-        print("\nAirport setup cancelled.")
+        print("\nAirport package build cancelled.")
         raise SystemExit(1)
     except Exception as error:
         print(f"\nERROR: {error}")

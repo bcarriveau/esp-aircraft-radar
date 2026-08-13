@@ -2,7 +2,10 @@
 setlocal
 cd /d "%~dp0\.."
 
-echo Starting Bill's Aircraft Radar airport database setup...
+echo Starting Bill's Aircraft Radar regional airport package builder...
+echo.
+echo This creates release\airports.radarapt for the radar web uploader.
+echo It does not rebuild firmware or change the radar's saved location.
 echo.
 
 where py >nul 2>nul
@@ -28,6 +31,6 @@ set "EXIT_CODE=%errorlevel%"
 
 :finished
 echo.
-if not "%EXIT_CODE%"=="0" echo Airport database setup did not complete.
+if not "%EXIT_CODE%"=="0" echo Airport package builder did not complete.
 pause
 exit /b %EXIT_CODE%
