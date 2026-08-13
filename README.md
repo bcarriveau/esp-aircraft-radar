@@ -14,480 +14,317 @@ This repository targets one exact device:
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
 
-It is not compatible with the Waveshare 7B, 7C, ESP32-P4, generic 7-inch
-panels, Cheap Yellow Display hardware, ESPHome, or e-paper projects.
+It is not compatible with Waveshare 7B/7C, ESP32-P4, generic 7-inch panels,
+Cheap Yellow Display hardware, ESPHome, or e-paper projects.
 
 ## Current status
 
-Current replacement-source build marker:
+Current development/source branch for the completed airport-separation work:
 
 ```text
-7IN-20260805-PRODUCT78-PAGE-TOP-RESET
+airport-seperation
 ```
 
-Source baseline:
+Current committed Product:
 
 ```text
-main
-d4b60cddfecdc943c2d33231bc1a76289b85760b
+Product 92
+7IN-20260813-PRODUCT92-AIRPORT-LOCATION-PREFILL
+e5afe84d8bb0cd56eb19900437b9a347e7605ee7
 ```
 
-Product 77 source commit retained by this update:
+Product 92 completes the current browser-built regional airport-database workflow.
+After the local maintenance window is armed and the six-digit code is accepted,
+the Airport Database page can prefill the radar's already-saved home coordinates,
+download public OurAirports data in the user's browser, build a bounded regional
+`.radarapt` package locally, upload it through the validated persistent-storage
+installer, and restart automatically only after write/readback verification succeeds.
 
-```text
-d4b60cddfecdc943c2d33231bc1a76289b85760b
-```
-
-The hardened permanent rollback baseline remains **Product 15**:
+The permanent hardened rollback baseline remains:
 
 ```text
 product-15-hardened
 7IN-20260721-PRODUCT15-HARDENED
 ```
 
-Product 78 is a focused replacement-source candidate based on the committed
-Product 77 `main` source. It reduces the selected/tracked secondary heading from
-Montserrat 16 to Montserrat 14 so `NEAR SELECT`, `NEAR TRACK`, `POSITION LOST`, and
-`NO OTHER` fit cleanly inside the fixed 112-pixel left-panel heading area.
-
-Tracks and the Airports directory now use explicit navigation-time scroll
-resets after their rows are ready. Entering either page, returning from a Tracks Aircraft Profile, or returning
-to the Airports directory starts at the top. Normal live refreshes while the user
-remains on a page preserve the current scroll position instead of repeatedly forcing
-the table upward.
-
-Product 77 is the current committed baseline. It keeps an open Aircraft Profile
-synchronized with newly published aircraft snapshots by stable ICAO hex. Distance,
-bearing, altitude, speed, heading, vertical rate, identity text, aircraft preview,
-and tracking action update together only when target, range, or tracking versions
-change. Fresh data shows `CURRENT UPDATE`; explicitly marked last-known states retain
-safe behavior when a selected or tracked aircraft is absent.
-
-Product 76 changed the three secondary aircraft rows shown during selection or
-tracking so they are ranked by horizontal separation from the selected or tracked
-aircraft rather than by distance from the radar center. The calculation uses the
-existing coherent aircraft snapshot, stable ICAO identity, one bounded pass, and
-fixed three-entry storage. The rows show relative distance and direction, with
-`NEAR SELECT`, `NEAR TRACK`, or `POSITION LOST` status as appropriate.
-
-Product 75 refined the Software Update page for the 800x480 display, shortened
-the System-page update button to prevent overlap, and changed update-state startup
-handling. Reboot clears transient queued, checking, installing, progress, and
-available-release state. Automatic checking waits five minutes after each boot,
-and **CHECK NOW** remains immediately available.
-
-Product 73 added explicit, user-confirmed installation of a validated GitHub
-stable release directly on the radar. Product 74 was the versioned test release
-used to prove that path on hardware. The confirmed flow downloaded the generated
-`.radarota` package, verified the manifest and complete package, wrote the inactive
-partition, performed the hardened cross-core restart, and booted the newer Product
-marker. Local browser OTA remains available and retains priority as the recovery
-and manual-installation path.
-
-Products 69-72 established the bounded transport foundation used by that updater:
-
-- Product 69 keeps a complete ADS-B fetch below the fixed 15-second cadence with
-  a shared 10.5-second transport budget and reserved JSON headroom. An accepted
-  OTA request can cancel active transport only between bounded calls without
-  recording a false ADS-B failure.
-- Product 70 restored a real queued GitHub stable-release check that runs only in
-  a safe serialized network window after a successful current-generation ADS-B
-  publication.
-- Product 71 accepted real GitHub response-header sets and signed redirect URLs
-  within explicit 16 KiB header and 4095-character URL limits.
-- Product 72 sized the ESP-IDF transmit buffer from the validated URL length so
-  long signed release redirects can be sent without removing any TLS, host, or
-  redirect restrictions.
-
-The Product 78 candidate preserves Product 63's PSRAM-only ADS-B JSON and
-response-body policy, Product 64's measured 12 KiB core-0 ADS-B task stack,
-Product 66's bounded dirty-region radar restoration, Product 68's reduced fetch
-logging contention, Product 69's bounded transport, Product 73's verified remote
-installer, the local browser updater, lightweight MQTT, offline airports, Product
-76 relative-neighbor rows, stable ICAO selection and tracking, 200-target bounds,
-panel timing, DMA, OPI PSRAM, and the 20-scanline RGB bounce buffer.
-
-## Features
+## Core features
 
 ### Live radar
 
-- Displays all retained aircraft as radar contacts.
-- Provides 20, 40, and 80 mile radar ranges.
-- Shares the same range state between the compact Radar selector and the green
-  Airspace `CURRENT RANGE` card.
-- Draws configured airport runway and heliport symbols beneath aircraft contacts.
-- Supports independent airport symbol and label filters at 20, 40, and 80 miles.
-- Shows themed contact tags at the 20-mile range.
-- Uses stable ICAO hex identity for contact taps, selection, and tracking.
-- Prioritizes tracked and selected tags during collision-aware label placement.
-- Keeps selected aircraft visible with amber styling.
-- Keeps tracked aircraft visible with red styling.
-- Automatically zooms outward when a tracked aircraft approaches the edge.
-- Presents aircraft speed in MPH.
-- Uses elapsed time for radar sweep motion so delayed frames do not slow the sweep.
-- Restores bounded dirty radar regions instead of copying the full cached canvas on
-  every dense steady-state frame.
+- Displays retained ADS-B aircraft on 20, 40, and 80 mile radar ranges.
+- Uses heading-aware aircraft symbols at all three ranges.
+- Uses stable ICAO hex for selection, tracking, row actions, and profile identity.
+- Selected aircraft are amber; tracked aircraft are red.
+- Tracked tags show `TRACKED`, identifier, and MPH.
+- Outward auto-zoom keeps a tracked aircraft visible as it approaches the edge.
+- Hit-test priority remains tracked, selected, then closest.
+- Uses one coherent aircraft snapshot per radar update.
+- Uses version/dirty-region updates rather than rebuilding the whole LVGL UI.
+- Retains last-good aircraft through temporary transport failures.
 
 ### Radar interaction
 
-Idle state:
+Idle:
 
-- Left panel shows aircraft count, nearest-aircraft information, and data status.
-- Right panel shows the nearest five aircraft relative to the radar center.
-- Tapping the nearest aircraft, a radar contact, or a radar tag selects it.
+- Left side shows count, nearest aircraft, and data status.
+- Right side shows nearest aircraft.
+- Radar `20 / 40 / 80` is the range control.
 
-Selected state:
+Selected:
 
-- Selected details take priority in the right panel.
-- INFO opens aircraft details and returns to Radar.
-- TRACK begins stable ICAO-based tracking.
-- CLEAR removes the selection.
-- The secondary rows show up to three aircraft nearest to the selected aircraft.
-- Each row reports separation and relative compass direction from the selection.
-- The compact secondary heading reads `NEAR SELECT` or `NO OTHER` without clipping.
+- Selected details take right-panel priority.
+- `INFO / TRACK / CLEAR` are the primary actions.
+- Nearby rows are ranked relative to the selected aircraft.
 
-Tracked state:
+Tracked:
 
-- Tracked details take priority in the right panel.
-- STOP TRACK is contained in the tracked-aircraft card.
-- The radar tag shows TRACKED, the aircraft identifier, and MPH.
-- The secondary rows show up to three aircraft nearest to the tracked aircraft.
-- Each row reports separation and relative compass direction from the tracked
-  aircraft rather than distance and bearing from home.
-- The compact secondary heading reads `NEAR TRACK`, `NO OTHER`, or
-  `POSITION LOST` without clipping.
-- Stopping tracking preserves selection when practical.
-- One or two successful snapshots that temporarily omit the tracked ICAO retain
-  tracking.
-- During that grace period, the right card reports `TRACK SIGNAL LOST` and checks
-  the next update.
-- Three consecutive successful current-generation snapshots without the tracked
-  ICAO automatically clear tracking and return the radar to normal idle mode.
-- Failed requests and stale discarded responses do not advance the lost-track
-  counter.
+- `STOP TRACK` has right-panel priority.
+- Nearby rows are ranked relative to the tracked aircraft.
+- Tracking uses stable ICAO identity and a confirmed-miss grace period.
+- Failed requests and stale discarded responses do not falsely advance track loss.
 
-Aircraft Profile:
+### Aircraft profiles and pages
 
-- Profiles opened from Radar or Tracks remain keyed to the aircraft's stable ICAO
-  hex rather than its current array position.
-- The open profile refreshes only after target, range, or tracking versions change.
-- One coherent bounded target snapshot updates the title, values, preview, freshness
-  status, and tracking action together; LVGL objects are not rebuilt.
-- Fresh data shows `CURRENT UPDATE`.
-- A missing selected aircraft shows `NOT IN CURRENT UPDATE / LAST KNOWN VALUES`;
-  starting a new track is disabled until current data returns.
-- A temporarily missing tracked aircraft shows
-  `TRACK SIGNAL LOST / LAST KNOWN VALUES` and retains `STOP TRACKING` through the
-  established grace period.
-- When the same ICAO returns, the profile resumes current values automatically.
+- Aircraft Profile remains tied to stable ICAO and can update while open.
+- Tracks preserves scroll during live refresh but returns to top when re-entered.
+- Airspace provides totals, category cards, shared range, and live shortcuts.
+- Airports provides directory/profile views, per-category display settings,
+  `AUTO / SHOW / HIDE`, label-eye indicators, and `SHOW ON RADAR`.
+- System provides build, memory, networking, radar, airport, MQTT, update, and
+  settings diagnostics.
+- Optional Home Assistant MQTT discovery and controls remain isolated from ADS-B
+  network ownership.
 
-### Additional pages
+## Airport architecture
 
-- **Tracks:** Aircraft table with a live stable-ICAO Aircraft Profile, scrolling
-  protection after row-count reductions, explicit return-to-Tracks behavior, and a
-  guaranteed top-of-list position whenever the page is entered. Live updates while
-  staying on Tracks preserve the user's current scroll position.
-- **Airspace:** Live totals, a green 20/40/80-mile range toggle, aircraft-category
-  cards, and tappable nearest, fastest, lowest-airborne, and highest-airborne
-  shortcuts that select aircraft on Radar by stable ICAO hex.
-- **Airports:** Nearby-airport awareness, directory and profile views, per-category
-  20/40/80-mile symbol and label controls, `AUTO / SHOW / HIDE` preferences,
-  current-label eye indicators retained for every airport label actually rendered,
-  `SHOW ON RADAR` range selection, and a top-of-directory reset whenever the page or
-  directory view is entered. Ongoing directory refreshes preserve active scrolling.
-- **System:** Build, memory, connectivity, airport, radar-cadence, MQTT, local OTA,
-  and GitHub update status; Device & Network settings; and bounded maintenance
-  controls.
-- **Home Assistant:** Optional MQTT discovery, backlight/range/refresh controls,
-  bounded tracked/nearest/airspace telemetry, diagnostics, and a supplied dashboard
-  view using built-in Home Assistant cards only.
+Airport data is now deliberately separated from per-user firmware configuration.
 
-## Architecture and reliability
+### Runtime sources
 
-### Airport awareness
+The radar can use one of two airport sources:
 
-- Airport data is offline and does not share the ADS-B transport path.
-- A bounded PSRAM cache is built at startup and rebuilt only after a confirmed
-  location change.
-- Airport settings are persisted with checked NVS writes and cached in RAM for
-  rendering.
-- Airport identifiers use deterministic positions for each radar range and are drawn
-  before airport symbols, aircraft contacts, and aircraft tags.
-- The radar grid and configured airport layer use an optional PSRAM static cache.
-  Cache allocation failure preserves the established full-render fallback.
-- Airport symbols and labels remain below aircraft; aircraft contacts and all
-  aircraft labels retain priority.
-- The Airports directory remains deterministically bounded at 64 rows. It retains
-  every airport identifier reported as visibly labeled by the latest completed
-  radar frame, replacing only farther non-visible rows when required and then
-  restoring distance order.
-- `AUTO / SHOW / HIDE` uses stable airport identifiers and checked NVS storage.
-- Directory editing is explicitly locked behind `EDIT / DONE`, and row actions are
-  cancelled by scrolling, excessive pointer movement, lost presses, or long holds.
-- `SHOW ON RADAR` chooses the smallest useful 20/40/80-mile range and temporarily
-  highlights the airport without changing saved preferences.
-- The checked-in generated header is the exact regional airport table compiled into
-  the firmware and remains tracked in Git.
-- `tools/Build Airport Database.bat` provides the guided Windows flow.
-- `tools/generate_airport_database.py` provides advanced command-line generation.
-- The generator combines OurAirports airport and runway data, selects the longest
-  open runway, previews size/category counts, validates output, and restores the
-  previous header if replacement validation fails.
-- See `docs/AIRPORT_DATABASE.md` for nearby-move versus new-region instructions.
-- Airport information is awareness-only and must not be used for navigation.
+1. **Persistent regional package** — the normal Product 92 end-user source.
+2. **Compiled fallback table** — retained in firmware as a known-good fallback if
+   the persistent airport partition is empty, unavailable, or invalid.
 
-### ADS-B networking
+The compiled fallback is intentional and should not be removed merely because
+persistent storage exists.
 
-- All ADS-B requests and Wi-Fi recovery run in one core-0 network task.
-- Requests cannot overlap.
-- Polling uses a fixed 15-second start-to-start cadence.
-- Native ESP-IDF HTTPS remains the preferred transport.
-- The independent fallback verifies TLS and hostname and is used only for eligible
-  native TCP, TLS, and HTTP-header transport failures.
-- The firmware does not use blocking `HTTPClient::GET()` or `setInsecure()`.
-- The shared Product 69 policy reserves 12 seconds for the complete fetch, including
-  10.5 seconds for transport and 1.5 seconds for JSON work.
-- Connect, header, body-read, idle, retry, release, fallback, and total work are
-  reduced by the remaining shared budget.
-- Local OTA, remote install, range refresh, and reconnect requests can cancel active
-  transport at bounded boundaries without manufacturing an ADS-B failure.
-- The fallback reader uses bounded streaming parsing, PSRAM-first payload storage,
-  strict response-size limits, and explicit support for valid `Content-Length`,
-  chunked, and required close-delimited bodies.
-- Conflicting or ambiguous framing is rejected.
-- Wi-Fi, DNS, TCP, TLS, HTTP, body, JSON, stale, cancellation, and budget failures
-  remain distinguishable.
-- Recovery escalates from retry to reconnect, radio recycle, and last-resort restart.
-- The last good aircraft snapshot remains visible during temporary failures.
+### Persistent storage
 
-### Request and state safety
+The custom 16 MB partition table preserves the two OTA application slots and
+reserves a dedicated 512 KiB airport-data partition.
 
-- Range and location changes increment a request generation.
-- Obsolete responses cannot overwrite a newer range or location selection.
-- A fully completed stale response counts as a transport success while remaining
-  separate from published-data freshness.
-- Radar rendering uses one coherent target snapshot per frame.
-- The renderer copies that snapshot only when target, range, or tracking versions
-  change and shares it with tracked-aircraft auto-zoom.
-- Sweep angle advances from elapsed milliseconds rather than completed-frame count.
-- Sparse and dense steady-state frames restore bounded prior dynamic regions from
-  the cached static layer.
-- LVGL labels and page content update only when their underlying versions change.
-- Aircraft selection and tracking use stable ICAO hex values, never array positions.
-- Radar hit-test priority remains tracked, selected, then closest.
-- Tracked-aircraft loss is evaluated only when a successful current-generation
-  target snapshot is published.
-- Tracking is cleared atomically after three consecutive confirmed misses.
-- Product 76 calculates relative neighbor rows from the same coherent snapshot in
-  one bounded pass with fixed storage; it does not create a second target snapshot.
-- Product 77 version-gates an open Aircraft Profile by target, range, and tracking
-  versions and resolves the same stable ICAO from one coherent snapshot.
-- Profile refresh creates no target buffer, dynamic container, timer, or replacement
-  LVGL object and does not run during ordinary unchanged 80 ms frames.
-- Missing-current-data states retain clearly marked last-known values instead of
-  silently presenting them as live.
-- Tracks and Airports reset their existing tables immediately after navigation
-  finishes populating the rows, while version-driven refreshes within the active
-  page retain the current valid scroll position.
+The persistent package format is `.radarapt`. The installer:
 
-### Home Assistant MQTT
+- accepts a complete bounded package from PSRAM
+- verifies package structure and exact record sizing
+- verifies SHA-256 before destructive work
+- enforces the dedicated partition capacity
+- erases only the aligned span required by the package
+- writes only the airport partition
+- re-reads and fully validates the stored copy
+- reports success only after readback verification
 
-- MQTT is disabled by default and its enabled state is stored independently in NVS.
-- Disabled mode creates no MQTT task, makes no broker connection attempts, and
-  allocates no aircraft snapshot or JSON buffer.
-- When enabled, task-free PubSubClient 2.8 publishes Home Assistant discovery,
-  retained availability, bounded state topics, tracked-aircraft data, five nearest
-  aircraft, and Airspace highlights.
-- The raw Last Update Age entity is intentionally absent. Home Assistant receives
-  useful `LIVE`, `UPDATING`, `STALE`, and `OFFLINE` status instead.
-- Home Assistant can switch the physical LCD backlight, select the shared
-  20/40/80-mile range, and queue the existing non-overlapping ADS-B refresh command.
-- MQTT does not own Wi-Fi, recycle the station, change ADS-B recovery, or trigger a
-  restart. Broker failure remains nonfatal to the radar.
-- MQTT uses a 384-byte internal packet buffer and streams larger retained payloads
-  from bounded PSRAM storage.
-- MQTT network work is skipped while ADS-B, a GitHub check/install, local OTA, or
-  hard Wi-Fi recovery owns the serialized network window.
-- Hard radio recovery requires acknowledged MQTT socket/client/workspace teardown
-  before the station is recycled.
-- `home-assistant/aircraft-radar-view.yaml` provides a ready-to-paste dashboard view
-  using only standard Home Assistant cards.
+NVS settings, both firmware OTA slots, ADS-B storage, LVGL memory, and radar target
+capacity are separate from the airport partition.
 
-### Local browser firmware updates
+### Normal new-user airport setup
 
-- The local HTTP updater is disabled during normal operation and can be armed from
-  the System page for five minutes.
-- Arming immediately claims an exclusive OTA maintenance window.
-- Each arming generates a temporary six-digit access code and displays both the
-  numeric-IP address and `bills-aircraft-radar.local/update` when mDNS starts.
-- PlatformIO creates `firmware.radarota` beside `firmware.bin` and copies the same
-  package to `release/firmware.radarota`.
-- USB flashing uses `firmware.bin`; browser updates accept only `.radarota`.
-- Upload data is streamed directly to the inactive OTA partition. No complete
-  firmware copy is allocated in heap or PSRAM.
-- ADS-B parks and MQTT closes/releases its resources for the complete armed,
-  preparation, retry, upload, verification, and restart lifecycle.
-- Browser request pacing and bounded retries accommodate the single-client Arduino
-  `WebServer` without permitting ambiguous duplicate writes.
-- Upload retry is allowed only when authenticated status proves zero bytes were
-  received and written.
-- The next boot partition is selected only after hardware, build-ID, ESP32-S3 image,
-  exact-length, SHA-256, and `esp_ota_end()` checks succeed.
-- Automatic restart uses a bounded internal-stack Core-0 task and an atomic Core-1
-  acknowledgement from an interrupt-masked IRAM park.
+A normal user does not need Python or a custom firmware build for their location.
 
-### GitHub stable-release updates
+1. Flash/install the Product firmware.
+2. Save normal home latitude/longitude on the radar's System page.
+3. Arm the local firmware/maintenance window.
+4. Open the radar web page from a phone or computer on the same network.
+5. Open **AIRPORT DATABASE**.
+6. Enter the radar's six-digit access code.
+7. The browser prefills the currently saved radar coordinates when valid.
+8. Review the center and coverage radius; 120 miles is the recommended default.
+9. Tap **BUILD & INSTALL AIRPORT DATABASE**.
 
-- No firmware is downloaded or installed automatically.
-- A metadata check can run only after a successful current-generation ADS-B fetch
-  while the existing serialized network ownership is still active.
-- Automatic checks wait at least five minutes after boot and approximately 24 hours
-  after a completed attempt.
-- **CHECK NOW** bypasses only the five-minute and 24-hour timers; it still waits for
-  Wi-Fi, cadence slack, ADS-B success, MQTT, command, recovery, and OTA safety gates.
-- A metadata check has a six-second absolute ceiling, a 2048-byte manifest limit,
-  a 16 KiB aggregate header limit, a 4095-character URL limit, at most three approved
-  HTTPS redirects, and a URL-sized 1024-4607-byte ESP-IDF transmit buffer.
-- Redirects are restricted to `github.com`, `objects.githubusercontent.com`, and
-  `release-assets.githubusercontent.com`.
-- The manifest must match schema, exact hardware, stable channel, numeric version,
-  updater support, Product label, build ID, asset name, sizes, and SHA-256 fields.
-- A newer compatible release enables a two-tap **DOWNLOAD & INSTALL** flow.
-- The first tap arms a 15-second confirmation; the second queues installation for
-  the next safe network window.
-- The manifest is downloaded and validated again immediately before installation.
-  A changed version, build ID, size, or digest cancels installation and requires
-  fresh confirmation.
-- Remote package transport uses verified native ESP-IDF HTTPS, at most three approved
-  redirects, a 4096-byte PSRAM receive buffer, a 1024-byte internal-RAM flash staging
-  buffer, an eight-second connect/header ceiling per request, a fifteen-second body
-  idle ceiling, and a three-minute absolute install ceiling.
-- The complete package is never held in memory.
-- Every flash write source is staged through internal RAM before `esp_ota_write()`.
-- The package header, hardware, build ID, package size, firmware size, package SHA-256,
-  firmware SHA-256, ESP application magic, ESP32-S3 image identity, embedded build ID,
-  exact byte counts, and `esp_ota_end()` must all pass before boot selection.
-- Local browser OTA has priority and can cancel the remote operation at the next
-  bounded point.
-- Product 74 physically proved the Product 73 remote installation and restart path.
-- Product 75 clears transient update/install state after reboot, then starts a fresh
-  five-minute automatic-check delay while leaving **CHECK NOW** ready.
-- TLS plus hashes protect against corruption and accidental mismatch, but the manifest
-  and package share the same publishing account. Public-key package signing and
-  automatic first-boot rollback remain separate future hardening work.
+The browser downloads the current public OurAirports airport/runway CSV datasets,
+filters them locally, creates the exact bounded `.radarapt` package, and uploads it
+to the ESP.
 
-### Target capacity
+The ESP does not parse the worldwide CSV files.
 
-- Storage is bounded at 200 retained targets.
-- Capacity-scaled target arrays and radar metadata use required PSRAM.
-- Retention remains nearest-first while preserving the tracked aircraft when returned.
-- Diagnostics distinguish received, eligible, stored, capacity-dropped, and visible
-  aircraft counts.
-- Array allocation sizes, bounds checks, counters, and indexes remain tied to the
-  same source capacity.
+After a verified install, Product 92 uses the established hardened restart path so
+the new persistent airport source becomes active automatically on the next boot.
 
-### Memory diagnostics
+### Moving the radar
 
-- ADS-B response payloads and both ArduinoJson documents use PSRAM-only allocation.
-- Per-fetch request URL/path construction uses bounded character arrays rather than
-  hot-path Arduino `String` allocation.
-- The 64-row airport directory and optional radar caches use PSRAM.
-- System diagnostics include free/minimum heap, current/minimum largest internal
-  block, free/minimum PSRAM, fetch-only lows and stage attribution, ADS-B task stack
-  headroom, LVGL pool use/free/largest block/fragmentation, radar render duration,
-  radar frame gaps, fetch duration, and activity-stage attribution.
-- The core-0 ADS-B task stack remains 12 KiB based on measured hardware headroom.
-- The LVGL pool remains 128 KiB.
+Changing the radar's saved latitude/longitude changes the current aircraft/radar
+center and rebuilds the nearby airport cache.
 
-### Display stability
+It does not rewrite the regional airport package.
 
-The display configuration intentionally preserves:
+A nearby move still covered by the installed package generally needs only the
+System-page coordinate change. A move outside the installed region should use the
+Airport Database browser page to build/install another region. No firmware rebuild
+is required.
 
-- Arduino-ESP32 3.0.7 high-performance XIP/PSRAM framework
+### Developer airport tooling
+
+The PC/Python builder remains intentionally checked in as a reference, recovery,
+and regression tool:
+
+```text
+tools\Build Airport Database.bat
+python tools/airport_database_setup.py
+python tools/generate_airport_database.py ...
+```
+
+It can generate:
+
+```text
+release\airports.radarapt
+```
+
+without changing firmware or the radar's saved location. The Python package code
+also serves as the reference implementation used to validate browser-generated
+package bytes.
+
+See `docs/AIRPORT_DATABASE.md` for the full workflow.
+
+## ADS-B networking and reliability
+
+- Core-0 owns ADS-B fetch and Wi-Fi recovery.
+- ADS-B requests do not overlap.
+- Polling retains the fixed 15-second start-to-start cadence.
+- Native ESP-IDF HTTPS remains preferred.
+- Hardened verified fallback remains restricted to eligible transport failures.
+- No blocking `HTTPClient::GET()` is used.
+- No `setInsecure()` TLS path is permitted.
+- Header, body, idle, and absolute budgets remain bounded.
+- Response payload and JSON parsing use PSRAM-first/PSRAM-only policy where designed.
+- Conflicting or ambiguous HTTP framing is rejected.
+- Stale generation results cannot overwrite newer range/location state.
+- Fully successful stale responses still count as transport successes.
+- Wi-Fi/TLS recovery and last-good aircraft retention remain intact.
+
+## Memory and display protections
+
+The project intentionally retains:
+
+- Arduino-ESP32 3.0.7 high-performance XIP/PSRAM
 - OPI PSRAM and `BOARD_HAS_PSRAM`
-- Existing Waveshare RGB timing
-- DMA and anti-rolling protections
+- Waveshare panel timing
+- DMA/anti-rolling behavior
 - 20-scanline RGB bounce buffer
+- 128 KiB LVGL pool
+- measured 12 KiB core-0 ADS-B task stack
+- bounded 200-target PSRAM architecture
 
-Do not replace the framework, change panel timing, or reduce the bounce buffer
-without a dedicated display-stability investigation.
+Do not casually change framework, panel timing, DMA, bounce buffer, target capacity,
+or memory ownership while working on unrelated features.
+
+## Firmware updates
+
+### Local browser firmware update
+
+The local HTTP updater is disabled during normal operation and is armed from System
+for a bounded maintenance window.
+
+The user receives a six-digit code. The firmware page accepts only the project's
+validated `.radarota` package format, performs bounded handoff/retry behavior for
+the single-client WebServer, verifies the image/package before selecting the inactive
+OTA slot, and uses the hardened restart sequence.
+
+### GitHub stable-release update
+
+The radar can check the repository's stable release metadata and, after explicit
+user confirmation, download/install a newer compatible GitHub release through the
+bounded verified installer.
+
+Firmware is not silently installed merely because files exist in `release/`.
+
+## Important: `release/` contains historical artifacts
+
+The repository currently contains many Product-numbered `.radarota` files from
+earlier development and verification cycles.
+
+Treat those files as **historical build artifacts**, not as a menu of recommended
+firmware.
+
+In particular:
+
+- `waveshare-esp32-s3-touch-lcd-7-product-XX.radarota` files from old Products are
+  stale for normal current installation unless intentionally testing/rolling back.
+- `release/firmware.radarota` is generated build output for local browser install
+  and may be stale if it was not regenerated by the exact source currently being
+  built.
+- The fixed-name release manifest identifies the intended GitHub stable release;
+  file presence alone does not.
+- Never infer the current Product from the newest-looking filename in `release/`.
+  Confirm `include/build_info.h`, the intended commit/tag, generated manifest, and
+  the actual build being installed.
+
+Historical artifact cleanup should be performed as separate repository housekeeping
+so release history is not accidentally destroyed while changing firmware.
 
 ## Repository layout
 
 ```text
-assets/                 Aircraft artwork and display assets
-docs/                   User-facing project guides
-tools/                  Generated-data utilities, including airport CSV conversion
-tests/                  Focused host and source regression checks
-scripts/                PlatformIO post-build OTA and release-asset generation
-release/                Generated local and versioned OTA assets plus manifest
-home-assistant/          Built-in-card dashboard view and installation notes
-include/                 Shared interfaces, build identity, and hardware configuration
-src/                     Application, networking, state, radar, UI, MQTT, and OTA
-platformio.ini           Pinned PlatformIO environment, workspace, and checks
+assets/                 Aircraft and UI artwork
+docs/                   Repository/user guides
+home-assistant/          MQTT dashboard/support files
+include/                 Interfaces, build identity, generated fallback data
+partitions/              Custom partition table including persistent airport storage
+release/                 Generated/current and historical OTA artifacts
+scripts/                 OTA/release post-build tooling
+src/                     Firmware implementation
+tests/                   Focused host/source regression tests
+tools/                   Airport/aircraft generation and developer tooling
+platformio.ini           Pinned PlatformIO environment
 README.md                Current project documentation
 CHANGELOG.md             Confirmed Product history
 ```
 
-Private credentials belong only in `include/config.h`. That file must remain
-ignored and must never be committed, uploaded, or included in replacement ZIPs.
+Private credentials belong only in `include/config.h`. That file must remain ignored
+and must never be committed, uploaded, or included in distribution ZIPs.
 
-## Setup
+## Initial setup
 
-### 1. Install the tools
+### 1. Tools
 
 Install:
 
 - Visual Studio Code
-- PlatformIO extension
+- PlatformIO
 - Git
-- Python 3 for airport generation and host tests
+- Python 3 for host/developer tooling
 
-### 2. Clone the repository
+### 2. Clone
 
 ```bash
 git clone https://github.com/bcarriveau/esp-aircraft-radar.git
 cd esp-aircraft-radar
 ```
 
-### 3. Create the private configuration
+Use the intended branch for the work being tested.
 
-Copy the example file:
+### 3. Private configuration
+
+Copy:
 
 ```bash
 cp include/config.example.h include/config.h
 ```
 
-Edit `include/config.h` with local Wi-Fi credentials and radar-center coordinates.
-To use Home Assistant, also replace the MQTT placeholders with local broker values.
-MQTT remains disabled until enabled from the radar's System page.
+Keep credentials/private defaults in `include/config.h` only. Never commit it.
 
-Never commit this file.
+Normal users can later edit Wi-Fi, home coordinates, and display name through the
+radar's System page.
 
-### 4. Generate another airport region when needed
+### 4. First USB flash and partition-table requirement
 
-A nearby move inside the compiled region needs only a coordinate change on the
-System page. A move to another region requires a new generated header and build.
+The persistent airport architecture introduced a custom partition table. A device
+coming from a pre-separation layout needs one appropriate USB/PlatformIO flash that
+installs the intended partition table.
 
-Windows guided setup:
-
-```text
-tools\Build Airport Database.bat
-```
-
-Advanced command-line generation:
-
-```bash
-python tools/generate_airport_database.py airports.csv \
-  --runways-csv runways.csv \
-  --latitude YOUR_LATITUDE \
-  --longitude YOUR_LONGITUDE \
-  --radius 120 \
-  --coverage "YOUR REGION"
-```
-
-Use `--dry-run` to preview without replacing the generated header. Full directions
-are in `docs/AIRPORT_DATABASE.md`.
+Ordinary later firmware OTA updates do not intentionally erase NVS or the dedicated
+airport partition.
 
 ### 5. Build
 
@@ -497,222 +334,105 @@ PlatformIO environment:
 waveshare-s3-touch-lcd-7
 ```
 
-Command-line build:
+Build:
 
 ```bash
 pio run -e waveshare-s3-touch-lcd-7
 ```
 
-The project pins:
+The project pins the established Arduino-ESP32 3.0.7 high-performance stack and
+LVGL 8.3.11.
 
-- pioarduino platform-espressif32 51.03.07
-- Arduino-ESP32 3.0.7 high-performance libraries
-- ESP32_Display_Panel 0.1.4
-- ESP32_IO_Expander 0.0.3
-- LVGL 8.3.11
-- ArduinoJson 7.3.1
-- PubSubClient 2.8
+### 6. Install regional airports
 
-Generated objects and downloaded libraries are stored outside the Google Drive
-project directory:
+After firmware is running, use the browser Airport Database workflow described
+above. Do not rebuild firmware simply to customize the normal user's region.
 
-```text
-~/.platformio/workspaces/bills_aircraft_radar
-```
+### 7. Local browser firmware update
 
-A successful build creates:
+1. Build the exact intended source.
+2. Use the newly generated local `.radarota`.
+3. Open System and arm Firmware / OTA.
+4. Open the displayed address.
+5. Enter the six-digit code.
+6. Upload the newly generated package.
+7. Keep power connected through verification/restart.
 
-```text
-~/.platformio/workspaces/bills_aircraft_radar/build/waveshare-s3-touch-lcd-7/firmware.bin
-~/.platformio/workspaces/bills_aircraft_radar/build/waveshare-s3-touch-lcd-7/firmware.radarota
-<project>/release/firmware.radarota
-<project>/release/waveshare-esp32-s3-touch-lcd-7-product-78.radarota
-<project>/release/waveshare-esp32-s3-touch-lcd-7.manifest.json
-```
+### 8. GitHub release publishing
 
-Use `firmware.bin` for USB upload, `release/firmware.radarota` for local browser
-OTA, and the versioned package plus fixed-name manifest for a normal stable GitHub
-Release. Do not hand-edit generated assets.
-
-### 6. Static inspection
-
-Run the repository checks appropriate to the changed subsystem. The documentation
-catch-up itself does not require a PlatformIO build because it changes no firmware.
-For source work, the repository includes focused tests for airports, classification,
-capacity, ADS-B transport, radar rendering, MQTT, local OTA, GitHub release checking,
-and remote installation.
-
-The project uses `cppcheck: --skip-packages` so application sources are checked
-without treating downloaded framework headers as project code.
-
-### 7. Local browser update
-
-An OTA-capable build must be installed by USB once. For later local updates:
-
-1. Build and locate `release/firmware.radarota`.
-2. Open **System**, tap **Firmware / OTA**, and enable the five-minute window.
-3. Open the displayed address from another device on the same network.
-4. Enter the six-digit code, select `firmware.radarota`, and start the update.
-5. Keep power connected through verification and restart.
-
-A partial, rejected, or interrupted package is not selected as the next boot image.
-
-### 8. GitHub release update
-
-To publish a stable release for the on-device updater:
+Before publishing a stable release:
 
 1. Build the exact intended Product source.
-2. Confirm the expected Product marker on hardware.
-3. Run the relevant checked-in tests and normal radar regression checks.
-4. Create a normal, published, non-draft, non-prerelease release.
-5. Use the matching tag and release name, such as `product-78` / `Product 78`.
-6. Attach the generated versioned `.radarota` package and the fixed-name manifest.
-7. Keep `release/firmware.radarota` as the local browser-install fallback.
+2. Confirm the Product marker.
+3. Run relevant focused tests.
+4. Perform required physical regression tests.
+5. Publish the matching tag/release.
+6. Attach only the matching generated versioned `.radarota` and manifest expected
+   by the updater.
 
-On the radar, **CHECK NOW** queues a bounded check. A newer compatible release can
-then be installed only after the two-tap confirmation flow.
+Do not assume old checked-in `release/` packages are suitable just because they
+remain in repository history.
 
-### 9. Home Assistant MQTT
+## Expected Product 92 checks
 
-1. Configure broker URI and credentials only in private `include/config.h`.
-2. Confirm Home Assistant MQTT discovery is enabled.
-3. Open **System**, tap **HA MQTT**, and enable MQTT.
-4. Confirm the radar appears as one MQTT device.
-5. Follow `home-assistant/README.md` to install the supplied dashboard view.
+For Product 92, confirm:
 
-Disabling MQTT stops and destroys the client and releases its PSRAM work buffers
-without disconnecting Wi-Fi or changing ADS-B behavior.
-
-### 10. Upload and monitor
-
-```bash
-pio run -e waveshare-s3-touch-lcd-7 -t upload
-pio device monitor -b 115200
-```
-
-The programming USB-C port is normally used for upload and Serial Monitor.
-
-## Expected startup checks
-
-Confirm the serial log reports:
-
-- `7IN-20260805-PRODUCT78-PAGE-TOP-RESET`
-- PSRAM detected
-- unused BLE controller memory released
-- app-state, radar, UI, and ADS-B buffers allocated in PSRAM
-- airport database and nearby-cache counts
-- core-0 ADS-B task started with the intended stack
-- update manager initialized with transient state cleared for the new boot
-- native HTTPS or the configured verified fallback connected successfully
-- aircraft received, eligible, stored, dropped, and published counts
-- no immediate TLS memory-allocation failure
-- no display rolling during HTTPS activity
-
-## Verification checklist
-
-Source review, compilation, physical testing, and soak testing are separate stages.
-Before calling a Product release complete:
-
-1. Compile and link the full PlatformIO project.
-2. Record flash and internal RAM use.
-3. Confirm the Product 78 marker, OPI PSRAM, 128 KiB LVGL pool, 12 KiB ADS-B
-   stack, and 20-scanline bounce buffer.
-4. Test normal 15-second updates and 20/40/80-mile range changes.
-5. Select an aircraft, open **INFO**, and leave the profile open through several
-   ADS-B publications. Confirm distance, bearing, altitude, speed, heading, and
-   vertical rate update without closing or rebuilding the page.
-6. Open a profile from Tracks, allow the list to reorder, and confirm the profile
-   continues following the same stable ICAO.
-7. Confirm fresh profiles show `CURRENT UPDATE`.
-8. Confirm an absent selected aircraft shows
-   `NOT IN CURRENT UPDATE / LAST KNOWN VALUES`, disables starting a stale track,
-   and resumes current values automatically if the ICAO returns.
-9. Track an aircraft, open its profile, and confirm a temporary omission shows
-   `TRACK SIGNAL LOST / LAST KNOWN VALUES` while `STOP TRACKING` remains available.
-10. Confirm one or two successful omitted snapshots retain tracking and the third
-    consecutive confirmed miss clears it.
-11. Confirm failed requests and stale discarded responses do not clear tracking.
-12. Test BACK, TRACK, STOP TRACK, CLEAR, tab changes, and selected timeout behavior.
-13. Scroll down Tracks, leave and re-enter it, and confirm the first header/aircraft
-    rows are visible without manual upward scrolling. Repeat after returning from an
-    Aircraft Profile.
-14. Scroll down Airports, leave and re-enter it, then open and return from Airport
-    Profile and Display Settings; confirm the directory returns to the top each time.
-15. While remaining on Tracks or Airports, let live refreshes occur and confirm they
-    do not repeatedly force the current scroll position to the top.
-16. Select and track aircraft; confirm the three secondary rows remain ranked by
-    separation from the priority aircraft and show relative direction.
-17. Confirm `NEAR SELECT`, `NEAR TRACK`, `NO OTHER`, and `POSITION LOST` states.
-18. Interrupt Wi-Fi or the router and confirm recovery.
-19. Change range during an active request and confirm stale-response rejection.
-20. Check display stability during HTTPS, MQTT, update checks, and page switching.
-21. Check heap, largest internal block, PSRAM, LVGL pool, and ADS-B stack stability.
-22. Confirm local browser OTA failure and success paths.
-23. Confirm a manual GitHub check waits for a safe ADS-B window and reports its state.
-24. Confirm reboot clears transient update/install state and starts a fresh
-    five-minute automatic-check delay.
-25. Publish a numerically newer test release and confirm two-tap remote installation,
-    fresh manifest recheck, progress, verification, restart, and new marker.
-26. Confirm changed-manifest, cancellation, truncation, hash mismatch, wrong hardware,
-    and wrong image cases leave the current boot partition active.
-27. Confirm MQTT disabled and enabled behavior, Home Assistant controls, and network
-    serialization around ADS-B and OTA.
-28. Confirm every visible radar airport label has a matching directory eye indicator.
-29. Complete an extended soak test.
-
-## Screenshots
-
-Current display photographs have been used during physical layout review, but a
-curated repository-facing screenshot set is not yet committed under `docs/images/`.
+- build marker `7IN-20260813-PRODUCT92-AIRPORT-LOCATION-PREFILL`
+- OPI PSRAM detected
+- 20-scanline display bounce buffer retained
+- core-0 ADS-B task and 15-second cadence retained
+- native/fallback HTTPS remains stable
+- persistent airport source is reported after successful browser install
+- compiled fallback is used safely when no valid persistent package exists
+- six-digit Airport Database page access works
+- saved coordinates prefill only after authenticated status succeeds
+- browser package generation succeeds from phone/PC
+- airport upload uses READY/settle pacing without connection reset
+- verified airport install restarts automatically
+- new boot reports persistent airport records
+- selection/tracking, 20/40/80, touch, page switching, and display stability remain
+  normal
+- heap/PSRAM remain stable through airport generation/upload/restart
 
 ## Major milestones
 
-- **Product 15:** First hardened modular baseline with core-0 networking,
-  generation-safe publishing, last-good retention, diagnostics, and the proven RGB
-  anti-rolling configuration.
-- **Products 16-18:** HTTPS transport and certificate-bundle corrections that
-  established the working native TLS baseline.
-- **Products 19-25:** Tracking UI, outward auto-zoom, keyboard, large-response and
-  heading-crash fixes, transport recovery, and quiet first-run NVS defaults.
-- **Products 26-29:** Themed radar tags, stable ICAO selection, compact range control,
-  idle/selected/tracked panel flow, detail-origin handling, and UI-state fixes.
-- **Products 30-34:** Bounded 200-target PSRAM architecture, aircraft side bitmaps,
-  Airspace dashboard, UI fit cleanup, and confirmed tracked-aircraft loss recovery.
-- **Products 35-49:** Safer aircraft classification, bitmap/heading contacts,
-  fallback HTTPS hardening, startup and NVS reliability, response recovery,
-  vertical-state artwork, Tracks scroll clamping, and exact 20-mile label selection.
-- **Products 50-53:** Offline airport awareness, deterministic labels, directory and
-  profile views, per-airport controls, touch safety, and radar focus.
-- **Products 54-61:** Hardware-bound local browser OTA, Home Assistant MQTT,
-  region-independent airport tooling, exclusive network ownership, IRAM-safe restart,
-  Wi-Fi recovery coordination, idempotent preparation, and socket pacing.
-- **Products 62-64:** Complete airport-eye coverage, PSRAM-only ADS-B parsing,
-  expanded memory diagnostics, and a measured 12 KiB ADS-B task stack.
-- **Products 65-68:** Elapsed-time sweep, cached static radar layer, bounded dirty
-  restoration, activity-stage gap attribution, and reduced fetch contention.
-- **Product 69:** Shared bounded ADS-B transport budget with safe OTA preemption.
-- **Products 70-72:** Restored GitHub stable-release checking and corrected real-world
-  response headers, redirects, and request transmit sizing.
-- **Products 73-74:** Explicit verified on-device GitHub installation and its first
-  physically working remote update.
-- **Product 75:** Software Update layout cleanup and reboot-time transient-state reset.
-- **Product 76:** Three bounded nearest-aircraft rows relative to the selected or
-  tracked aircraft.
-- **Product 77:** Live stable-ICAO Aircraft Profiles with version-gated coherent
-  refresh, explicit current/last-known states, and safe tracked-signal-loss actions.
-- **Product 78:** Compact selected/tracked neighbor headings plus navigation-time
-  Tracks and Airports top-of-page resets that do not disturb live in-page scrolling.
+- **Product 15:** Hardened modular rollback baseline.
+- **Products 16-18:** Native HTTPS/certificate baseline.
+- **Products 19-29:** Tracking, range, themed tags, stable ICAO interaction, and UI
+  state hardening.
+- **Products 30-34:** 200-target PSRAM architecture, aircraft imagery, Airspace, and
+  confirmed track-loss recovery.
+- **Products 35-49:** Classification safety, bitmap contacts, HTTPS fallback hardening,
+  NVS/recovery fixes, vertical-state display, Tracks fixes, and label hit testing.
+- **Products 50-53:** Offline airport rendering, directory/profile, controls, and
+  collision-aware labels.
+- **Products 54-61:** Hardware-bound local OTA, MQTT, airport tooling, exclusive
+  maintenance ownership, restart hardening, and socket pacing.
+- **Products 62-69:** Airport directory completeness, PSRAM parsing, diagnostics,
+  radar dirty-region rendering, and bounded ADS-B transport.
+- **Products 70-75:** GitHub stable-release checking/install and update UI/state.
+- **Products 76-85:** Relative neighbor rows, live profiles, page-entry scroll,
+  multi-range aircraft symbols, boot splash, Airspace handoff, keyboard visibility,
+  enlarged priority icon, and range-control clipping correction.
+- **Product 86:** Dedicated persistent airport partition with compiled fallback.
+- **Product 87:** Validated persistent `.radarapt` installer and readback verification.
+- **Product 88:** Mobile airport upload page on the existing maintenance WebServer.
+- **Product 89:** Browser-side regional airport package generation.
+- **Product 90:** Proven READY/settle WebServer upload pacing and safe retry rules.
+- **Product 91:** Automatic restart after verified airport install and clearer web
+  navigation.
+- **Product 92:** Authenticated prefill from the radar's saved home coordinates and
+  removal of location-specific examples.
 
-Detailed confirmed Product history is maintained in `CHANGELOG.md`. Products 1-14
-are not reconstructed because the repository does not preserve authoritative
-numbered history for them.
+Detailed confirmed history is maintained in `CHANGELOG.md`.
 
 ## License and data source
 
-Add the repository's chosen license before distributing the firmware.
+Repository licensing and third-party notices are maintained in `LICENSE`,
+`LICENSES/`, and `THIRD_PARTY_NOTICES.md`.
 
 Airport information is derived from public OurAirports datasets and is for visual
-awareness only, without a guarantee of accuracy or fitness for navigation.
+awareness only, not navigation.
 
 ADS-B data availability and permitted use remain subject to the selected provider's
 terms and service availability.
