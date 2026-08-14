@@ -9,8 +9,8 @@ version-controlled baseline. Earlier numbered history is intentionally not inven
 
 ## Current status
 
-- **Current Product:** Product 92
-- **Build marker:** `7IN-20260813-PRODUCT92-AIRPORT-LOCATION-PREFILL`
+- **Current Product:** Product 93
+- **Build marker:** `7IN-20260813-PRODUCT93-UPDATE-NOTES-RANGE-PERSISTENCE`
 - **Current branch:** `airport-seperation`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262, GT911, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
@@ -29,6 +29,33 @@ the Git history/tag/release associated with each Product.
 Current firmware identity comes from `include/build_info.h` plus the matching
 generated Product package/manifest. Documentation-only and housekeeping commits may
 advance repository HEAD without creating a new firmware Product.
+
+## Product 93 - 2026-08-13
+
+**Build:** `7IN-20260813-PRODUCT93-UPDATE-NOTES-RANGE-PERSISTENCE`
+
+### Changed
+
+- Software Update continues to show the installed Product and build ID.
+- When a newer validated release is available, the panel now labels the manifest's
+  bounded release note as **WHAT'S NEW** and identifies the remote Product/build as
+  `UPDATE AVAILABLE`.
+- The release note remains sourced from `FIRMWARE_RELEASE_NOTES` through the existing
+  generated manifest; no new GitHub scraping or update transport is introduced.
+- The last manually selected 20/40/80-mile radar range is stored in the existing
+  `radar_cfg` NVS namespace and restored before ADS-B networking starts.
+- Missing or invalid stored range values fall back to 80 miles.
+- A live range change still succeeds even if the persistence write fails; the failure
+  is logged and NVS saving follows the existing verified-write health behavior.
+- Reset-to-defaults restores the saved radar range to 80 miles.
+
+### Preserved
+
+- Native/fallback ADS-B HTTPS behavior, 15-second cadence, request generation/stale
+  rejection, last-good retention, and Wi-Fi/TLS recovery.
+- GitHub update checking/install verification, local browser OTA, partition layout,
+  persistent airport storage, radar rendering, stable ICAO selection/tracking,
+  display timing/DMA/bounce buffer, PSRAM architecture, and 200-target capacity.
 
 ## Repository housekeeping after Product 92 - 2026-08-13
 

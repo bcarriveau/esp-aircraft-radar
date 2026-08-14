@@ -28,15 +28,15 @@ airport-seperation
 Current committed Product:
 
 ```text
-Product 92
-7IN-20260813-PRODUCT92-AIRPORT-LOCATION-PREFILL
+Product 93
+7IN-20260813-PRODUCT93-UPDATE-NOTES-RANGE-PERSISTENCE
 ```
 
 The Product marker is the durable firmware identity. Repository HEAD naturally
 advances for documentation and housekeeping commits, so README does not pin a
 "current commit" SHA.
 
-Product 92 completes the current browser-built regional airport-database workflow.
+Product 93 keeps the completed browser-built regional airport-database workflow and adds two user-facing refinements: the update page labels validated manifest release notes as WHAT'S NEW, and the radar restores the last manually selected 20/40/80-mile range after restart.
 After the local maintenance window is armed and the six-digit code is accepted,
 the Airport Database page can prefill the radar's already-saved home coordinates,
 download public OurAirports data in the user's browser, build a bounded regional
@@ -71,7 +71,7 @@ Idle:
 
 - Left side shows count, nearest aircraft, and data status.
 - Right side shows nearest aircraft.
-- Radar `20 / 40 / 80` is the range control.
+- Radar `20 / 40 / 80` is the range control, and the last manual choice is restored after restart.
 
 Selected:
 
@@ -229,6 +229,8 @@ or memory ownership while working on unrelated features.
 The local HTTP updater is disabled during normal operation and is armed from System
 for a bounded maintenance window.
 
+The on-device Software Update panel shows the installed Product/build and, when a newer release is available, labels the validated manifest release notes as **WHAT'S NEW**.
+
 The user receives a six-digit code. The firmware page accepts only the project's
 validated `.radarota` package format, performs bounded handoff/retry behavior for
 the single-client WebServer, verifies the image/package before selecting the inactive
@@ -374,11 +376,14 @@ Before publishing a stable release:
 Use the current Product-numbered package generated from the exact intended source;
 older packages belong to their historical Git commit/tag/release.
 
-## Expected Product 92 checks
+## Expected Product 93 checks
 
-For Product 92, confirm:
+For Product 93, confirm:
 
-- build marker `7IN-20260813-PRODUCT92-AIRPORT-LOCATION-PREFILL`
+- build marker `7IN-20260813-PRODUCT93-UPDATE-NOTES-RANGE-PERSISTENCE`
+- select 20, 40, and 80 miles and confirm the last manual choice survives restart
+- confirm an invalid/missing saved range safely defaults to 80 miles
+- when a newer release is available, confirm its validated manifest note appears under WHAT'S NEW
 - OPI PSRAM detected
 - 20-scanline display bounce buffer retained
 - core-0 ADS-B task and 15-second cadence retained
@@ -424,6 +429,8 @@ For Product 92, confirm:
   navigation.
 - **Product 92:** Authenticated prefill from the radar's saved home coordinates and
   removal of location-specific examples.
+- **Product 93:** Clear on-device WHAT'S NEW release notes plus persisted last-used
+  20/40/80-mile radar range.
 
 Detailed confirmed history is maintained in `CHANGELOG.md`.
 

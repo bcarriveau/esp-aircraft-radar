@@ -73,6 +73,11 @@ void setup() {
         "WARNING: Update-check persistence unavailable; using boot-local schedule");
   }
   app_state::initialize();
+  const uint8_t savedRadarRange = settings::radarRangeMiles();
+  if (app_state::setRadarRangeMiles(static_cast<float>(savedRadarRange))) {
+    Serial.printf("Restored radar range: %u miles\n",
+                  static_cast<unsigned>(savedRadarRange));
+  }
   if (!ui::allocateTargetBuffer()) return;
 
   lcd_init();
