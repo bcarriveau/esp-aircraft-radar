@@ -72,6 +72,17 @@ class BrowserFactoryInstallerTests(unittest.TestCase):
         self.assertIn("Web Serial transport released.", script)
         self.assertIn("If the display remains stopped, press RESET once and report it.", script)
 
+
+    def test_local_file_disables_adjacent_bundle_fetch(self) -> None:
+        html = HTML.read_text(encoding="utf-8")
+        script = JS.read_text(encoding="utf-8")
+        self.assertIn('id="bundleLoadHelp"', html)
+        self.assertIn('window.location.protocol !== "file:"', script)
+        self.assertIn('el.loadAdjacent.disabled = busy || !adjacentBundleAvailable', script)
+        self.assertIn('el.loadAdjacent.textContent = "HOSTED USE ONLY"', script)
+        self.assertIn('Adjacent loading is unavailable from a file:// page.', script)
+        self.assertIn('assert(adjacentBundleAvailable, "Adjacent bundle loading requires HTTPS or localhost.', script)
+
     def test_browser_page_contains_destructive_owner_warning(self) -> None:
         html = HTML.read_text(encoding="utf-8")
         self.assertIn("erases the ENTIRE 16 MB flash chip", html)

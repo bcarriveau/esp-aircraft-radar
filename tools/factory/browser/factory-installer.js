@@ -19,6 +19,8 @@ const EXPECTED = Object.freeze({
   ]),
 });
 
+const adjacentBundleAvailable = window.location.protocol !== "file:";
+
 const state = {
   manifest: null,
   images: null,
@@ -32,6 +34,7 @@ const state = {
 const el = {
   bundleFiles: document.getElementById("bundleFiles"),
   loadAdjacent: document.getElementById("loadAdjacent"),
+  bundleLoadHelp: document.getElementById("bundleLoadHelp"),
   connect: document.getElementById("connectButton"),
   disconnect: document.getElementById("disconnectButton"),
   eraseCheck: document.getElementById("eraseCheck"),
@@ -60,8 +63,26 @@ function setStatus(target, text, kind = "") {
 function setBusy(busy) {
   state.busy = busy;
   el.bundleFiles.disabled = busy;
-  el.loadAdjacent.disabled = busy;
+  el.loadAdjacent.disabled = busy || !adjacentBundleAvailable;
   refreshControls();
+}
+
+function configureBundleLoadingMode() {
+  if (adjacentBundleAvailable) {
+    el.loadAdjacent.textContent = "LOAD ADJACENT BUNDLE";
+    if (el.bundleLoadHelp) {
+      el.bundleLoadHelp.textContent =
+          "Hosted install: load the bundle beside this page, or choose a Product factory folder manually.";
+    }
+    return;
+  }
+
+  el.loadAdjacent.textContent = "HOSTED USE ONLY";
+  el.loadAdjacent.disabled = true;
+  if (el.bundleLoadHelp) {
+    el.bundleLoadHelp.textContent =
+        "Local install: choose this Product factory folder. Adjacent loading is unavailable from a file:// page.";
+  }
 }
 
 function refreshControls() {
@@ -279,6 +300,7 @@ async function loadFromSelection(fileList) {
 }
 
 async function loadAdjacentBundle() {
+  assert(adjacentBundleAvailable, "Adjacent bundle loading requires HTTPS or localhost. For a local file, choose the Product factory folder instead.");
   const manifestResponse = await fetch("./factory-manifest.json", { cache: "no-store" });
   assert(manifestResponse.ok, `factory-manifest.json returned HTTP ${manifestResponse.status}.`);
   const manifest = await manifestResponse.json();
@@ -412,6 +434,9 @@ async function eraseAndInstall() {
     setBusy(false);
   }
 }
+
+configureBundleLoadingMode();
+refreshControls();
 
 el.bundleFiles.addEventListener("change", async () => {
   try {
