@@ -195,6 +195,38 @@ bool writeBytesChecked(const char* key, const void* value, size_t length) {
   return true;
 }
 
+#if !defined(RADAR_DISTRIBUTION_BUILD)
+bool factoryNeutralOwnerStatePresent() {
+  // The distribution build creates these exact neutral values on a virgin
+  // factory boot. Require the complete tuple and correct NVS types so a normal
+  // private firmware update never overwrites real owner-entered settings.
+  return preferences.getType(KEY_WIFI_SSID) == PT_STR &&
+         preferences.getType(KEY_WIFI_PASS) == PT_STR &&
+         preferences.getString(KEY_WIFI_SSID, String("invalid")).length() == 0 &&
+         preferences.getString(KEY_WIFI_PASS, String("invalid")).length() == 0 &&
+         storedFloatMatches(KEY_LAT, 0.0f) &&
+         storedFloatMatches(KEY_LON, 0.0f);
+}
+
+bool seedPrivateDefaultsFromFactoryState() {
+  if (!factoryNeutralOwnerStatePresent()) return true;
+
+  bool seeded = true;
+  if (!writeStringChecked(KEY_WIFI_SSID, defaultWifiSsid())) seeded = false;
+  if (!writeStringChecked(KEY_WIFI_PASS, defaultWifiPassword())) seeded = false;
+  if (!writeFloatChecked(KEY_LAT, defaultLatitude())) seeded = false;
+  if (!writeFloatChecked(KEY_LON, defaultLongitude())) seeded = false;
+  if (!writeUCharChecked(KEY_MQTT_ENABLED,
+                         MQTT_ENABLED_DEFAULT ? 1 : 0)) seeded = false;
+
+  if (seeded) {
+    Serial.println(
+        "NVS: private build seeded config.h defaults from neutral factory state");
+  }
+  return seeded;
+}
+#endif
+
 bool airportIdentValid(const char* ident) {
   if (!ident || !ident[0]) return false;
   size_t length = 0;
@@ -365,6 +397,13 @@ bool initialize() {
   }
 
   bool initialized = true;
+#if !defined(RADAR_DISTRIBUTION_BUILD)
+  // A destructive factory install intentionally leaves neutral owner values.
+  // If this is the first subsequent private/developer build, restore only the
+  // private config.h provisioning defaults. Public distribution builds compile
+  // this path out completely, and any non-neutral owner state is preserved.
+  if (!seedPrivateDefaultsFromFactoryState()) initialized = false;
+#endif
   if (preferences.getType(KEY_TITLE) != PT_STR &&
       !writeStringChecked(KEY_TITLE, defaultTitle())) {
     initialized = false;

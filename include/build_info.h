@@ -13,10 +13,10 @@ constexpr const char* FIRMWARE_RELEASE_CHANNEL = "stable";
 constexpr uint16_t FIRMWARE_MANIFEST_SCHEMA = 1;
 constexpr uint16_t FIRMWARE_UPDATER_VERSION = 1;
 constexpr const char* FIRMWARE_RELEASE_NOTES =
-    "Adds a browser-based destructive factory installer for verified distribution bundles.";
+    "Finalizes browser reset handoff and private-only factory-state reseeding.";
 
 constexpr const char* BUILD_ID =
-    "7IN-20260815-PRODUCT95-BROWSER-FACTORY-INSTALL";
+    "7IN-20260815-PRODUCT95-FACTORY-HANDOFF";
 
 #if defined(RADAR_DISTRIBUTION_BUILD)
 constexpr const char* FIRMWARE_BUILD_VARIANT = "distribution";

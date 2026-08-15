@@ -3,6 +3,14 @@
 This document describes the current Product 95 release boundary for Bill's
 Waveshare ESP32-S3-Touch-LCD-7 Aircraft Radar.
 
+## Three installation paths, one public producer
+
+Product 95 distinguishes three operations that must not be treated as interchangeable:
+
+1. **Destructive factory install / fresh start** — erases the complete flash and installs the verified distribution factory image.
+2. **Private development build** — may use ignored `include/config.h`, normally preserves NVS, and never produces public OTA/factory release assets.
+3. **Public GitHub OTA** — produced only by the distribution environment and updates the application slot without intentionally erasing owner NVS or airport storage.
+
 ## Two build environments, one public producer
 
 The repository has two distinct PlatformIO environments:
@@ -42,7 +50,8 @@ matching Product/version, build ID, hardware ID, package/firmware sizes and SHA-
 digests, updater minimum, channel, tag, asset name, and bounded release notes.
 
 Do not rename or hand-edit generated release assets. Do not publish a `.radarota`
-from the private environment.
+from the private environment. `include/config.h` is private input only and must never
+be committed, packaged, or used to generate GitHub release artifacts.
 
 ## OTA installation remains non-destructive
 
@@ -88,8 +97,8 @@ firmware image without the distribution provenance marker.
 Product 95 also places a generated single-file `INSTALL_RADAR.html` in the factory
 bundle. Owners can double-click that file in current Chrome or Edge; no Python or
 local web server is required. The page verifies the same manifest/images, performs
-the full erase and flash, verifies writes, then explicitly releases the Web Serial
-reset/boot control lines and closes the serial transport.
+the full erase and flash, verifies writes, explicitly pulses the ESP32-S3 EN/reset
+line for boot, then releases the reset/boot control lines and closes Web Serial.
 
 A true factory installation is intentionally destructive: it erases the complete
 16 MB flash chip before writing the verified distribution images. That removes NVS,
@@ -99,14 +108,16 @@ OTA state, and all other owner-specific flash contents.
 ## Product 95 browser factory installer
 
 Product 95 makes the browser/Web Serial path the preferred owner interface. The
-generated factory bundle includes:
+generated factory bundle includes the single owner-facing file:
 
 ```text
 INSTALL_RADAR.html
-factory-installer.js
 ```
 
-The browser installer pins Espressif `esptool-js` 0.6.0 and consumes the same
+The repository keeps `factory-installer.js` as maintainable source, and the factory
+generator embeds it into the generated HTML so local owners can double-click the
+installer without starting a web server. The browser installer pins Espressif
+`esptool-js` 0.6.0 and consumes the same
 `factory-manifest.json` and four binaries as the PowerShell recovery path.
 
 Before destructive work it verifies the fixed manifest/hardware/layout, every image
@@ -116,8 +127,9 @@ must also acknowledge the destructive warning and type `ERASE RADAR`.
 
 The browser performs an explicit full-chip erase before writing. `esptool-js` is
 given an MD5 callback so the library compares each written image against the
-flash-side MD5 before proceeding. The radar is hard-reset only after all four images
-finish successfully.
+flash-side MD5 before proceeding. After all four images finish successfully, the
+installer drives IO0 inactive, holds EN/reset low for a bounded pulse, releases EN,
+waits for boot to begin, then closes Web Serial.
 
 The PowerShell installer remains in the same bundle for offline/developer recovery;
 it is not the normal owner-facing path.
@@ -125,6 +137,18 @@ it is not the normal owner-facing path.
 See `docs/FACTORY_INSTALL.md` for browser loading/hosting details and the complete
 distinction between distribution build, PlatformIO upload, destructive factory
 install, and normal OTA.
+
+## Private development firmware after a factory fresh start
+
+A destructive factory boot intentionally writes neutral owner values: blank Wi-Fi
+SSID/password and `0,0` location. If the next firmware flashed is the private
+development build and that complete neutral tuple is still present, Product 95
+seeds the private `config.h` Wi-Fi/password/location and MQTT enabled default.
+
+This reseed code is compiled only when `RADAR_DISTRIBUTION_BUILD` is absent. Any
+non-neutral owner state disables the reseed, so ordinary private uploads preserve
+settings. Distribution firmware compiles this path out completely, preventing
+private defaults from becoming part of public OTA behavior.
 
 ## Important: PlatformIO factory upload is not a factory reset
 

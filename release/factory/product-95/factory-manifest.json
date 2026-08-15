@@ -4,7 +4,7 @@
     "html": "INSTALL_RADAR.html",
     "self_contained": true
   },
-  "build_id": "7IN-20260815-PRODUCT95-BROWSER-FACTORY-INSTALL",
+  "build_id": "7IN-20260815-PRODUCT95-FACTORY-HANDOFF",
   "chip": "esp32s3",
   "destructive_full_erase": true,
   "distribution_marker": "RADAR-DISTRIBUTION-BUILD",
@@ -30,7 +30,7 @@
     {
       "address": "0x00010000",
       "name": "firmware.bin",
-      "sha256": "cf66ba7fb7e65a69e7a7018b55a19e57d4a1fe40086b16205777d1dbf2f5ec03",
+      "sha256": "abfcba28949b51734c81206380420ae84acb0f64116fc5285d110692f03eb9a2",
       "size": 2452256
     }
   ],

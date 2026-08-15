@@ -53,14 +53,24 @@ class BrowserFactoryInstallerTests(unittest.TestCase):
         self.assertIn("eraseAll: false", script)
         self.assertIn("calculateMD5Hash: md5Hex", script)
 
-    def test_release_browser_is_double_clickable_and_releases_serial(self) -> None:
+    def test_release_browser_uses_explicit_en_reset_then_releases_serial(self) -> None:
         script = JS.read_text(encoding="utf-8")
-        self.assertIn("await transport.setDTR(false)", script)
-        self.assertIn("await transport.setRTS(false)", script)
+        install = script[script.index("async function eraseAndInstall"):script.index('el.bundleFiles.addEventListener')]
+        self.assertNotIn('state.loader.after("hard_reset")', install)
+        dtr = install.index("await state.transport.setDTR(false)")
+        reset_low = install.index("await state.transport.setRTS(true)")
+        low_delay = install.index("setTimeout(resolve, 250)", reset_low)
+        reset_release = install.index("await state.transport.setRTS(false)", low_delay)
+        boot_delay = install.index("setTimeout(resolve, 750)", reset_release)
+        disconnect = install.index("await releaseSerialTransport({ updateStatus: false })", boot_delay)
+        self.assertLess(dtr, reset_low)
+        self.assertLess(reset_low, low_delay)
+        self.assertLess(low_delay, reset_release)
+        self.assertLess(reset_release, boot_delay)
+        self.assertLess(boot_delay, disconnect)
         self.assertIn("await transport.disconnect()", script)
         self.assertIn("Web Serial transport released.", script)
-        self.assertIn("If the display remains stopped, press RESET once.", script)
-        self.assertLess(script.index('await state.loader.after("hard_reset")'), script.index('await releaseSerialTransport({ updateStatus: false })'))
+        self.assertIn("If the display remains stopped, press RESET once and report it.", script)
 
     def test_browser_page_contains_destructive_owner_warning(self) -> None:
         html = HTML.read_text(encoding="utf-8")

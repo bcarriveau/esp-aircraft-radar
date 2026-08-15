@@ -3,11 +3,11 @@
 Product 95 keeps the Product 94 distribution safety boundary and adds the normal
 end-user browser/Web Serial factory installer.
 
-Three operations remain deliberately separate:
+Three paths remain deliberately separate:
 
-1. **Private development build** — `waveshare-s3-touch-lcd-7`
-2. **Distribution build** — `waveshare-s3-touch-lcd-7-factory`
-3. **Destructive factory install** — full-chip erase followed by the verified distribution factory image
+1. **Destructive factory install / fresh start** — full-chip erase followed by the verified distribution factory image. This intentionally destroys all owner state.
+2. **Private development build** — `waveshare-s3-touch-lcd-7`. This may use the ignored private `include/config.h`, never produces public release assets, and normally preserves NVS.
+3. **Public GitHub OTA / distribution build** — generated only by `waveshare-s3-touch-lcd-7-factory`. Normal `.radarota` installation updates the application slot without intentionally erasing owner NVS or airport storage.
 
 The PlatformIO environment name is historical. Building or uploading the
 `waveshare-s3-touch-lcd-7-factory` environment by itself is **not** a factory reset.
@@ -29,7 +29,21 @@ The firmware contains the marker `RADAR-DISTRIBUTION-BUILD`. Public OTA and
 factory-bundle generation refuse firmware that does not contain that marker.
 
 The normal `waveshare-s3-touch-lcd-7` environment remains private and does not run
-public release post-build scripts.
+public release post-build scripts. `include/config.h` remains ignored and must never
+be packaged, committed, or used to produce GitHub OTA/factory release artifacts.
+
+### Private build after a destructive factory install
+
+A true factory boot creates the neutral distribution owner tuple: blank Wi-Fi SSID,
+blank Wi-Fi password, latitude `0`, and longitude `0`. If the next firmware flashed
+is the private development build and that complete neutral tuple is still present,
+Product 95 seeds Wi-Fi/password/location and the private MQTT enabled default from
+the private build's `config.h`.
+
+That reseed path is compiled only when `RADAR_DISTRIBUTION_BUILD` is **not** defined.
+It does not run if any of the neutral owner values have changed, so ordinary private
+firmware uploads continue preserving owner-entered NVS. The public distribution
+build compiles the reseed path out completely.
 
 ## Destructive factory install
 
@@ -60,16 +74,17 @@ and requires normal setup.
 ## Product 95 browser installer
 
 The preferred owner path is now the browser installer generated into each factory
-bundle:
+bundle as one owner-facing file:
 
 ```text
 INSTALL_RADAR.html
-factory-installer.js
 ```
 
-The browser installer uses Web Serial through a pinned Espressif `esptool-js` 0.6.0
-module. It does not require PlatformIO, Python, PowerShell, or manually entering a
-COM port.
+The factory generator embeds the repository's `factory-installer.js` source inside
+that generated HTML. Owners can therefore double-click `INSTALL_RADAR.html`; no
+Python/local web server, PlatformIO, PowerShell, or manually entered COM port is
+required. The embedded module loads the pinned Espressif `esptool-js` 0.6.0 library
+from HTTPS.
 
 Before destructive work it verifies:
 
@@ -86,25 +101,21 @@ Before destructive work it verifies:
 Only after every package and hardware check passes does the browser call a complete
 chip erase. It then writes the four verified distribution images. `esptool-js` is
 given an MD5 callback so each written image is compared against the flash-side MD5
-before the installer proceeds. After all images verify, the browser hard-resets the
-radar and reports completion.
+before the installer proceeds. After all images verify, the browser explicitly keeps
+IO0 inactive, pulses the ESP32-S3 EN/reset line low, releases EN, allows the board to
+begin booting, then releases the reset/boot control lines and closes Web Serial.
 
 There is no automatic retry after destructive work. A failed/interrupted install
 requires an intentional reconnect/retry or the offline recovery installer.
 
 ### Browser use
 
-The browser page supports two package-loading modes:
+For an extracted/local Product factory bundle, double-click `INSTALL_RADAR.html` in
+current Chrome or Edge, choose the same `product-95` folder when prompted, then
+connect the radar. This is the normal offline owner workflow.
 
-1. **Hosted beside the bundle** — use `LOAD ADJACENT BUNDLE`; the page fetches the
-   manifest and four binary files from the same directory.
-2. **Local/extracted bundle** — use `CHOOSE FACTORY BUNDLE` and select the extracted
-   Product factory folder. The browser reads and verifies the files locally.
-
-Web Serial requires a browser/context that exposes the API. The intended public
-host is HTTPS in current Chrome or Edge. Local `file://` use may be available where
-the browser treats local files as a trustworthy context; otherwise serve the page
-from HTTPS or localhost.
+When the same bundle is hosted over HTTPS, `LOAD ADJACENT BUNDLE` may load the
+manifest and four images directly from the page's directory instead.
 
 ## Generated factory bundle
 
@@ -127,7 +138,6 @@ with:
 - `firmware.bin`
 - `factory-manifest.json`
 - `INSTALL_RADAR.html`
-- `factory-installer.js`
 - `FLASH_RADAR_FACTORY.ps1`
 
 The manifest records Product/build identity, hardware requirements, fixed flash
@@ -150,14 +160,16 @@ uploads the distribution-flavored firmware but does not issue a whole-chip
 That behavior is useful for development but must not be presented as a clean
 new-owner factory installation.
 
-## Normal Product OTA is non-destructive
+## Normal public GitHub Product OTA is non-destructive
 
-The `.radarota` path is intentionally different from factory installation.
-The verified updater writes the inactive application slot and then selects it for
-boot. It does not intentionally erase NVS or the dedicated airport partition.
+The `.radarota` path is intentionally different from factory installation. Public
+OTA packages are produced only by the distribution environment, never the private
+build. The verified updater writes the inactive application slot and then selects it
+for boot. It does not intentionally erase NVS or the dedicated airport partition.
 
-Normal Product updates should therefore preserve owner Wi-Fi/location and an
-installed regional airport database.
+Normal public Product updates therefore preserve each owner's Wi-Fi/location and
+installed regional airport database. They do not contain or restore the developer's
+private `config.h` values.
 
 ## First-owner sequence
 

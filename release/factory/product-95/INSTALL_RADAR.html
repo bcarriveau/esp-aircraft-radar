@@ -81,7 +81,6 @@
       border-radius: 8px;
       padding: 12px;
       font: inherit;
-      text-transform: uppercase;
     }
     .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
     .facts { display: grid; grid-template-columns: 180px 1fr; gap: 7px 12px; }
@@ -557,14 +556,23 @@ async function eraseAndInstall() {
 
     el.progress.value = 100;
     setStatus(el.installStatus, "Factory image verified. Resetting radar and releasing USB...", "ok");
-    log("All factory images written successfully. Hard resetting radar.");
-    await state.loader.after("hard_reset");
+    log("All factory images written successfully. Applying explicit ESP32-S3 EN reset pulse.");
+    // Field testing on the Waveshare ESP32-S3-Touch-LCD-7 showed that the
+    // generic esptool-js hard-reset completion could release Web Serial while
+    // leaving the board stopped until its physical RESET button was pressed.
+    // Drive IO0 inactive, hold EN low long enough to match a physical reset,
+    // then release EN and give the S3 time to begin booting before closing the
+    // serial port. esptool-js maps DTR=true to IO0 low and RTS=true to EN low.
+    await state.transport.setDTR(false);
+    await state.transport.setRTS(true);
     await new Promise((resolve) => setTimeout(resolve, 250));
-    log("Releasing reset/boot control lines and closing Web Serial.");
+    await state.transport.setRTS(false);
+    await new Promise((resolve) => setTimeout(resolve, 750));
+    log("Reset pulse complete; releasing reset/boot control lines and closing Web Serial.");
     await releaseSerialTransport({ updateStatus: false });
     setStatus(el.deviceStatus, "USB serial released.", "ok");
-    setStatus(el.installStatus, `${state.manifest.version_label} FACTORY INSTALL COMPLETE\nUSB serial has been released. The radar should boot into new-owner setup. If the display remains stopped, press RESET once.`, "ok");
-    log("Factory install complete; Web Serial released.");
+    setStatus(el.installStatus, `${state.manifest.version_label} FACTORY INSTALL COMPLETE\nReset pulse sent and USB serial released. The radar should boot into new-owner setup. If the display remains stopped, press RESET once and report it.`, "ok");
+    log("Factory install complete; explicit reset pulse sent and Web Serial released.");
   } catch (error) {
     setStatus(el.installStatus, `FACTORY INSTALL FAILED\n${error instanceof Error ? error.message : String(error)}`, "bad");
     log(`Factory install failed: ${error}`);
