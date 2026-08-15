@@ -17,3 +17,13 @@ constexpr const char* FIRMWARE_RELEASE_NOTES =
 
 constexpr const char* BUILD_ID =
     "7IN-20260814-PRODUCT94-FACTORY-DISTRIBUTION";
+
+#if defined(RADAR_DISTRIBUTION_BUILD)
+constexpr const char* FIRMWARE_BUILD_VARIANT = "distribution";
+// build_radar_ota.py requires this exact marker in the application image before
+// it will create a public .radarota package or GitHub release manifest.
+constexpr const char* FIRMWARE_DISTRIBUTION_MARKER =
+    "RADAR-DISTRIBUTION-BUILD";
+#else
+constexpr const char* FIRMWARE_BUILD_VARIANT = "private";
+#endif

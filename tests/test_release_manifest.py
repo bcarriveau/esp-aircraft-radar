@@ -25,6 +25,8 @@ class ReleaseManifestTests(unittest.TestCase):
         struct.pack_into("<H", firmware, 12, MODULE.ESP32_S3_CHIP_ID)
         encoded = build_id.encode("ascii")
         firmware[4096 : 4096 + len(encoded)] = encoded
+        marker = MODULE.DISTRIBUTION_FIRMWARE_MARKER
+        firmware[8192 : 8192 + len(marker)] = marker
         return bytes(firmware)
 
     def test_generated_package_and_manifest_are_self_consistent(self) -> None:
@@ -66,7 +68,7 @@ class ReleaseManifestTests(unittest.TestCase):
             package_path = temp / "firmware.radarota"
             release_dir = temp / "release"
             firmware_path.write_bytes(firmware)
-            MODULE.write_package(
+            MODULE.write_distribution_package(
                 firmware_path, ROOT / "include" / "build_info.h", package_path
             )
             asset_path, manifest_path, metadata = MODULE.write_release_assets(
