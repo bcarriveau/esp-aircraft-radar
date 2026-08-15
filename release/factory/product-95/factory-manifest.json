@@ -30,8 +30,8 @@
     {
       "address": "0x00010000",
       "name": "firmware.bin",
-      "sha256": "abfcba28949b51734c81206380420ae84acb0f64116fc5285d110692f03eb9a2",
-      "size": 2452256
+      "sha256": "c5cf3cf26310bb2930590e2e6fcdfd2665313641ec412ca9e3f64ddef3e2726b",
+      "size": 2452496
     }
   ],
   "flash_freq": "80m",

@@ -49,6 +49,7 @@ constexpr float TRACK_AUTO_ZOOM_LOOKAHEAD_SECONDS = 30.0f;
 constexpr uint32_t SELECTED_AIRCRAFT_TIMEOUT_MS = 30000;
 constexpr lv_coord_t SETTINGS_KEYBOARD_CLEARANCE = 32;
 constexpr lv_coord_t SETTINGS_SCROLL_SPACER_Y = 280;
+constexpr uint32_t SETTINGS_SAVED_STATUS_MS = 4000;
 constexpr uint8_t LEFT_NEAREST_ICON_INDEX = 0;
 constexpr uint8_t LIST_ICON_BASE_INDEX = 1;
 constexpr uint8_t PRIORITY_OTHER_ICON_BASE_INDEX =
@@ -255,6 +256,7 @@ uint32_t detailTrackingVersion = UINT32_MAX;
 bool passwordVisible = false;
 bool resetConfirmationPending = false;
 uint32_t resetConfirmationDeadline = 0;
+uint32_t settingsStatusClearDeadline = 0;
 uint32_t lastFrame = 0;
 uint32_t lastHeaderUpdate = 0;
 char selectedHex[7]{};
@@ -481,9 +483,15 @@ void populateSettingsForm() {
 }
 
 void setSettingsStatus(const char* text, lv_color_t color) {
+  settingsStatusClearDeadline = 0;
   if (!settingsStatusLabel) return;
-  lv_label_set_text(settingsStatusLabel, text);
+  lv_label_set_text(settingsStatusLabel, text ? text : "");
   lv_obj_set_style_text_color(settingsStatusLabel, color, 0);
+}
+
+void setTemporarySettingsSuccess(const char* text) {
+  setSettingsStatus(text, rgb(120, 240, 155));
+  settingsStatusClearDeadline = millis() + SETTINGS_SAVED_STATUS_MS;
 }
 
 void syncSettingsStorageState() {
@@ -1352,7 +1360,7 @@ void saveSettingsEvent(lv_event_t*) {
     savedStatus = locationChanged ? "Location changed; updating aircraft"
                                   : "Settings saved";
   }
-  setSettingsStatus(savedStatus, rgb(120, 240, 155));
+  setTemporarySettingsSuccess(savedStatus);
   setLabelTextIfChanged(headerTitle, settings::deviceTitle().c_str());
   mqtt_service::requestDiscoveryRefresh();
   if (wifiChanged) adsb::requestWifiReconnect();
@@ -4028,6 +4036,13 @@ void showFatalStatus(const char* message) {
 }
 
 void update(uint32_t now) {
+  if (settingsStatusClearDeadline != 0 &&
+      (int32_t)(now - settingsStatusClearDeadline) >= 0) {
+    settingsStatusClearDeadline = 0;
+    if (settingsStatusLabel) {
+      setLabelTextIfChanged(settingsStatusLabel, "");
+    }
+  }
   if (resetConfirmationPending &&
       (int32_t)(now - resetConfirmationDeadline) >= 0) {
     resetConfirmationPending = false;
