@@ -28,15 +28,19 @@ airport-seperation
 Current committed Product:
 
 ```text
-Product 93
-7IN-20260813-PRODUCT93-UPDATE-NOTES-RANGE-PERSISTENCE
+Product 94
+7IN-20260814-PRODUCT94-FACTORY-DISTRIBUTION
 ```
 
 The Product marker is the durable firmware identity. Repository HEAD naturally
 advances for documentation and housekeeping commits, so README does not pin a
 "current commit" SHA.
 
-Product 93 keeps the completed browser-built regional airport-database workflow and adds two user-facing refinements: the update page labels validated manifest release notes as WHAT'S NEW, and the radar restores the last manually selected 20/40/80-mile range after restart.
+Product 94 adds a separate credential-safe factory/distribution build for blank/new-owner
+hardware while preserving the normal private development build. The factory build uses neutral
+Wi-Fi/location/MQTT defaults and contains no compiled regional airport fallback; the owner
+installs a regional airport database after setup.
+
 After the local maintenance window is armed and the six-digit code is accepted,
 the Airport Database page can prefill the radar's already-saved home coordinates,
 download public OurAirports data in the user's browser, build a bounded regional
@@ -376,11 +380,12 @@ Before publishing a stable release:
 Use the current Product-numbered package generated from the exact intended source;
 older packages belong to their historical Git commit/tag/release.
 
-## Expected Product 93 checks
+## Expected Product 94 checks
 
-For Product 93, confirm:
+For Product 94, confirm:
 
-- build marker `7IN-20260813-PRODUCT93-UPDATE-NOTES-RANGE-PERSISTENCE`
+- build marker `7IN-20260814-PRODUCT94-FACTORY-DISTRIBUTION`
+- factory build uses the neutral distribution config and no compiled regional airport fallback
 - select 20, 40, and 80 miles and confirm the last manual choice survives restart
 - confirm an invalid/missing saved range safely defaults to 80 miles
 - when a newer release is available, confirm its validated manifest note appears under WHAT'S NEW
@@ -444,3 +449,32 @@ awareness only, not navigation.
 
 ADS-B data availability and permitted use remain subject to the selected provider's
 terms and service availability.
+
+## Factory / new-owner build
+
+Use the dedicated environment when producing firmware for a blank unit:
+
+```text
+pio run -e waveshare-s3-touch-lcd-7-factory
+```
+
+The factory environment deliberately places `include/distribution` before the
+normal private include directory and defines `RADAR_DISTRIBUTION_BUILD`.
+
+That build therefore:
+
+- does **not** compile the private `include/config.h`
+- starts with blank Wi-Fi credentials and neutral `0,0` coordinates
+- starts with MQTT disabled and no broker/user/password
+- does **not** compile the generated regional airport fallback
+- uses the same 16 MB custom partition table, Arduino-ESP32 3.0.7,
+  OPI PSRAM/XIP settings, display timing, DMA, and 20-scanline bounce buffer
+- expects the owner to enter Wi-Fi/location on the System page and then install
+  a regional airport database from the Airport Database web page
+
+The normal `waveshare-s3-touch-lcd-7` environment remains the private development
+build and continues to use `include/config.h`.
+
+The factory environment intentionally disables the normal OTA post-build release
+copy so a factory test cannot overwrite the active private Product package in
+`release/`.

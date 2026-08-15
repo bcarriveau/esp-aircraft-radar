@@ -5,7 +5,9 @@
 #include <string.h>
 
 #include "airport_store.h"
+#if !defined(RADAR_DISTRIBUTION_BUILD)
 #include "generated_airport_database.h"
+#endif
 
 namespace airport_data {
 namespace {
@@ -51,9 +53,12 @@ void distanceAndBearing(float fromLatitude, float fromLongitude,
 }
 
 uint32_t sourceRecordCount() {
-  return persistentDatabaseReady
-      ? airport_store::recordCount()
-      : generated_airports::RECORD_COUNT;
+  if (persistentDatabaseReady) return airport_store::recordCount();
+#if defined(RADAR_DISTRIBUTION_BUILD)
+  return 0;
+#else
+  return generated_airports::RECORD_COUNT;
+#endif
 }
 
 bool readSourceRecord(uint32_t index, airport_package_format::Record& record) {
@@ -61,6 +66,10 @@ bool readSourceRecord(uint32_t index, airport_package_format::Record& record) {
   if (persistentDatabaseReady) {
     return airport_store::readRecord(index, record);
   }
+#if defined(RADAR_DISTRIBUTION_BUILD)
+  (void)index;
+  return false;
+#else
   if (index >= generated_airports::RECORD_COUNT) return false;
 
   generated_airports::Record generated{};
@@ -78,6 +87,7 @@ bool readSourceRecord(uint32_t index, airport_package_format::Record& record) {
   record.runwayHeadingDegrees = generated.runwayHeadingDegrees;
   record.category = generated.category;
   return true;
+#endif
 }
 
 bool insertForCategory(const NearbyAirport& candidate,
@@ -151,10 +161,16 @@ bool initialize(float homeLatitude, float homeLongitude) {
         airport_store::databaseDate(),
         airport_store::databaseCoverage());
   } else {
+#if defined(RADAR_DISTRIBUTION_BUILD)
+    Serial.printf(
+        "Airport persistent store: %s; no regional database installed\n",
+        airport_store::stateName());
+#else
     Serial.printf(
         "Airport persistent store: %s; using compiled fallback (%u records)\n",
         airport_store::stateName(),
         (unsigned)generated_airports::RECORD_COUNT);
+#endif
   }
   return rebuild(homeLatitude, homeLongitude);
 }
@@ -188,8 +204,6 @@ bool rebuild(float homeLatitude, float homeLongitude) {
     const float latitude = record.latitudeE6 / 1000000.0f;
     const float longitude = record.longitudeE6 / 1000000.0f;
 
-    // Cheap rectangular rejection before trigonometry. Longitude span expands
-    // toward the poles so regional databases remain location-safe.
     if (fabsf(latitude - homeLatitude) > latitudeSpan ||
         fabsf(longitude - homeLongitude) > longitudeSpan) {
       continue;
@@ -214,10 +228,16 @@ bool rebuild(float homeLatitude, float homeLongitude) {
   cacheLatitude = homeLatitude;
   cacheLongitude = homeLongitude;
   databaseReady = true;
+  const char* sourceName = persistentDatabaseReady
+      ? "persistent"
+#if defined(RADAR_DISTRIBUTION_BUILD)
+      : "not installed";
+#else
+      : "compiled fallback";
+#endif
   Serial.printf(
       "Airport database ready: %u records (%s), %u within %.0f miles of %.5f,%.5f\n",
-      (unsigned)recordCount,
-      persistentDatabaseReady ? "persistent" : "compiled fallback",
+      (unsigned)recordCount, sourceName,
       (unsigned)nearbyAirportCount, CACHE_RADIUS_MILES,
       homeLatitude, homeLongitude);
   return true;
@@ -284,15 +304,21 @@ uint8_t rangeIndex(float rangeMiles) {
 }
 
 const char* databaseDate() {
-  return persistentDatabaseReady
-      ? airport_store::databaseDate()
-      : generated_airports::DATABASE_DATE;
+  if (persistentDatabaseReady) return airport_store::databaseDate();
+#if defined(RADAR_DISTRIBUTION_BUILD)
+  return "NOT INSTALLED";
+#else
+  return generated_airports::DATABASE_DATE;
+#endif
 }
 
 const char* databaseCoverage() {
-  return persistentDatabaseReady
-      ? airport_store::databaseCoverage()
-      : generated_airports::DATABASE_COVERAGE;
+  if (persistentDatabaseReady) return airport_store::databaseCoverage();
+#if defined(RADAR_DISTRIBUTION_BUILD)
+  return "INSTALL REGIONAL DATABASE";
+#else
+  return generated_airports::DATABASE_COVERAGE;
+#endif
 }
 
 }  // namespace airport_data

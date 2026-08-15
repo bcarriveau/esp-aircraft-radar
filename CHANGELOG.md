@@ -9,8 +9,8 @@ version-controlled baseline. Earlier numbered history is intentionally not inven
 
 ## Current status
 
-- **Current Product:** Product 93
-- **Build marker:** `7IN-20260813-PRODUCT93-UPDATE-NOTES-RANGE-PERSISTENCE`
+- **Current Product:** Product 94
+- **Build marker:** `7IN-20260814-PRODUCT94-FACTORY-DISTRIBUTION`
 - **Current branch:** `airport-seperation`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262, GT911, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
@@ -29,6 +29,39 @@ the Git history/tag/release associated with each Product.
 Current firmware identity comes from `include/build_info.h` plus the matching
 generated Product package/manifest. Documentation-only and housekeeping commits may
 advance repository HEAD without creating a new firmware Product.
+
+## Product 94 - 2026-08-14
+
+**Build:** `7IN-20260814-PRODUCT94-FACTORY-DISTRIBUTION`
+
+### Added
+
+- Dedicated `waveshare-s3-touch-lcd-7-factory` PlatformIO environment for
+  credential-safe blank-unit provisioning.
+- Neutral `include/distribution/config.h` selected only by that environment.
+- Factory build begins with blank Wi-Fi, neutral coordinates, MQTT disabled,
+  and blank MQTT broker credentials.
+- Factory build omits the generated regional airport fallback. With an empty
+  persistent airport partition, the Airports page therefore has no owner-specific
+  airport list and reports that a regional database is not installed.
+
+### Preserved
+
+- The normal `waveshare-s3-touch-lcd-7` development environment continues to use
+  the private `include/config.h`; Product 94 does not edit, package, or expose it.
+- Product 93 update-page release notes and last-used 20/40/80 range persistence.
+- Product 86+ custom partition layout and persistent airport partition.
+- Native/fallback ADS-B HTTPS hardening, 15-second cadence, recovery, stale-result
+  rejection, last-good retention, MQTT runtime behavior in the normal private
+  build, radar rendering, stable ICAO tracking, 200-target capacity, OPI PSRAM,
+  display timing, DMA, and 20-scanline bounce buffer.
+
+### Factory-build boundary
+
+The Product 94 factory environment is for blank-unit provisioning and intentionally
+does not run the normal OTA post-build release-copy script. Public GitHub OTA
+distribution remains a separate follow-up until owner-configurable MQTT broker
+credentials are available.
 
 ## Product 93 - 2026-08-13
 

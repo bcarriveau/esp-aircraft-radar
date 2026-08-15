@@ -111,6 +111,8 @@ lv_obj_t* listIcons[NEAREST_LIST_COUNT]{};
 char leftNearestHex[7]{};
 char nearestListHex[NEAREST_LIST_COUNT][7]{};
 lv_obj_t* statusLabel = nullptr;
+lv_obj_t* acquisitionPanel = nullptr;
+lv_obj_t* acquisitionStateLabel = nullptr;
 lv_obj_t* radarUntrackButton = nullptr;
 lv_obj_t* radarRangeControl = nullptr;
 lv_obj_t* radarRangeButtons[RANGE_OPTION_COUNT]{};
@@ -154,7 +156,9 @@ lv_obj_t* airportDirectoryView = nullptr;
 lv_obj_t* airportOptionsView = nullptr;
 lv_obj_t* airportDetailView = nullptr;
 lv_obj_t* airportDirectorySummaryLabel = nullptr;
+lv_obj_t* airportDirectoryTableHeader = nullptr;
 lv_obj_t* airportDirectoryTable = nullptr;
+lv_obj_t* airportDirectoryEmptyState = nullptr;
 lv_obj_t* airportOptionsButton = nullptr;
 lv_obj_t* airportLabelEditButton = nullptr;
 lv_obj_t* airportLabelEditLabel = nullptr;
@@ -452,14 +456,26 @@ void populateSettingsForm() {
   if (titleField) lv_textarea_set_text(titleField, settings::deviceTitle().c_str());
   if (ssidField) lv_textarea_set_text(ssidField, settings::wifiSsid().c_str());
   if (passwordField) lv_textarea_set_text(passwordField, settings::wifiPassword().c_str());
+
+  const float homeLatitude = settings::homeLatitude();
+  const float homeLongitude = settings::homeLongitude();
+  const bool unconfiguredFactoryLocation =
+      settings::wifiSsid().isEmpty() &&
+      fabsf(homeLatitude) < 0.000001f &&
+      fabsf(homeLongitude) < 0.000001f;
+
   if (latitudeField) {
-    char latitudeText[32];
-    snprintf(latitudeText, sizeof(latitudeText), "%.6f", settings::homeLatitude());
+    char latitudeText[32]{};
+    if (!unconfiguredFactoryLocation) {
+      snprintf(latitudeText, sizeof(latitudeText), "%.6f", homeLatitude);
+    }
     lv_textarea_set_text(latitudeField, latitudeText);
   }
   if (longitudeField) {
-    char longitudeText[32];
-    snprintf(longitudeText, sizeof(longitudeText), "%.6f", settings::homeLongitude());
+    char longitudeText[32]{};
+    if (!unconfiguredFactoryLocation) {
+      snprintf(longitudeText, sizeof(longitudeText), "%.6f", homeLongitude);
+    }
     lv_textarea_set_text(longitudeField, longitudeText);
   }
 }
@@ -708,6 +724,28 @@ void updateAirportDirectory() {
 
   airport_data::Status status;
   airport_data::copyStatus(status);
+  if (!status.ready || status.databaseCount == 0) {
+    airportDirectoryCount = 0;
+    memset(airportDirectoryLabelVisible, 0,
+           sizeof(airportDirectoryLabelVisible));
+    airportDirectoryLabelVisibilityCurrent = false;
+    setLabelTextIfChanged(airportDirectorySummaryLabel,
+                          "AIRPORT DATABASE  |  NOT CONFIGURED");
+    lv_obj_set_style_text_color(airportDirectorySummaryLabel,
+                                rgb(255, 190, 95), 0);
+    setLabelTextIfChanged(pageTitle, "AIRPORTS // SETUP");
+    setVisible(airportDirectoryTableHeader, false);
+    setVisible(airportDirectoryTable, false);
+    setVisible(airportDirectoryEmptyState, true);
+    airportDirectoryUpdating = false;
+    return;
+  }
+
+  setLabelTextIfChanged(pageTitle, "AIRPORTS // NEARBY");
+  setVisible(airportDirectoryEmptyState, false);
+  setVisible(airportDirectoryTableHeader, true);
+  setVisible(airportDirectoryTable, true);
+
   const float rangeMiles = app_state::radarRangeMiles();
   const uint8_t range = airport_data::rangeIndex(rangeMiles);
   const bool overlayEnabled = settings::airportsEnabled();
@@ -2357,11 +2395,15 @@ void updateHeader() {
   const char* stateName = "LIVE";
   char stateDetail[64]{};
   lv_color_t stateColor = rgb(80, 235, 145);
-  if (snapshot.locationUpdatePending) {
-    stateName = "UPDATING";
+  if (settings::wifiSsid().isEmpty()) {
+    stateName = "SETUP";
     snprintf(stateDetail, sizeof(stateDetail),
-             "LOCATION CHANGED\nUPDATING");
+             "SETUP REQUIRED\nWI-FI + LOCATION\nSYSTEM SETTINGS");
     stateColor = rgb(255, 220, 100);
+  } else if (snapshot.locationUpdatePending) {
+    stateName = "ACQUIRING";
+    snprintf(stateDetail, sizeof(stateDetail), "ACQUIRING");
+    stateColor = rgb(255, 205, 90);
   } else if (!wifiConnected) {
     stateName = "OFFLINE";
     snprintf(stateDetail, sizeof(stateDetail), "OFFLINE\nWiFi");
@@ -2395,6 +2437,24 @@ void updateHeader() {
   }
   setLabelTextIfChanged(statusLabel, stateDetail);
   lv_obj_set_style_text_color(statusLabel, stateColor, 0);
+
+  const bool acquiringFirstSnapshot =
+      snapshot.locationUpdatePending && !settings::wifiSsid().isEmpty();
+  setVisible(acquisitionPanel, acquiringFirstSnapshot);
+  if (acquiringFirstSnapshot && acquisitionPanel) {
+    lv_obj_move_foreground(acquisitionPanel);
+  }
+  if (acquiringFirstSnapshot && acquisitionStateLabel) {
+    setLabelTextIfChanged(
+        acquisitionStateLabel,
+        diagnostics.consecutiveFailures > 0
+            ? "ADS-B  RETRYING..."
+            : "ADS-B  WAITING FOR DATA");
+    lv_obj_set_style_text_color(
+        acquisitionStateLabel,
+        diagnostics.consecutiveFailures > 0
+            ? rgb(255, 175, 90) : rgb(110, 220, 255), 0);
+  }
 
   updatePageContent();
 }
@@ -2543,9 +2603,9 @@ bool buildRadarPanels(lv_obj_t* root) {
   }
 
   makeLabel(left, "DATA STATUS", &lv_font_montserrat_12,
-            rgb(100, 170, 180), 4, 286);
+            rgb(100, 170, 180), 4, 274);
   statusLabel = makeLabel(left, "Starting...", &lv_font_montserrat_14,
-                          rgb(150, 170, 180), 4, 302);
+                          rgb(150, 170, 180), 4, 290);
   lv_obj_set_width(statusLabel, 104);
   lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_WRAP);
 
@@ -2738,6 +2798,45 @@ bool buildRadarPanels(lv_obj_t* root) {
     lv_obj_add_event_cb(listLabels[i], nearestTargetEvent, LV_EVENT_CLICKED,
                         (void*)(uintptr_t)i);
   }
+
+  acquisitionPanel = lv_obj_create(right);
+  lv_obj_set_size(acquisitionPanel, 181, 325);
+  lv_obj_set_pos(acquisitionPanel, 2, 2);
+  styleDashboardCard(acquisitionPanel);
+  lv_obj_set_style_bg_color(acquisitionPanel, rgb(7, 20, 28), 0);
+  lv_obj_set_style_border_color(acquisitionPanel, rgb(45, 115, 120), 0);
+  lv_obj_set_style_pad_all(acquisitionPanel, 10, 0);
+  lv_obj_clear_flag(acquisitionPanel, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* acquisitionTitle = makeLabel(
+      acquisitionPanel, "ACQUIRING\nAIRCRAFT", &lv_font_montserrat_20,
+      rgb(255, 205, 90), 6, 8);
+  lv_obj_set_width(acquisitionTitle, 155);
+  lv_label_set_long_mode(acquisitionTitle, LV_LABEL_LONG_WRAP);
+
+  lv_obj_t* acquisitionSaved = makeLabel(
+      acquisitionPanel, "Location saved.", &lv_font_montserrat_14,
+      rgb(63, 255, 155), 6, 68);
+  lv_obj_set_width(acquisitionSaved, 155);
+
+  lv_obj_t* acquisitionBody = makeLabel(
+      acquisitionPanel,
+      "Building the first\nradar snapshot.\n\nThis may take a\nfew minutes.",
+      &lv_font_montserrat_14, rgb(220, 232, 236), 6, 100);
+  lv_obj_set_width(acquisitionBody, 155);
+  lv_label_set_long_mode(acquisitionBody, LV_LABEL_LONG_WRAP);
+
+  lv_obj_t* acquisitionWifi = makeLabel(
+      acquisitionPanel, "WI-FI  CONNECTED", &lv_font_montserrat_12,
+      rgb(110, 220, 255), 6, 230);
+  lv_obj_set_width(acquisitionWifi, 155);
+
+  acquisitionStateLabel = makeLabel(
+      acquisitionPanel, "ADS-B  WAITING FOR DATA", &lv_font_montserrat_12,
+      rgb(110, 220, 255), 6, 256);
+  lv_obj_set_width(acquisitionStateLabel, 155);
+  lv_label_set_long_mode(acquisitionStateLabel, LV_LABEL_LONG_WRAP);
+  lv_obj_add_flag(acquisitionPanel, LV_OBJ_FLAG_HIDDEN);
 
   radar::View view;
   view.canvas = radarCanvas;
@@ -2982,27 +3081,27 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_set_style_text_font(airportOptionsLabel, &lv_font_montserrat_12, 0);
   lv_obj_center(airportOptionsLabel);
 
-  lv_obj_t* airportTableHeader = lv_obj_create(airportDirectoryView);
-  lv_obj_set_size(airportTableHeader, 742, 26);
-  lv_obj_set_pos(airportTableHeader, 0, 50);
-  lv_obj_set_style_bg_color(airportTableHeader, rgb(12, 34, 44), 0);
-  lv_obj_set_style_border_color(airportTableHeader, rgb(35, 76, 87), 0);
-  lv_obj_set_style_border_width(airportTableHeader, 1, 0);
-  lv_obj_set_style_radius(airportTableHeader, 4, 0);
-  lv_obj_set_style_pad_all(airportTableHeader, 0, 0);
-  lv_obj_clear_flag(airportTableHeader, LV_OBJ_FLAG_SCROLLABLE);
+  airportDirectoryTableHeader = lv_obj_create(airportDirectoryView);
+  lv_obj_set_size(airportDirectoryTableHeader, 742, 26);
+  lv_obj_set_pos(airportDirectoryTableHeader, 0, 50);
+  lv_obj_set_style_bg_color(airportDirectoryTableHeader, rgb(12, 34, 44), 0);
+  lv_obj_set_style_border_color(airportDirectoryTableHeader, rgb(35, 76, 87), 0);
+  lv_obj_set_style_border_width(airportDirectoryTableHeader, 1, 0);
+  lv_obj_set_style_radius(airportDirectoryTableHeader, 4, 0);
+  lv_obj_set_style_pad_all(airportDirectoryTableHeader, 0, 0);
+  lv_obj_clear_flag(airportDirectoryTableHeader, LV_OBJ_FLAG_SCROLLABLE);
   const char* airportHeaders[] = {
     "ID", "AIRPORT", "TYPE", "DIST", "RUNWAY"
   };
   const int airportHeaderX[] = {6, 68, 372, 452, 524};
   for (uint8_t column = 0; column < 5; ++column) {
-    makeLabel(airportTableHeader, airportHeaders[column],
+    makeLabel(airportDirectoryTableHeader, airportHeaders[column],
               &lv_font_montserrat_12, rgb(110, 220, 255),
               airportHeaderX[column], 5);
   }
-  makeLabel(airportTableHeader, "LABEL", &lv_font_montserrat_12,
+  makeLabel(airportDirectoryTableHeader, "LABEL", &lv_font_montserrat_12,
             rgb(110, 220, 255), 624, 5);
-  airportLabelEditButton = lv_btn_create(airportTableHeader);
+  airportLabelEditButton = lv_btn_create(airportDirectoryTableHeader);
   lv_obj_set_size(airportLabelEditButton, 52, 22);
   lv_obj_set_pos(airportLabelEditButton, 682, 2);
   lv_obj_set_style_radius(airportLabelEditButton, 4, 0);
@@ -3051,6 +3150,40 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_add_event_cb(airportDirectoryTable,
                       airportDirectoryTableEyeDrawEvent,
                       LV_EVENT_DRAW_PART_END, nullptr);
+
+  airportDirectoryEmptyState = lv_obj_create(airportDirectoryView);
+  lv_obj_set_size(airportDirectoryEmptyState, 742, 226);
+  lv_obj_set_pos(airportDirectoryEmptyState, 0, 50);
+  styleDashboardCard(airportDirectoryEmptyState);
+  lv_obj_set_style_bg_color(airportDirectoryEmptyState, rgb(8, 22, 30), 0);
+  lv_obj_set_style_border_color(airportDirectoryEmptyState,
+                                rgb(35, 105, 115), 0);
+  lv_obj_set_style_pad_all(airportDirectoryEmptyState, 18, 0);
+  lv_obj_clear_flag(airportDirectoryEmptyState, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* airportSetupTitle = makeLabel(
+      airportDirectoryEmptyState, "AIRPORT DATABASE NOT CONFIGURED",
+      &lv_font_montserrat_20, rgb(255, 205, 95), 18, 12);
+  lv_obj_set_width(airportSetupTitle, 680);
+  lv_label_set_long_mode(airportSetupTitle, LV_LABEL_LONG_CLIP);
+
+  lv_obj_t* airportSetupIntro = makeLabel(
+      airportDirectoryEmptyState,
+      "No regional airport database is installed on this radar.",
+      &lv_font_montserrat_14, rgb(205, 225, 230), 18, 48);
+  lv_obj_set_width(airportSetupIntro, 680);
+
+  lv_obj_t* airportSetupSteps = makeLabel(
+      airportDirectoryEmptyState,
+      "1. Connect the radar to Wi-Fi and save your location.\n"
+      "2. On a phone or computer, open the radar web page.\n"
+      "3. Open AIRPORT DATABASE and build the regional database.\n"
+      "4. Install it to the radar. Airports will appear automatically.",
+      &lv_font_montserrat_14, rgb(150, 220, 230), 18, 80);
+  lv_obj_set_width(airportSetupSteps, 690);
+  lv_label_set_long_mode(airportSetupSteps, LV_LABEL_LONG_WRAP);
+
+  lv_obj_add_flag(airportDirectoryEmptyState, LV_OBJ_FLAG_HIDDEN);
 
   airportOptionsView = lv_obj_create(airportDashboard);
   lv_obj_set_size(airportOptionsView, 742, 280);
