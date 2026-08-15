@@ -13,7 +13,7 @@ constexpr const char* FIRMWARE_RELEASE_CHANNEL = "stable";
 constexpr uint16_t FIRMWARE_MANIFEST_SCHEMA = 1;
 constexpr uint16_t FIRMWARE_UPDATER_VERSION = 1;
 constexpr const char* FIRMWARE_RELEASE_NOTES =
-    "Adds a credential-safe factory build for provisioning brand-new radar units.";
+    "Adds a guarded distribution release path and destructive factory installer.";
 
 constexpr const char* BUILD_ID =
     "7IN-20260814-PRODUCT94-FACTORY-DISTRIBUTION";
