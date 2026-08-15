@@ -1,0 +1,44 @@
+{
+  "browser_installer": {
+    "esptool_js_version": "0.6.0",
+    "html": "INSTALL_RADAR.html",
+    "self_contained": true
+  },
+  "build_id": "7IN-20260815-PRODUCT95-BROWSER-FACTORY-INSTALL",
+  "chip": "esp32s3",
+  "destructive_full_erase": true,
+  "distribution_marker": "RADAR-DISTRIBUTION-BUILD",
+  "files": [
+    {
+      "address": "0x00000000",
+      "name": "bootloader.bin",
+      "sha256": "3f96a8eeff319a3934c7e654516326b81381a08ad94df2c4bbc95c81124e6eb8",
+      "size": 19504
+    },
+    {
+      "address": "0x00008000",
+      "name": "partitions.bin",
+      "sha256": "144ab9fdae8c1d68b90b480b7690f26968933873f56bef19f0c9cce300ad441b",
+      "size": 3072
+    },
+    {
+      "address": "0x0000E000",
+      "name": "boot_app0.bin",
+      "sha256": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0",
+      "size": 8192
+    },
+    {
+      "address": "0x00010000",
+      "name": "firmware.bin",
+      "sha256": "cf66ba7fb7e65a69e7a7018b55a19e57d4a1fe40086b16205777d1dbf2f5ec03",
+      "size": 2452256
+    }
+  ],
+  "flash_freq": "80m",
+  "flash_mode": "dio",
+  "flash_size": "16MB",
+  "hardware": "waveshare-esp32-s3-touch-lcd-7",
+  "schema": 1,
+  "version_code": 95,
+  "version_label": "Product 95"
+}

@@ -39,6 +39,9 @@ FACTORY_FLASH_MODE = "dio"
 FACTORY_FLASH_FREQ = "80m"
 FACTORY_SCRIPT = "FLASH_RADAR_FACTORY.ps1"
 FACTORY_MANIFEST = "factory-manifest.json"
+BROWSER_HTML = "INSTALL_RADAR.html"
+BROWSER_SCRIPT = "factory-installer.js"
+ESPTOOL_JS_VERSION = "0.6.0"
 FACTORY_FILES = (
     ("bootloader.bin", 0x00000000),
     ("partitions.bin", 0x00008000),
@@ -76,17 +79,28 @@ def _validated_source_files(
     return found
 
 
+def _copy_required_file(source: Path, destination: Path, description: str) -> None:
+    if not source.is_file():
+        raise FileNotFoundError(f"{description} source is missing: {source}")
+    shutil.copyfile(source, destination)
+
+
 def write_factory_bundle(
     build_dir: Path,
     build_info_path: Path,
     installer_script: Path,
     release_root: Path,
     boot_app0_path: Path | None = None,
+    browser_html: Path | None = None,
+    browser_script: Path | None = None,
 ) -> Path:
     identity = read_build_identity(build_info_path)
     source_files = _validated_source_files(build_dir, boot_app0_path)
-    if not installer_script.is_file():
-        raise FileNotFoundError(f"factory installer source is missing: {installer_script}")
+
+    if browser_html is None:
+        browser_html = installer_script.parent / "browser" / BROWSER_HTML
+    if browser_script is None:
+        browser_script = installer_script.parent / "browser" / BROWSER_SCRIPT
 
     bundle_dir = release_root / "factory" / f"product-{identity.version_code}"
     if bundle_dir.exists():
@@ -106,7 +120,27 @@ def write_factory_bundle(
             }
         )
 
-    shutil.copyfile(installer_script, bundle_dir / FACTORY_SCRIPT)
+    _copy_required_file(
+        installer_script, bundle_dir / FACTORY_SCRIPT, "factory PowerShell installer"
+    )
+    if not browser_html.is_file():
+        raise FileNotFoundError(f"browser installer HTML source is missing: {browser_html}")
+    if not browser_script.is_file():
+        raise FileNotFoundError(f"browser installer JavaScript source is missing: {browser_script}")
+    html_source = browser_html.read_text(encoding="utf-8")
+    script_source = browser_script.read_text(encoding="utf-8")
+    external_tag = f'<script type="module" src="./{BROWSER_SCRIPT}"></script>'
+    if external_tag not in html_source:
+        raise ValueError("browser installer HTML is missing the expected module script tag")
+    # The generated owner-facing installer is one double-clickable HTML file.
+    # Embedding our module removes the file:// local-module CORS failure; the
+    # pinned esptool-js dependency is still fetched from HTTPS by that module.
+    bundled_html = html_source.replace(
+        external_tag,
+        '<script type="module">\n' + script_source + "\n</script>",
+    )
+    (bundle_dir / BROWSER_HTML).write_text(bundled_html, encoding="utf-8")
+
     manifest = {
         "schema": FACTORY_MANIFEST_SCHEMA,
         "hardware": identity.hardware,
@@ -119,6 +153,11 @@ def write_factory_bundle(
         "build_id": identity.build_id,
         "distribution_marker": "RADAR-DISTRIBUTION-BUILD",
         "destructive_full_erase": True,
+        "browser_installer": {
+            "html": BROWSER_HTML,
+            "self_contained": True,
+            "esptool_js_version": ESPTOOL_JS_VERSION,
+        },
         "files": entries,
     }
     (bundle_dir / FACTORY_MANIFEST).write_text(
@@ -145,14 +184,18 @@ def _platformio_post_action(source, target, env) -> None:
     boot_app0_path = (
         Path(framework_dir) / "tools" / "partitions" / "boot_app0.bin"
     )
+    factory_dir = project_dir / "tools" / "factory"
     bundle_dir = write_factory_bundle(
         build_dir=build_dir,
         build_info_path=project_dir / "include" / "build_info.h",
-        installer_script=project_dir / "tools" / "factory" / FACTORY_SCRIPT,
+        installer_script=factory_dir / FACTORY_SCRIPT,
         release_root=project_dir / "release",
         boot_app0_path=boot_app0_path,
+        browser_html=factory_dir / "browser" / BROWSER_HTML,
+        browser_script=factory_dir / "browser" / BROWSER_SCRIPT,
     )
     print(f"Radar destructive factory-install bundle: {bundle_dir}")
+    print(f"Browser factory installer: {bundle_dir / BROWSER_HTML}")
 
 
 if env is not None and not env.IsIntegrationDump():

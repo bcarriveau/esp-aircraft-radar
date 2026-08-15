@@ -48,41 +48,53 @@ class FactoryBundleTests(unittest.TestCase):
         path.write_text(
             "#pragma once\n"
             "#include <stdint.h>\n"
-            "constexpr uint32_t FIRMWARE_VERSION_CODE = 94;\n"
-            'constexpr const char* FIRMWARE_VERSION_LABEL = "Product 94";\n'
+            "constexpr uint32_t FIRMWARE_VERSION_CODE = 95;\n"
+            'constexpr const char* FIRMWARE_VERSION_LABEL = "Product 95";\n'
             'constexpr const char* FIRMWARE_HARDWARE_ID = "waveshare-esp32-s3-touch-lcd-7";\n'
             'constexpr const char* FIRMWARE_RELEASE_CHANNEL = "stable";\n'
             "constexpr uint16_t FIRMWARE_MANIFEST_SCHEMA = 1;\n"
             "constexpr uint16_t FIRMWARE_UPDATER_VERSION = 1;\n"
-            'constexpr const char* FIRMWARE_RELEASE_NOTES = "Factory test";\n'
+            'constexpr const char* FIRMWARE_RELEASE_NOTES = "Factory browser test";\n'
             f'constexpr const char* BUILD_ID = "{build_id}";\n',
             encoding="utf-8",
         )
 
-    def test_distribution_bundle_contains_fixed_layout_and_hashes(self) -> None:
-        build_id = "7IN-TEST-PRODUCT94-FACTORY"
+    def test_distribution_bundle_contains_fixed_layout_hashes_and_browser(self) -> None:
+        build_id = "7IN-TEST-PRODUCT95-BROWSER-FACTORY"
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             build = root / "build"
             release = root / "release"
             build.mkdir()
             for name, _ in FACTORY.FACTORY_FILES:
-                if name == "firmware.bin":
-                    payload = self.firmware(build_id, distribution=True)
-                else:
-                    payload = (name.encode("ascii") + b"\0") * 64
+                payload = (
+                    self.firmware(build_id, distribution=True)
+                    if name == "firmware.bin"
+                    else (name.encode("ascii") + b"\0") * 64
+                )
                 (build / name).write_bytes(payload)
 
             info = root / "build_info.h"
             self.build_info(info, build_id)
             installer = ROOT / "tools" / "factory" / "FLASH_RADAR_FACTORY.ps1"
-            bundle = FACTORY.write_factory_bundle(build, info, installer, release)
+            browser_dir = ROOT / "tools" / "factory" / "browser"
+            bundle = FACTORY.write_factory_bundle(
+                build,
+                info,
+                installer,
+                release,
+                browser_html=browser_dir / FACTORY.BROWSER_HTML,
+                browser_script=browser_dir / FACTORY.BROWSER_SCRIPT,
+            )
             manifest = json.loads((bundle / FACTORY.FACTORY_MANIFEST).read_text())
 
             self.assertTrue(manifest["destructive_full_erase"])
             self.assertEqual(manifest["chip"], "esp32s3")
             self.assertEqual(manifest["flash_size"], "16MB")
             self.assertEqual(manifest["build_id"], build_id)
+            self.assertEqual(manifest["browser_installer"]["html"], FACTORY.BROWSER_HTML)
+            self.assertTrue(manifest["browser_installer"]["self_contained"])
+            self.assertEqual(manifest["browser_installer"]["esptool_js_version"], "0.6.0")
             self.assertEqual(
                 [(entry["name"], entry["address"]) for entry in manifest["files"]],
                 [
@@ -97,9 +109,15 @@ class FactoryBundleTests(unittest.TestCase):
                 self.assertEqual(entry["size"], path.stat().st_size)
                 self.assertEqual(entry["sha256"], hashlib.sha256(path.read_bytes()).hexdigest())
             self.assertTrue((bundle / FACTORY.FACTORY_SCRIPT).is_file())
+            self.assertTrue((bundle / FACTORY.BROWSER_HTML).is_file())
+            bundled_html = (bundle / FACTORY.BROWSER_HTML).read_text(encoding="utf-8")
+            self.assertNotIn(f'src="./{FACTORY.BROWSER_SCRIPT}"', bundled_html)
+            self.assertIn("esptool-js@0.6.0/bundle.js", bundled_html)
+            self.assertIn("Web Serial transport released.", bundled_html)
+            self.assertFalse((bundle / FACTORY.BROWSER_SCRIPT).exists())
 
     def test_boot_app0_can_come_from_framework_package(self) -> None:
-        build_id = "7IN-TEST-PRODUCT94-FRAMEWORK-BOOTAPP"
+        build_id = "7IN-TEST-PRODUCT95-FRAMEWORK-BOOTAPP"
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             build = root / "build"
@@ -151,6 +169,32 @@ class FactoryBundleTests(unittest.TestCase):
                     release,
                 )
             self.assertFalse(release.exists())
+
+    def test_missing_browser_asset_refuses_bundle(self) -> None:
+        build_id = "7IN-TEST-PRODUCT95-MISSING-BROWSER"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            build = root / "build"
+            release = root / "release"
+            build.mkdir()
+            for name, _ in FACTORY.FACTORY_FILES:
+                payload = (
+                    self.firmware(build_id, distribution=True)
+                    if name == "firmware.bin"
+                    else b"placeholder"
+                )
+                (build / name).write_bytes(payload)
+            info = root / "build_info.h"
+            self.build_info(info, build_id)
+            with self.assertRaisesRegex(FileNotFoundError, "browser installer HTML"):
+                FACTORY.write_factory_bundle(
+                    build,
+                    info,
+                    ROOT / "tools" / "factory" / "FLASH_RADAR_FACTORY.ps1",
+                    release,
+                    browser_html=root / "missing.html",
+                    browser_script=ROOT / "tools" / "factory" / "browser" / FACTORY.BROWSER_SCRIPT,
+                )
 
     def test_installer_is_full_erase_and_fixed_layout(self) -> None:
         script = (ROOT / "tools" / "factory" / "FLASH_RADAR_FACTORY.ps1").read_text(

@@ -1,6 +1,6 @@
 # Stable GitHub release and on-device installation
 
-This document describes the current Product 94 release boundary for Bill's
+This document describes the current Product 95 release boundary for Bill's
 Waveshare ESP32-S3-Touch-LCD-7 Aircraft Radar.
 
 ## Two build environments, one public producer
@@ -33,7 +33,7 @@ The distribution build generates the Product-numbered OTA package and fixed-name
 manifest:
 
 ```text
-release/waveshare-esp32-s3-touch-lcd-7-product-94.radarota
+release/waveshare-esp32-s3-touch-lcd-7-product-95.radarota
 release/waveshare-esp32-s3-touch-lcd-7.manifest.json
 ```
 
@@ -66,11 +66,12 @@ preserved.
 The same distribution build also generates:
 
 ```text
-release/factory/product-94/
+release/factory/product-95/
 ```
 
 containing the exact bootloader, partition table, OTA bootstrap, application image,
-a factory manifest, and the offline recovery PowerShell installer.
+a factory manifest, the Product 95 browser installer, and the offline recovery
+PowerShell installer.
 
 The factory manifest uses a fixed approved layout:
 
@@ -84,13 +85,46 @@ The factory manifest uses a fixed approved layout:
 The bundle records SHA-256 and size for every image. Factory generation refuses a
 firmware image without the distribution provenance marker.
 
+Product 95 also places a generated single-file `INSTALL_RADAR.html` in the factory
+bundle. Owners can double-click that file in current Chrome or Edge; no Python or
+local web server is required. The page verifies the same manifest/images, performs
+the full erase and flash, verifies writes, then explicitly releases the Web Serial
+reset/boot control lines and closes the serial transport.
+
 A true factory installation is intentionally destructive: it erases the complete
 16 MB flash chip before writing the verified distribution images. That removes NVS,
 saved Wi-Fi/location, MQTT/Home Assistant state, the persistent airport database,
 OTA state, and all other owner-specific flash contents.
 
-See `docs/FACTORY_INSTALL.md` for the complete distinction between a distribution
-build, PlatformIO upload, destructive factory install, and normal OTA.
+## Product 95 browser factory installer
+
+Product 95 makes the browser/Web Serial path the preferred owner interface. The
+generated factory bundle includes:
+
+```text
+INSTALL_RADAR.html
+factory-installer.js
+```
+
+The browser installer pins Espressif `esptool-js` 0.6.0 and consumes the same
+`factory-manifest.json` and four binaries as the PowerShell recovery path.
+
+Before destructive work it verifies the fixed manifest/hardware/layout, every image
+size and SHA-256, the distribution marker and build ID in `firmware.bin`, then
+positively checks the connected chip is ESP32-S3 with exactly 16 MB flash. The owner
+must also acknowledge the destructive warning and type `ERASE RADAR`.
+
+The browser performs an explicit full-chip erase before writing. `esptool-js` is
+given an MD5 callback so the library compares each written image against the
+flash-side MD5 before proceeding. The radar is hard-reset only after all four images
+finish successfully.
+
+The PowerShell installer remains in the same bundle for offline/developer recovery;
+it is not the normal owner-facing path.
+
+See `docs/FACTORY_INSTALL.md` for browser loading/hosting details and the complete
+distinction between distribution build, PlatformIO upload, destructive factory
+install, and normal OTA.
 
 ## Important: PlatformIO factory upload is not a factory reset
 
@@ -130,16 +164,18 @@ Before publishing a stable Product release:
 2. Build `waveshare-s3-touch-lcd-7-factory`, not the private environment.
 3. Confirm the build log identifies the distribution variant/marker.
 4. Run focused release/factory tests.
-5. Confirm generated `.radarota`, release manifest, and factory manifest agree on
-   Product/build identity and hashes.
+5. Confirm generated `.radarota`, release manifest, factory manifest, and browser
+   installer agree on Product/build identity and the fixed hardware/layout.
 6. Physically test the normal non-destructive OTA path when the Product changes OTA
    behavior or release packaging.
-7. Physically test a destructive factory install when the factory bundle/installer,
-   partition layout, or first-owner setup path changes.
+7. Physically test the Product 95 browser destructive factory install in current
+   Chrome or Edge before publishing it as the normal owner path.
 8. Confirm the destructive test boots with no prior Wi-Fi/location, no installed
    airport database, neutral integration defaults, and the intended Product marker.
-9. Publish the matching stable tag/release only after those checks pass.
-10. Attach only assets generated from the verified distribution build.
+9. Keep the PowerShell path as an offline recovery check when factory packaging
+   changes.
+10. Publish the matching stable tag/release only after those checks pass and attach
+    only assets generated from the verified distribution build.
 
 Public-key package signing remains a separate future hardening phase; TLS plus the
 current SHA-256 checks protect integrity and mismatch detection but do not create an
