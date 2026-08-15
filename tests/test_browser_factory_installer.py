@@ -83,6 +83,18 @@ class BrowserFactoryInstallerTests(unittest.TestCase):
         self.assertIn('Adjacent loading is unavailable from a file:// page.', script)
         self.assertIn('assert(adjacentBundleAvailable, "Adjacent bundle loading requires HTTPS or localhost.', script)
 
+    def test_factory_installer_owner_branding_is_consistent(self) -> None:
+        html = HTML.read_text(encoding="utf-8")
+        recovery = (ROOT / "tools" / "factory" / "FLASH_RADAR_FACTORY.ps1").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("<title>ESP AIRCRAFT RADAR Factory Installer</title>", html)
+        self.assertIn("<h1>ESP AIRCRAFT RADAR</h1>", html)
+        self.assertIn(" ESP AIRCRAFT RADAR - FACTORY INSTALLER", recovery)
+        self.assertNotIn("Bill's Aircraft Radar Factory Installer", html)
+        self.assertNotIn("ESP32 AIRCRAFT RADAR", html)
+        self.assertNotIn("BILL'S AIRCRAFT RADAR - FACTORY INSTALLER", recovery)
+
     def test_browser_page_contains_destructive_owner_warning(self) -> None:
         html = HTML.read_text(encoding="utf-8")
         self.assertIn("erases the ENTIRE 16 MB flash chip", html)

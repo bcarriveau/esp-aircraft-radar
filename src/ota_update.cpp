@@ -75,7 +75,7 @@ const char UPDATE_PAGE[] PROGMEM = R"HTML(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Bill's Aircraft Radar Update</title>
+<title>ESP AIRCRAFT RADAR Update</title>
 <style>
 :root{color-scheme:dark;font-family:Arial,sans-serif;background:#041019;color:#e1ebf0}
 body{margin:0;display:grid;place-items:center;min-height:100vh;padding:18px;box-sizing:border-box}
@@ -87,13 +87,13 @@ progress{width:100%;height:20px;margin-top:18px}.status{min-height:54px;margin-t
 </style>
 </head>
 <body><main>
-<h1>BILL'S AIRCRAFT RADAR</h1><div class="sub">Local firmware update</div>
+<h1>ESP AIRCRAFT RADAR</h1><div class="sub">Local firmware update</div>
 <label for="code">Six-digit access code shown on the radar</label><input id="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
 <label for="file">Radar OTA package</label><input id="file" type="file" accept=".radarota,application/octet-stream">
 <button id="install">PREPARE &amp; INSTALL</button><button class="secondary" id="cancel">CANCEL OTA</button>
 <a class="button secondary" href="/airports">AIRPORT DATABASE</a>
 <progress id="progress" max="100" value="0"></progress><div class="status" id="status">Select the generated firmware.radarota file.</div>
-<div class="warn">Do not remove power while firmware is being written. This page accepts only a Bill's 7-inch Radar .radarota package.</div>
+<div class="warn">Do not remove power while firmware is being written. This page accepts only an ESP AIRCRAFT RADAR .radarota package.</div>
 <script>
 const code=()=>document.getElementById('code').value.trim();
 const status=document.getElementById('status'), progress=document.getElementById('progress'), install=document.getElementById('install');
@@ -115,7 +115,7 @@ const char AIRPORT_PAGE[] PROGMEM = R"HTML(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Bill's Aircraft Radar Airports</title>
+<title>ESP AIRCRAFT RADAR Airports</title>
 <style>
 :root{color-scheme:dark;font-family:Arial,sans-serif;background:#041019;color:#e1ebf0}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));display:flex;justify-content:center}
@@ -129,7 +129,7 @@ progress{width:100%;height:22px;margin-top:18px}.status{min-height:70px;margin-t
 </style>
 </head>
 <body><main>
-<h1>BILL'S AIRCRAFT RADAR</h1><div class="sub">Airport Database</div>
+<h1>ESP AIRCRAFT RADAR</h1><div class="sub">Airport Database</div>
 <div class="grid"><div class="card"><div class="k">Persistent store</div><div id="store" class="v">Enter access code</div></div><div class="card"><div class="k">Installed data date</div><div id="region" class="v">—</div></div><div class="card"><div class="k">Records</div><div id="records" class="v">—</div></div><div class="card"><div class="k">Coverage</div><div id="coverage" class="v">—</div></div></div>
 <label for="code">Six-digit access code shown on the radar</label><input id="code" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code">
 
@@ -413,7 +413,7 @@ void observeBuildIdentity(const uint8_t* data, size_t length) {
 bool validatePackageHeader() {
   memcpy(&packageHeader, packageHeaderBytes, sizeof(packageHeader));
   if (memcmp(packageHeader.magic, PACKAGE_MAGIC, sizeof(PACKAGE_MAGIC)) != 0) {
-    failUpload("Not a Bill's Radar OTA package");
+    failUpload("Not an ESP AIRCRAFT RADAR OTA package");
     return false;
   }
   if (packageHeader.formatVersion != PACKAGE_FORMAT_VERSION ||

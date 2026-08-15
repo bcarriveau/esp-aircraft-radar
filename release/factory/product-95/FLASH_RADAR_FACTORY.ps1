@@ -124,7 +124,7 @@ if (-not (Test-AsciiMarker $firmwarePath ([string]$manifest.build_id))) {
 
 Write-Host ""
 Write-Host "============================================================"
-Write-Host " BILL'S AIRCRAFT RADAR - FACTORY INSTALLER"
+Write-Host " ESP AIRCRAFT RADAR - FACTORY INSTALLER"
 Write-Host " Waveshare ESP32-S3-Touch-LCD-7 ONLY"
 Write-Host "============================================================"
 Write-Host ""

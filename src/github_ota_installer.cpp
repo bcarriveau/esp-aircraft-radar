@@ -411,7 +411,7 @@ bool validatePackageHeader(InstallWorkspace& workspace,
   const PackageHeader& header = workspace.packageHeader;
   if (memcmp(header.magic, PACKAGE_MAGIC, sizeof(PACKAGE_MAGIC)) != 0) {
     copyText(message, messageCapacity,
-             "Downloaded file is not a Bill's Radar OTA package");
+             "Downloaded file is not an ESP AIRCRAFT RADAR OTA package");
     return false;
   }
   if (header.formatVersion != PACKAGE_FORMAT_VERSION ||

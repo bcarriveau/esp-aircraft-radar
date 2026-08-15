@@ -80,7 +80,7 @@ static_assert(sizeof(StoredAirportLabelOverrides) ==
 StoredAirportLabelOverrides cachedAirportOverrides{};
 
 String defaultTitle() {
-  return String("BILLS AIRCRAFT RADAR");
+  return String("ESP AIRCRAFT RADAR");
 }
 
 String defaultWifiSsid() {

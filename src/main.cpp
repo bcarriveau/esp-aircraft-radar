@@ -55,7 +55,7 @@ void releaseUnusedBluetoothControllerMemory() {
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.println("BILLS Aircraft Radar 7-inch bring-up");
+  Serial.println("ESP AIRCRAFT RADAR 7-inch bring-up");
   Serial.printf("Reset reason: %d\n", static_cast<int>(esp_reset_reason()));
   Serial.printf("Build: %s, max targets=%u\n", BUILD_ID,
                 (unsigned)aircraft::MAX_TARGETS);
