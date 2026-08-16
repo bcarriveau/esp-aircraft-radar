@@ -24,6 +24,7 @@ constexpr const char* KEY_WIFI_PASS = "wifi_pass";
 constexpr const char* KEY_LAT = "home_lat";
 constexpr const char* KEY_LON = "home_lon";
 constexpr const char* KEY_MQTT_ENABLED = "mqtt_on";
+constexpr const char* KEY_RADAR_RANGE = "radar_rng";
 constexpr const char* KEY_AIRPORTS_ENABLED = "apt_on";
 constexpr const char* KEY_AIRPORT_OVERRIDES = "apt_ovr";
 constexpr const char* KEY_AIRPORT_SYMBOLS[AIRPORT_RANGE_COUNT] = {
@@ -32,6 +33,8 @@ constexpr const char* KEY_AIRPORT_SYMBOLS[AIRPORT_RANGE_COUNT] = {
 constexpr const char* KEY_AIRPORT_LABELS[AIRPORT_RANGE_COUNT] = {
   "apt_l20", "apt_l40", "apt_l80"
 };
+
+constexpr uint8_t DEFAULT_RADAR_RANGE_MILES = 80;
 
 // Category bits: major, public, private field, heliport.
 constexpr uint8_t DEFAULT_AIRPORT_SYMBOLS[AIRPORT_RANGE_COUNT] = {
@@ -42,6 +45,7 @@ constexpr uint8_t DEFAULT_AIRPORT_LABELS[AIRPORT_RANGE_COUNT] = {
 };
 
 bool cachedMqttEnabled = MQTT_ENABLED_DEFAULT != 0;
+uint8_t cachedRadarRangeMiles = DEFAULT_RADAR_RANGE_MILES;
 bool cachedAirportsEnabled = true;
 uint8_t cachedAirportSymbols[AIRPORT_RANGE_COUNT] = {
   DEFAULT_AIRPORT_SYMBOLS[0], DEFAULT_AIRPORT_SYMBOLS[1],
@@ -76,7 +80,7 @@ static_assert(sizeof(StoredAirportLabelOverrides) ==
 StoredAirportLabelOverrides cachedAirportOverrides{};
 
 String defaultTitle() {
-  return String("BILLS AIRCRAFT RADAR");
+  return String("ESP AIRCRAFT RADAR");
 }
 
 String defaultWifiSsid() {
@@ -93,6 +97,10 @@ float defaultLatitude() {
 
 float defaultLongitude() {
   return HOME_LON;
+}
+
+bool radarRangeValid(uint8_t rangeMiles) {
+  return rangeMiles == 20 || rangeMiles == 40 || rangeMiles == 80;
 }
 
 bool storedStringMatches(const char* key, const String& value) {
@@ -186,6 +194,38 @@ bool writeBytesChecked(const char* key, const void* value, size_t length) {
   }
   return true;
 }
+
+#if !defined(RADAR_DISTRIBUTION_BUILD)
+bool factoryNeutralOwnerStatePresent() {
+  // The distribution build creates these exact neutral values on a virgin
+  // factory boot. Require the complete tuple and correct NVS types so a normal
+  // private firmware update never overwrites real owner-entered settings.
+  return preferences.getType(KEY_WIFI_SSID) == PT_STR &&
+         preferences.getType(KEY_WIFI_PASS) == PT_STR &&
+         preferences.getString(KEY_WIFI_SSID, String("invalid")).length() == 0 &&
+         preferences.getString(KEY_WIFI_PASS, String("invalid")).length() == 0 &&
+         storedFloatMatches(KEY_LAT, 0.0f) &&
+         storedFloatMatches(KEY_LON, 0.0f);
+}
+
+bool seedPrivateDefaultsFromFactoryState() {
+  if (!factoryNeutralOwnerStatePresent()) return true;
+
+  bool seeded = true;
+  if (!writeStringChecked(KEY_WIFI_SSID, defaultWifiSsid())) seeded = false;
+  if (!writeStringChecked(KEY_WIFI_PASS, defaultWifiPassword())) seeded = false;
+  if (!writeFloatChecked(KEY_LAT, defaultLatitude())) seeded = false;
+  if (!writeFloatChecked(KEY_LON, defaultLongitude())) seeded = false;
+  if (!writeUCharChecked(KEY_MQTT_ENABLED,
+                         MQTT_ENABLED_DEFAULT ? 1 : 0)) seeded = false;
+
+  if (seeded) {
+    Serial.println(
+        "NVS: private build seeded config.h defaults from neutral factory state");
+  }
+  return seeded;
+}
+#endif
 
 bool airportIdentValid(const char* ident) {
   if (!ident || !ident[0]) return false;
@@ -349,6 +389,7 @@ bool initialize() {
   storageHealthy = storageOpen;
   if (!storageOpen) {
     cachedMqttEnabled = MQTT_ENABLED_DEFAULT != 0;
+    cachedRadarRangeMiles = DEFAULT_RADAR_RANGE_MILES;
     setAirportSettingsCacheDefaults();
     Serial.println(
         "NVS ERROR: preferences namespace unavailable; using compile-time defaults");
@@ -356,6 +397,13 @@ bool initialize() {
   }
 
   bool initialized = true;
+#if !defined(RADAR_DISTRIBUTION_BUILD)
+  // A destructive factory install intentionally leaves neutral owner values.
+  // If this is the first subsequent private/developer build, restore only the
+  // private config.h provisioning defaults. Public distribution builds compile
+  // this path out completely, and any non-neutral owner state is preserved.
+  if (!seedPrivateDefaultsFromFactoryState()) initialized = false;
+#endif
   if (preferences.getType(KEY_TITLE) != PT_STR &&
       !writeStringChecked(KEY_TITLE, defaultTitle())) {
     initialized = false;
@@ -382,24 +430,40 @@ bool initialize() {
       !writeUCharChecked(KEY_MQTT_ENABLED, MQTT_ENABLED_DEFAULT ? 1 : 0)) {
     initialized = false;
   }
+  const uint8_t storedRange = preferences.getUChar(
+      KEY_RADAR_RANGE, DEFAULT_RADAR_RANGE_MILES);
+  if (preferences.getType(KEY_RADAR_RANGE) != PT_U8 ||
+      !radarRangeValid(storedRange)) {
+    if (!writeUCharChecked(KEY_RADAR_RANGE, DEFAULT_RADAR_RANGE_MILES)) {
+      initialized = false;
+    }
+  }
   if (!initializeAirportDefaults()) initialized = false;
 
   storageHealthy = initialized;
   if (!initialized) {
+    cachedRadarRangeMiles = DEFAULT_RADAR_RANGE_MILES;
     setAirportSettingsCacheDefaults();
     markStorageError("default initialization");
     return false;
   }
   cachedMqttEnabled = preferences.getUChar(
       KEY_MQTT_ENABLED, MQTT_ENABLED_DEFAULT ? 1 : 0) != 0;
+  cachedRadarRangeMiles = preferences.getUChar(
+      KEY_RADAR_RANGE, DEFAULT_RADAR_RANGE_MILES);
+  if (!radarRangeValid(cachedRadarRangeMiles)) {
+    cachedRadarRangeMiles = DEFAULT_RADAR_RANGE_MILES;
+  }
   if (!loadAirportSettingsCache()) {
     cachedMqttEnabled = MQTT_ENABLED_DEFAULT != 0;
+    cachedRadarRangeMiles = DEFAULT_RADAR_RANGE_MILES;
     setAirportSettingsCacheDefaults();
     markStorageError("airport override initialization");
     return false;
   }
 
-  Serial.println("NVS: READY");
+  Serial.printf("NVS: READY, radar range=%u miles\n",
+                static_cast<unsigned>(cachedRadarRangeMiles));
   return true;
 }
 
@@ -418,6 +482,9 @@ bool resetToDefaults() {
   if (!writeFloatChecked(KEY_LON, defaultLongitude())) saved = false;
   if (!writeUCharChecked(KEY_MQTT_ENABLED,
                          MQTT_ENABLED_DEFAULT ? 1 : 0)) saved = false;
+  if (!writeUCharChecked(KEY_RADAR_RANGE, DEFAULT_RADAR_RANGE_MILES)) {
+    saved = false;
+  }
   if (!writeUCharChecked(KEY_AIRPORTS_ENABLED, 1)) saved = false;
   for (uint8_t i = 0; i < AIRPORT_RANGE_COUNT; ++i) {
     if (!writeUCharChecked(KEY_AIRPORT_SYMBOLS[i],
@@ -438,6 +505,7 @@ bool resetToDefaults() {
     markStorageError("reset to defaults");
   } else {
     cachedMqttEnabled = MQTT_ENABLED_DEFAULT != 0;
+    cachedRadarRangeMiles = DEFAULT_RADAR_RANGE_MILES;
     setAirportSettingsCacheDefaults();
   }
   return saved;
@@ -512,6 +580,18 @@ void setHomeLongitude(float longitude) {
   if (!writeFloatChecked(KEY_LON, longitude)) {
     markStorageError("longitude update");
   }
+}
+
+uint8_t radarRangeMiles() { return cachedRadarRangeMiles; }
+
+bool setRadarRangeMiles(uint8_t rangeMiles) {
+  if (!storageAvailable() || !radarRangeValid(rangeMiles)) return false;
+  if (!writeUCharChecked(KEY_RADAR_RANGE, rangeMiles)) {
+    markStorageError("radar range save");
+    return false;
+  }
+  cachedRadarRangeMiles = rangeMiles;
+  return true;
 }
 
 bool airportsEnabled() { return cachedAirportsEnabled; }

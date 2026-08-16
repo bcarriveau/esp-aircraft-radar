@@ -404,16 +404,16 @@ void update(uint32_t now) {
     lv_obj_center(installLabel);
   }
 
-  char text[256];
+  char text[320];
   snprintf(text, sizeof(text), "INSTALLED     %s\nBUILD         %s",
            FIRMWARE_VERSION_LABEL, BUILD_ID);
   setLabelTextIfChanged(installedLabel, text);
 
   if (status.updateAvailable) {
-    snprintf(text, sizeof(text), "AVAILABLE     %s\nBUILD         %s",
+    snprintf(text, sizeof(text), "UPDATE AVAILABLE     %s\nBUILD                %s",
              status.remoteVersionLabel, status.remoteBuildId);
   } else {
-    snprintf(text, sizeof(text), "AVAILABLE     None");
+    snprintf(text, sizeof(text), "UPDATE AVAILABLE     None");
   }
   setLabelTextIfChanged(availableLabel, text);
 
@@ -453,15 +453,20 @@ void update(uint32_t now) {
           : ((status.updateAvailable || status.installing)
                  ? rgb(120, 240, 155) : rgb(110, 220, 255)), 0);
 
-  setLabelTextIfChanged(
-      notesLabel,
-      status.updateAvailable && status.notes[0]
-          ? status.notes
-          : "CHECK NOW verifies the latest stable release. DOWNLOAD & INSTALL "
-            "requires a second confirmation, checks the manifest again, streams "
-            "the exact .radarota package into the inactive partition, validates "
-            "both SHA-256 digests and the embedded build ID, then restarts. The "
-            "local browser FIRMWARE / OTA path remains available for recovery.");
+  if (status.updateAvailable && status.notes[0]) {
+    snprintf(text, sizeof(text), "WHAT'S NEW\n%s", status.notes);
+    setLabelTextIfChanged(notesLabel, text);
+    lv_obj_set_style_text_color(notesLabel, rgb(180, 235, 205), 0);
+  } else {
+    setLabelTextIfChanged(
+        notesLabel,
+        "CHECK NOW verifies the latest stable release. DOWNLOAD & INSTALL "
+        "requires a second confirmation, checks the manifest again, streams "
+        "the exact .radarota package into the inactive partition, validates "
+        "both SHA-256 digests and the embedded build ID, then restarts. The "
+        "local browser FIRMWARE / OTA path remains available for recovery.");
+    lv_obj_set_style_text_color(notesLabel, rgb(180, 210, 215), 0);
+  }
 }
 
 }  // namespace update_ui

@@ -142,7 +142,7 @@ class Product80BootSplashTests(unittest.TestCase):
         self.assertIn("bool show(const char* deviceTitle);", SPLASH_HEADER)
         self.assertIn("buildTitleAndStatus(deviceTitle)", SPLASH)
         self.assertIn("deviceTitle && deviceTitle[0]", SPLASH)
-        self.assertIn('"BILLS AIRCRAFT RADAR"', SPLASH)  # safe fallback only
+        self.assertIn('"ESP AIRCRAFT RADAR"', SPLASH)  # safe fallback only
         for font in (32, 28, 24, 20, 18, 16):
             self.assertIn(f"lv_font_montserrat_{font}", SPLASH)
         self.assertIn("if (size.x <= 760) return font;", SPLASH)

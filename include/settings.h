@@ -36,6 +36,9 @@ void setHomeLatitude(float latitude);
 float homeLongitude();
 void setHomeLongitude(float longitude);
 
+uint8_t radarRangeMiles();
+bool setRadarRangeMiles(uint8_t rangeMiles);
+
 bool airportsEnabled();
 uint8_t airportSymbolMask(uint8_t rangeIndex);
 uint8_t airportLabelMask(uint8_t rangeIndex);

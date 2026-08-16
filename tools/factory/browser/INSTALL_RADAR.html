@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESP AIRCRAFT RADAR Factory Installer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #071019;
+      --panel: #0b1823;
+      --panel2: #102431;
+      --line: #1c5061;
+      --cyan: #5de7ff;
+      --teal: #56c4c8;
+      --green: #63f2a7;
+      --amber: #ffc85a;
+      --red: #ff6a6a;
+      --text: #d9eef4;
+      --muted: #8baab4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #0d2635 0, var(--bg) 42rem);
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    main { width: min(920px, calc(100% - 28px)); margin: 28px auto 56px; }
+    .hero, .card {
+      border: 1px solid var(--line);
+      background: rgba(8, 24, 34, .94);
+      box-shadow: 0 14px 40px rgba(0,0,0,.26);
+      border-radius: 14px;
+    }
+    .hero { padding: 24px; margin-bottom: 16px; }
+    h1 { margin: 0 0 8px; color: var(--cyan); font-size: clamp(25px, 4vw, 40px); }
+    h2 { margin: 0 0 14px; color: var(--cyan); font-size: 18px; }
+    p { line-height: 1.55; }
+    .sub { color: var(--muted); margin: 0; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .card { padding: 20px; }
+    .wide { grid-column: 1 / -1; }
+    .status {
+      border: 1px solid #25576b;
+      background: #091b27;
+      padding: 12px 14px;
+      border-radius: 10px;
+      min-height: 46px;
+      color: var(--teal);
+      white-space: pre-wrap;
+    }
+    .warning {
+      border-color: #734b22;
+      background: #241a0d;
+    }
+    .warning h2 { color: var(--amber); }
+    .warning strong { color: var(--red); }
+    button, .file-label {
+      appearance: none;
+      border: 1px solid #2f91a9;
+      color: #041218;
+      background: var(--cyan);
+      border-radius: 9px;
+      padding: 12px 16px;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-block;
+    }
+    button.secondary, .file-label.secondary { background: #133440; color: var(--text); }
+    button.danger { background: var(--red); border-color: #ff8b8b; }
+    button:disabled { opacity: .38; cursor: not-allowed; }
+    input[type="file"] { display: none; }
+    input[type="text"] {
+      width: 100%;
+      background: #06131c;
+      border: 1px solid #315766;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 12px;
+      font: inherit;
+    }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .facts { display: grid; grid-template-columns: 180px 1fr; gap: 7px 12px; }
+    .facts span:nth-child(odd) { color: var(--muted); }
+    progress { width: 100%; height: 18px; accent-color: var(--green); }
+    pre {
+      margin: 0;
+      max-height: 260px;
+      overflow: auto;
+      background: #050d12;
+      border: 1px solid #163745;
+      border-radius: 9px;
+      padding: 12px;
+      color: #acdbe5;
+      white-space: pre-wrap;
+    }
+    .ok { color: var(--green); }
+    .bad { color: var(--red); }
+    .muted { color: var(--muted); }
+    ul { line-height: 1.6; }
+    @media (max-width: 700px) {
+      .grid { grid-template-columns: 1fr; }
+      .wide { grid-column: auto; }
+      .facts { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <h1>ESP AIRCRAFT RADAR</h1>
+    <p class="sub">Factory installer // Waveshare ESP32-S3-Touch-LCD-7 only</p>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <h2>1 // FACTORY PACKAGE</h2>
+      <p>This page verifies the Product factory manifest and all four firmware images before it can touch the radar.</p>
+      <div class="actions">
+        <label class="file-label secondary" for="bundleFiles">CHOOSE FACTORY BUNDLE</label>
+        <input id="bundleFiles" type="file" multiple webkitdirectory directory>
+        <button id="loadAdjacent" class="secondary" type="button">LOAD ADJACENT BUNDLE</button>
+      </div>
+      <p id="bundleLoadHelp" class="muted">Choose the extracted Product factory folder. Hosted installers can also load the adjacent bundle automatically.</p>
+      <div id="bundleStatus" class="status">Waiting for a verified factory bundle.</div>
+    </section>
+
+    <section class="card">
+      <h2>2 // CONNECT RADAR</h2>
+      <p>Chrome or Edge will ask you to choose the radar's USB serial device. The installer then positively checks the chip and flash size.</p>
+      <div class="actions">
+        <button id="connectButton" type="button" disabled>CONNECT & VERIFY</button>
+        <button id="disconnectButton" class="secondary" type="button" disabled>DISCONNECT</button>
+      </div>
+      <div id="deviceStatus" class="status">No radar connected.</div>
+    </section>
+
+    <section class="card warning wide">
+      <h2>3 // DESTRUCTIVE FACTORY INSTALL</h2>
+      <p><strong>This erases the ENTIRE 16 MB flash chip.</strong> Saved Wi-Fi, home location, MQTT/Home Assistant state, installed airport database, OTA state, and every other owner-specific flash value are removed.</p>
+      <label><input id="eraseCheck" type="checkbox"> I understand this is a complete factory erase.</label>
+      <p>Type <strong>ERASE RADAR</strong> to unlock installation:</p>
+      <input id="eraseText" type="text" autocomplete="off" spellcheck="false" placeholder="ERASE RADAR">
+      <p class="muted">Confirmation is case-sensitive and must exactly match <strong>ERASE RADAR</strong>.</p>
+      <div class="actions" style="margin-top:12px">
+        <button id="installButton" class="danger" type="button" disabled>ERASE & INSTALL</button>
+      </div>
+    </section>
+
+    <section class="card wide">
+      <h2>INSTALL STATUS</h2>
+      <progress id="progress" max="100" value="0"></progress>
+      <div id="installStatus" class="status" style="margin-top:10px">Idle.</div>
+    </section>
+
+    <section class="card wide">
+      <h2>PACKAGE / DEVICE DETAILS</h2>
+      <div id="facts" class="facts"><span>Product</span><span>Not loaded</span></div>
+    </section>
+
+    <section class="card wide">
+      <h2>TECHNICAL LOG</h2>
+      <pre id="log">Browser factory installer ready.</pre>
+    </section>
+  </div>
+</main>
+<script type="module" src="./factory-installer.js"></script>
+</body>
+</html>

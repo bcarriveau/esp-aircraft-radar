@@ -697,7 +697,7 @@ void writeDevice(JsonWriter& writer) {
   writer.key("name");
   writer.value(settings::deviceTitle().c_str());
   writer.key("manufacturer");
-  writer.value("Bill's Aircraft Radar");
+  writer.value("ESP AIRCRAFT RADAR");
   writer.key("model");
   writer.value("Waveshare ESP32-S3-Touch-LCD-7");
   writer.key("sw_version");
@@ -707,7 +707,7 @@ void writeDevice(JsonWriter& writer) {
   writer.key("origin");
   writer.beginObject();
   writer.key("name");
-  writer.value("Bill's Aircraft Radar");
+  writer.value("ESP AIRCRAFT RADAR");
   writer.key("sw_version");
   writer.value(BUILD_ID);
   writer.endObject();
