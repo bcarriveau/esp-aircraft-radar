@@ -289,7 +289,7 @@ bool buildRadarLogo() {
 }
 
 const lv_font_t* titleFontFor(const char* text) {
-  const char* titleText = text && text[0] ? text : "BILLS AIRCRAFT RADAR";
+  const char* titleText = text && text[0] ? text : "ESP AIRCRAFT RADAR";
   const lv_font_t* fonts[] = {
       &lv_font_montserrat_32,
       &lv_font_montserrat_28,
@@ -308,7 +308,7 @@ const lv_font_t* titleFontFor(const char* text) {
 
 bool buildTitleAndStatus(const char* deviceTitle) {
   const char* titleText =
-      deviceTitle && deviceTitle[0] ? deviceTitle : "BILLS AIRCRAFT RADAR";
+      deviceTitle && deviceTitle[0] ? deviceTitle : "ESP AIRCRAFT RADAR";
   titleGroup = lv_obj_create(splashRoot);
   if (!titleGroup) return false;
   lv_obj_set_size(titleGroup, 800, 44);

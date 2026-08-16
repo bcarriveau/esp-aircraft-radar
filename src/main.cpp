@@ -55,10 +55,16 @@ void releaseUnusedBluetoothControllerMemory() {
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.println("BILLS Aircraft Radar 7-inch bring-up");
+  Serial.println("ESP AIRCRAFT RADAR 7-inch bring-up");
   Serial.printf("Reset reason: %d\n", static_cast<int>(esp_reset_reason()));
   Serial.printf("Build: %s, max targets=%u\n", BUILD_ID,
                 (unsigned)aircraft::MAX_TARGETS);
+  Serial.printf("Build variant: %s\n", FIRMWARE_BUILD_VARIANT);
+#if defined(RADAR_DISTRIBUTION_BUILD)
+  // Keep the provenance marker in the application image. The release packager
+  // verifies this exact distribution-only string before creating public assets.
+  Serial.printf("Distribution marker: %s\n", FIRMWARE_DISTRIBUTION_MARKER);
+#endif
   Serial.printf("PSRAM: %s, size=%u\n", psramFound() ? "YES" : "NO",
                 ESP.getPsramSize());
   releaseUnusedBluetoothControllerMemory();
@@ -73,6 +79,11 @@ void setup() {
         "WARNING: Update-check persistence unavailable; using boot-local schedule");
   }
   app_state::initialize();
+  const uint8_t savedRadarRange = settings::radarRangeMiles();
+  if (app_state::setRadarRangeMiles(static_cast<float>(savedRadarRange))) {
+    Serial.printf("Restored radar range: %u miles\n",
+                  static_cast<unsigned>(savedRadarRange));
+  }
   if (!ui::allocateTargetBuffer()) return;
 
   lcd_init();

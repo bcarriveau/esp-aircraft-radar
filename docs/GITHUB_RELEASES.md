@@ -1,179 +1,206 @@
 # Stable GitHub release and on-device installation
 
-Product 73 extends the Product 72 bounded GitHub release checker with an explicit,
-user-confirmed remote installation path. The existing local browser OTA remains
-available and retains priority as the recovery and manual installation method.
-No update is downloaded or installed automatically.
+This document describes the current Product 95 release boundary for Bill's
+Waveshare ESP32-S3-Touch-LCD-7 Aircraft Radar.
 
-## Release discovery
+## Three installation paths, one public producer
 
-The existing Core-0 ADS-B owner may claim a disposable metadata check only after
-a successful current-generation ADS-B publication and while the established
-network serialization is active.
+Product 95 distinguishes three operations that must not be treated as interchangeable:
 
-Automatic checks require:
+1. **Destructive factory install / fresh start** — erases the complete flash and installs the verified distribution factory image.
+2. **Private development build** — may use ignored `include/config.h`, normally preserves NVS, and never produces public OTA/factory release assets.
+3. **Public GitHub OTA** — produced only by the distribution environment and updates the application slot without intentionally erasing owner NVS or airport storage.
 
-- at least five stable minutes since boot
-- no completed attempt within approximately 24 hours
-- a successful current-generation ADS-B fetch
-- at least eight seconds before the next fixed 15-second ADS-B start
-- connected Wi-Fi with no recovery in progress
-- local browser OTA inactive
-- MQTT not starting, connecting, stopping, or in maintenance
+## Two build environments, one public producer
 
-**CHECK NOW** bypasses only the five-minute and 24-hour timers. It still uses all
-network and cadence safety gates.
-
-A metadata check has:
-
-- a six-second absolute ceiling
-- a 2.5-second connect/header ceiling reduced by remaining total budget
-- a 1.5-second body-idle ceiling
-- a 1.5-second guard before the next ADS-B poll
-- at most three HTTPS redirects
-- a 2048-byte manifest body limit
-- a 16384-byte aggregate header limit
-- a 4095-character redirect URL limit
-- a URL-sized ESP-IDF transmit buffer from 1024 through 4607 bytes
-
-## Explicit installation flow
-
-A compatible newer release enables **DOWNLOAD & INSTALL**. The first tap arms a
-15-second **CONFIRM INSTALL** state. A second tap queues installation for the next
-successful current-generation ADS-B cycle. **LATER** only closes the detail panel
-and performs no network or persistent action.
-
-Before opening the firmware asset, Product 73 downloads and validates the stable
-manifest again. The retained release identity includes:
-
-- numeric Product version
-- build ID
-- package size
-- firmware size
-- package SHA-256
-- firmware SHA-256
-
-If any retained identity value changed, the install is cancelled, the newly
-validated release is shown, and another confirmation is required. Update cache
-schema 3 stores this identity; older cache formats are ignored.
-
-## Remote package transport
-
-The installer constructs only the deterministic asset URL declared by the
-validated manifest. Transport uses native ESP-IDF HTTPS with the certificate
-bundle and hostname validation. Redirects must remain HTTPS and are restricted
-to:
-
-- `github.com`
-- `objects.githubusercontent.com`
-- `release-assets.githubusercontent.com`
-
-The package transport has:
-
-- maximum three redirects
-- 4095-character URL ceiling
-- URL-sized 1024–4607-byte transmit buffer
-- 16384-byte aggregate streamed-header ceiling
-- strict rejection of conflicting Content-Length and Transfer-Encoding
-- exact manifest package length when Content-Length is present
-- 4096-byte PSRAM receive buffer
-- 1024-byte internal-RAM flash-write staging buffer
-- eight-second connect/header ceiling per request
-- fifteen-second body-idle ceiling
-- three-minute absolute installation ceiling
-
-The full package is never allocated in RAM. The HTTPS receive buffer remains in
-PSRAM, but every `esp_ota_write()` source is copied into internal RAM first because
-flash operations can make external RAM unavailable while cache access is paused.
-
-## Package verification and partition selection
-
-The installer accepts only the generated Bill's Radar `.radarota` format:
-
-- magic `BILLS-RADAR-OTA`
-- format version 1
-- 512-byte package header
-- hardware `WAVESHARE-ESP32-S3-LCD-7`
-- exact build ID from the fresh manifest
-- exact firmware size and firmware digest from the fresh manifest
-
-While streaming, it verifies:
-
-- complete package SHA-256
-- complete firmware SHA-256
-- exact received and written byte counts
-- ESP application image magic
-- ESP32-S3 image chip identifier
-- declared build ID embedded in the firmware payload
-- ESP-IDF image finalization through `esp_ota_end()`
-
-The inactive partition is selected with `esp_ota_set_boot_partition()` only after
-all transport, package, image, size, build, and digest checks succeed. Any earlier
-failure aborts the active OTA handle and leaves the current boot partition active.
-
-## Ownership, cancellation, and restart
-
-The existing Core-0 ADS-B task performs the intentional installation, so no later
-ADS-B request can overlap it. MQTT service remains gated for the installation and
-restart handoff. The last-good aircraft snapshot remains displayed.
-
-Cancellation is checked between bounded 4096-byte transport blocks; each flash
-call inside a block is independently bounded to 1024 bytes. User cancellation, range/reconnect commands, or local browser OTA stop the
-remote operation at the next bounded point. Local browser OTA retains priority.
-Wi-Fi loss, transport failure, timeout, framing failure, validation failure, or
-flash failure is reported as an installation failure.
-
-After a completely verified write, Product 73 mirrors the hardened local-OTA
-restart design: Core 1 settles network activity, creates a high-priority Core-0
-restart task from internal RAM, and parks Core 1 in IRAM before `esp_restart()`.
-If the restart handoff cannot be completed, the verified boot partition remains
-selected and the display directs the user to power-cycle the radar.
-
-## Release identity and required assets
-
-Publish a normal, non-draft, non-prerelease release with matching names:
+The repository has two distinct PlatformIO environments:
 
 ```text
-Tag:          product-73
-Release name: Product 73
-Channel:      stable
+waveshare-s3-touch-lcd-7
+waveshare-s3-touch-lcd-7-factory
 ```
 
-PlatformIO's post-build hook writes only the two repository release assets:
+The first is the private development build. It may use the ignored
+`include/config.h` and it must not generate public release artifacts.
+
+The second is the credential-safe distribution build. It defines
+`RADAR_DISTRIBUTION_BUILD=1`, resolves `config.h` from `include/distribution`, uses
+neutral Wi-Fi/location/MQTT defaults, and excludes the compiled regional airport
+fallback.
+
+Only the distribution environment runs the public release post-build generators.
+The application image contains `RADAR-DISTRIBUTION-BUILD`; the OTA packager and
+factory-bundle generator independently refuse firmware without that marker.
+
+A matching Product build ID alone is not sufficient proof that an image is safe for
+public distribution.
+
+## Stable OTA release assets
+
+The distribution build generates the Product-numbered OTA package and fixed-name
+manifest:
 
 ```text
-release/waveshare-esp32-s3-touch-lcd-7-product-73.radarota
+release/waveshare-esp32-s3-touch-lcd-7-product-95.radarota
 release/waveshare-esp32-s3-touch-lcd-7.manifest.json
 ```
 
-Use the Product-numbered `.radarota` for both the local browser OTA page and the
-GitHub Release. The browser accepts the full versioned filename, so no generic
-`release/firmware.radarota` copy is generated. Attach the fixed-name manifest and
-the matching Product-numbered package to the GitHub Release. Do not rename or
-hand-edit either generated asset.
+The manifest remains bounded to the firmware's supported schema and contains the
+matching Product/version, build ID, hardware ID, package/firmware sizes and SHA-256
+digests, updater minimum, channel, tag, asset name, and bounded release notes.
 
-The manifest remains compact ASCII JSON, schema 1, and at most 2048 bytes. It
-contains the exact tag, hardware, stable channel, numeric version, readable
-label, build ID, asset name, package/firmware sizes and SHA-256 digests, minimum
-updater version, and bounded release notes.
+Do not rename or hand-edit generated release assets. Do not publish a `.radarota`
+from the private environment. `include/config.h` is private input only and must never
+be committed, packaged, or used to generate GitHub release artifacts.
 
-## Authenticity boundary
+## OTA installation remains non-destructive
 
-Verified TLS and both SHA-256 checks protect against corruption, truncation, and
-accidental asset mismatch. Because the manifest and package are published under
-the same repository account, their hashes are not independent protection against
-repository or publishing-account compromise. Public-key package signing remains
-a separate future hardening phase.
+The local browser updater and GitHub installer accept only the validated Bill's
+Radar `.radarota` format. The installer verifies package/image identity, exact
+lengths, ESP32-S3 application image identity, build ID, and SHA-256 values before
+selecting the inactive OTA slot.
 
-## Publishing and physical verification
+Normal Product OTA writes the application slot only. It does not intentionally erase
+NVS or the dedicated airport-data partition. Owner Wi-Fi/location and an installed
+regional airport database are therefore expected to survive ordinary Product
+updates.
 
-1. Build the exact intended Product 73 source and confirm
-   `7IN-20260804-PRODUCT73-GITHUB-OTA-INSTALL` at boot.
-2. Confirm the existing local browser OTA accepts the generated
-   Product-numbered `.radarota` package.
-3. Publish Product 73 only after local installation and normal radar regression
-   checks pass.
-4. Exercise remote installation with a later compatible Product release, because
-   the installed Product 73 must see a numerically newer manifest.
-5. Verify confirmation expiry, cancellation, manifest-change rejection, package
-   progress, automatic restart, boot marker, network recovery, and soak behavior.
+The existing hardened transport and ownership rules remain unchanged: Core-0 owns
+the network operation, ADS-B requests do not overlap, native verified HTTPS remains
+preferred, bounded fallback rules remain intact, and stale/last-good protections are
+preserved.
+
+## Destructive factory release bundle
+
+The same distribution build also generates:
+
+```text
+release/factory/product-95/
+```
+
+containing the exact bootloader, partition table, OTA bootstrap, application image,
+a factory manifest, the Product 95 browser installer, and the offline recovery
+PowerShell installer.
+
+The factory manifest uses a fixed approved layout:
+
+```text
+0x00000000  bootloader.bin
+0x00008000  partitions.bin
+0x0000E000  boot_app0.bin
+0x00010000  firmware.bin
+```
+
+The bundle records SHA-256 and size for every image. Factory generation refuses a
+firmware image without the distribution provenance marker.
+
+Product 95 also places a generated single-file `INSTALL_RADAR.html` in the factory
+bundle. Owners can double-click that file in current Chrome or Edge; no Python or
+local web server is required. The page verifies the same manifest/images, performs
+the full erase and flash, verifies writes, explicitly pulses the ESP32-S3 EN/reset
+line for boot, then releases the reset/boot control lines and closes Web Serial.
+
+A true factory installation is intentionally destructive: it erases the complete
+16 MB flash chip before writing the verified distribution images. That removes NVS,
+saved Wi-Fi/location, MQTT/Home Assistant state, the persistent airport database,
+OTA state, and all other owner-specific flash contents.
+
+## Product 95 browser factory installer
+
+Product 95 makes the browser/Web Serial path the preferred owner interface. The
+generated factory bundle includes the single owner-facing file:
+
+```text
+INSTALL_RADAR.html
+```
+
+The repository keeps `factory-installer.js` as maintainable source, and the factory
+generator embeds it into the generated HTML so local owners can double-click the
+installer without starting a web server. The browser installer pins Espressif
+`esptool-js` 0.6.0 and consumes the same
+`factory-manifest.json` and four binaries as the PowerShell recovery path.
+
+Before destructive work it verifies the fixed manifest/hardware/layout, every image
+size and SHA-256, the distribution marker and build ID in `firmware.bin`, then
+positively checks the connected chip is ESP32-S3 with exactly 16 MB flash. The owner
+must also acknowledge the destructive warning and type `ERASE RADAR`.
+
+The browser performs an explicit full-chip erase before writing. `esptool-js` is
+given an MD5 callback so the library compares each written image against the
+flash-side MD5 before proceeding. After all four images finish successfully, the
+installer drives IO0 inactive, holds EN/reset low for a bounded pulse, releases EN,
+waits for boot to begin, then closes Web Serial.
+
+The PowerShell installer remains in the same bundle for offline/developer recovery;
+it is not the normal owner-facing path.
+
+See `docs/FACTORY_INSTALL.md` for browser loading/hosting details and the complete
+distinction between distribution build, PlatformIO upload, destructive factory
+install, and normal OTA.
+
+## Private development firmware after a factory fresh start
+
+A destructive factory boot intentionally writes neutral owner values: blank Wi-Fi
+SSID/password and `0,0` location. If the next firmware flashed is the private
+development build and that complete neutral tuple is still present, Product 95
+seeds the private `config.h` Wi-Fi/password/location and MQTT enabled default.
+
+This reseed code is compiled only when `RADAR_DISTRIBUTION_BUILD` is absent. Any
+non-neutral owner state disables the reseed, so ordinary private uploads preserve
+settings. Distribution firmware compiles this path out completely, preventing
+private defaults from becoming part of public OTA behavior.
+
+## Important: PlatformIO factory upload is not a factory reset
+
+Running:
+
+```text
+pio run -e waveshare-s3-touch-lcd-7-factory -t upload
+```
+
+builds/uploads the credential-safe distribution firmware, but PlatformIO/esptool
+normally erases only the regions being written. Existing NVS and airport-partition
+contents may survive that operation.
+
+Do not use a normal PlatformIO upload as evidence of virgin first-owner behavior.
+Use the destructive factory-install path when the test requires a genuinely erased
+unit.
+
+## Remote GitHub update flow
+
+A compatible newer release enables explicit user-confirmed installation. Before
+writing firmware, the updater revalidates release identity and package metadata.
+The package transport remains bounded and verified; the full package is not kept in
+internal RAM, and flash writes retain the established internal-RAM staging required
+by the ESP32-S3 flash/cache behavior.
+
+The inactive partition becomes the boot partition only after complete validation and
+`esp_ota_end()` success. Earlier transport, framing, identity, digest, write, or
+finalization failures leave the current boot partition active.
+
+No update is silently installed merely because files exist under `release/`.
+
+## Publishing checklist
+
+Before publishing a stable Product release:
+
+1. Confirm the intended branch and Product/build marker.
+2. Build `waveshare-s3-touch-lcd-7-factory`, not the private environment.
+3. Confirm the build log identifies the distribution variant/marker.
+4. Run focused release/factory tests.
+5. Confirm generated `.radarota`, release manifest, factory manifest, and browser
+   installer agree on Product/build identity and the fixed hardware/layout.
+6. Physically test the normal non-destructive OTA path when the Product changes OTA
+   behavior or release packaging.
+7. Physically test the Product 95 browser destructive factory install in current
+   Chrome or Edge before publishing it as the normal owner path.
+8. Confirm the destructive test boots with no prior Wi-Fi/location, no installed
+   airport database, neutral integration defaults, and the intended Product marker.
+9. Keep the PowerShell path as an offline recovery check when factory packaging
+   changes.
+10. Publish the matching stable tag/release only after those checks pass and attach
+    only assets generated from the verified distribution build.
+
+Public-key package signing remains a separate future hardening phase; TLS plus the
+current SHA-256 checks protect integrity and mismatch detection but do not create an
+independent signing authority from the repository account.

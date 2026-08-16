@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
+import airport_package as package  # noqa: E402
 import generate_airport_database as generator  # noqa: E402
 import airport_database_setup as setup  # noqa: E402
 
@@ -36,6 +37,7 @@ def main() -> None:
         airports_csv = temporary / "airports.csv"
         runways_csv = temporary / "runways.csv"
         output = temporary / "generated.h"
+        package_output = temporary / "airports.radarapt"
 
         write_csv(
             airports_csv,
@@ -75,14 +77,32 @@ def main() -> None:
 
         first = generator.build_header(airports, "2026-08-01", "IOWA TEST", 120.0)
         second = generator.build_header(airports, "2026-08-01", "IOWA TEST", 120.0)
-        assert first == second, "generation must be deterministic"
+        assert first == second, "header generation must be deterministic"
         assert "DATABASE_CENTER" not in first
         assert "DATABASE_RADIUS_MILES = 120" in first
         assert f"DATABASE_GENERATOR_VERSION = {generator.GENERATOR_VERSION}" in first
         assert "PUBLIC MUNICIPAL" in first and "CLOSED AIRPORT" not in first
 
+        first_package = generator.build_binary_package(
+            airports, "2026-08-01", "IOWA TEST", 120.0
+        )
+        second_package = generator.build_binary_package(
+            airports, "2026-08-01", "IOWA TEST", 120.0
+        )
+        assert first_package == second_package, "binary generation must be deterministic"
+        info, records = package.parse_package(first_package)
+        assert info.generator_version == generator.GENERATOR_VERSION
+        assert info.record_count == len(airports)
+        assert info.radius_miles == 120
+        assert info.database_date == "2026-08-01"
+        assert info.coverage == "IOWA TEST"
+        assert [record.ident for record in records] == [airport.ident for airport in airports]
+        assert b"CENTER_LAT" not in first_package and b"CENTER_LON" not in first_package
+
         generator.write_header_atomic(output, first)
+        package.write_package_atomic(package_output, first_package)
         assert output.read_text(encoding="utf-8") == first
+        assert package_output.read_bytes() == first_package
 
         try:
             generator.validate_airports([])
@@ -103,13 +123,14 @@ def main() -> None:
         "/airports.csv",
         "/runways.csv",
         "/include/.generated_airport_database.h.*.tmp",
+        "/release/airports.radarapt",
         "/COMMIT_MESSAGE.txt",
         "/PACKAGE_README.txt",
         "/SHA256SUMS.txt",
     ):
         assert expected in ignore, f"missing .gitignore rule: {expected}"
     assert "/include/generated_airport_database.h" not in ignore, (
-        "the compiled regional airport header must remain tracked"
+        "the compiled regional airport header must remain tracked during transition"
     )
 
     print("Airport generator checks passed")

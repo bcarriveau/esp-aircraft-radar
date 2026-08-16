@@ -1050,11 +1050,14 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
       budgetExhausted = true;
       break;
     }
-    if (now - lastProgress >= policy::IDLE_TIMEOUT_MS) break;
+    const uint32_t stalledForMs = now - lastProgress;
+    if (stalledForMs >= policy::IDLE_TIMEOUT_MS) break;
+    const uint32_t idleRemainingMs = policy::IDLE_TIMEOUT_MS - stalledForMs;
+    const uint32_t bodyReadTimeoutMs = min(
+        policy::boundedTimeoutMs(remainingBudget, policy::BODY_READ_TIMEOUT_MS),
+        idleRemainingMs);
 
-    esp_http_client_set_timeout_ms(
-        client, policy::boundedTimeoutMs(remainingBudget,
-                                         policy::BODY_READ_TIMEOUT_MS));
+    esp_http_client_set_timeout_ms(client, bodyReadTimeoutMs);
     const size_t remaining = capacity - received;
     const int toRead = static_cast<int>(
         min(remaining, static_cast<size_t>(4096)));
@@ -1080,12 +1083,26 @@ AttemptResult fetchAttempt(const char* path, JsonDocument& filter,
           bytesRead == -ESP_ERR_HTTP_EAGAIN || readErrno == EAGAIN ||
           readErrno == EWOULDBLOCK || readErrno == ETIMEDOUT;
       if (retryable && WiFi.status() == WL_CONNECTED) {
-        const uint32_t stalledForMs = millis() - lastProgress;
+        const uint32_t retryNow = millis();
+        const uint32_t stalledForMs = retryNow - lastProgress;
+        const uint32_t retryBudget = transportRemainingMs(fetchStarted);
+        if (stalledForMs < policy::IDLE_TIMEOUT_MS &&
+            retryBudget >= policy::MIN_BLOCKING_CALL_BUDGET_MS) {
+          // esp_http_client_read() can surface ESP_ERR_HTTP_EAGAIN while the
+          // TLS connection remains healthy. Keep the same response alive and
+          // retry only while the existing idle and absolute transport
+          // deadlines still permit progress.
+          delay(2);
+          continue;
+        }
         Serial.printf(
             "ADSB.fi native body timeout: received %u of %u bytes, "
             "no progress for %lu ms, read=%d, errno=%d\n",
             (unsigned)received, (unsigned)capacity,
             (unsigned long)stalledForMs, bytesRead, readErrno);
+        if (retryBudget < policy::MIN_BLOCKING_CALL_BUDGET_MS) {
+          budgetExhausted = true;
+        }
         readFailed = true;
         break;
       }

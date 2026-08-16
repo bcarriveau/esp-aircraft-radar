@@ -22,6 +22,8 @@ ESP32_S3_CHIP_ID = 9
 HEADER_STRUCT = struct.Struct("<16sHH32s96sI32s328s")
 MANIFEST_ASSET_NAME = "waveshare-esp32-s3-touch-lcd-7.manifest.json"
 MAX_MANIFEST_BYTES = 2048
+DISTRIBUTION_FIRMWARE_MARKER = b"RADAR-DISTRIBUTION-BUILD"
+DISTRIBUTION_BUILD_FLAG = "RADAR_DISTRIBUTION_BUILD"
 
 
 class BuildIdentity(NamedTuple):
@@ -127,6 +129,14 @@ def validate_firmware(firmware: bytes) -> None:
         raise ValueError(f"firmware chip ID {chip_id} is not ESP32-S3")
 
 
+def validate_distribution_firmware(firmware: bytes) -> None:
+    validate_firmware(firmware)
+    if DISTRIBUTION_FIRMWARE_MARKER not in firmware:
+        raise ValueError(
+            "firmware is not a RADAR_DISTRIBUTION_BUILD image; refusing public package"
+        )
+
+
 def create_package(firmware: bytes, build_id: str) -> bytes:
     validate_firmware(firmware)
     encoded_build_id = build_id.encode("ascii")
@@ -177,13 +187,34 @@ def validate_package(package: bytes) -> str:
     return build_id
 
 
+def validate_distribution_package(package: bytes) -> str:
+    build_id = validate_package(package)
+    validate_distribution_firmware(package[HEADER_SIZE:])
+    return build_id
+
+
 def write_package(
     firmware_path: Path, build_info_path: Path, output_path: Path
 ) -> tuple[int, str]:
+    """Low-level package writer retained for package-format tests and tooling."""
     firmware = firmware_path.read_bytes()
     build_id = read_build_id(build_info_path)
     package = create_package(firmware, build_id)
     validate_package(package)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(package)
+    return len(package), hashlib.sha256(package).hexdigest()
+
+
+def write_distribution_package(
+    firmware_path: Path, build_info_path: Path, output_path: Path
+) -> tuple[int, str]:
+    """Write a public package only from a provenance-marked distribution image."""
+    firmware = firmware_path.read_bytes()
+    validate_distribution_firmware(firmware)
+    build_id = read_build_id(build_info_path)
+    package = create_package(firmware, build_id)
+    validate_distribution_package(package)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(package)
     return len(package), hashlib.sha256(package).hexdigest()
@@ -237,6 +268,7 @@ def write_release_assets(
 ) -> tuple[Path, Path, PackageMetadata]:
     identity = read_build_identity(build_info_path)
     package = package_path.read_bytes()
+    validate_distribution_package(package)
     metadata = package_metadata(package)
     if metadata.build_id != identity.build_id:
         raise ValueError("package and build-info identities do not match")
@@ -252,19 +284,57 @@ def write_release_assets(
     return asset_path, manifest_path, metadata
 
 
+def _platformio_distribution_enabled(env) -> bool:
+    try:
+        raw_flags = env.get("BUILD_FLAGS", [])
+    except Exception:
+        raw_flags = []
+
+    if isinstance(raw_flags, str):
+        raw_items = [raw_flags]
+    else:
+        try:
+            raw_items = list(raw_flags)
+        except TypeError:
+            raw_items = [raw_flags]
+
+    tokens: list[str] = []
+    for item in raw_items:
+        tokens.extend(str(item).split())
+
+    # Fallback for lightweight/fake SCons environments that expose only subst().
+    if not tokens:
+        try:
+            tokens.extend(str(env.subst("$BUILD_FLAGS")).split())
+        except Exception:
+            pass
+
+    accepted = {
+        f"-D{DISTRIBUTION_BUILD_FLAG}",
+        f"-D{DISTRIBUTION_BUILD_FLAG}=1",
+    }
+    return any(token.strip("'\",[]") in accepted for token in tokens)
+
+
 def _platformio_post_action(source, target, env) -> None:
+    if not _platformio_distribution_enabled(env):
+        raise RuntimeError(
+            "Public Radar OTA packaging requires RADAR_DISTRIBUTION_BUILD; "
+            "private build refused"
+        )
+
     firmware_path = Path(target[0].get_abspath())
     project_dir = Path(env.subst("$PROJECT_DIR"))
     build_info_path = project_dir / "include" / "build_info.h"
     output_path = firmware_path.with_suffix(".radarota")
-    package_size, package_sha = write_package(
+    package_size, package_sha = write_distribution_package(
         firmware_path, build_info_path, output_path
     )
     asset_path, manifest_path, _ = write_release_assets(
         output_path, build_info_path, project_dir / "release"
     )
     print(
-        f"Radar OTA package: {output_path} "
+        f"Radar distribution OTA package: {output_path} "
         f"({package_size} bytes, SHA256 {package_sha})"
     )
     print(f"Versioned browser/GitHub OTA package: {asset_path}")
@@ -282,7 +352,9 @@ def main() -> int:
         help="also write the versioned GitHub Release package and manifest",
     )
     args = parser.parse_args()
-    size, digest = write_package(args.firmware, args.build_info, args.output)
+    size, digest = write_distribution_package(
+        args.firmware, args.build_info, args.output
+    )
     print(f"{args.output}: {size} bytes, SHA256 {digest}")
     if args.release_dir:
         asset, manifest, _ = write_release_assets(
