@@ -25,11 +25,11 @@ __pycache__/
 /tools/.airport-data-cache/
 
 # Generated persistent regional airport package (user/location-specific data)
-/release/airports.radarapt
+/airports.radarapt
 
 # Interrupted atomic airport-output replacements
-/release/.airports.radarapt.*.tmp
-/release/.airports.radarapt.*.restore
+/.airports.radarapt.*.tmp
+/.airports.radarapt.*.restore
 
 # Delivery-only files from replacement ZIP packages
 /COMMIT_MESSAGE.txt

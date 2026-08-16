@@ -318,7 +318,7 @@ def main() -> None:
     parser.add_argument("airports_csv", type=Path)
     parser.add_argument("--runways-csv", type=Path)
     parser.add_argument(
-        "--output", type=Path, default=Path("release/airports.radarapt"),
+        "--output", type=Path, default=Path("airports.radarapt"),
         help="persistent airport package output (.radarapt)",
     )
     parser.add_argument("--latitude", type=float, required=True)

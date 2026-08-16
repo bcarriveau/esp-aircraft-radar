@@ -4,7 +4,7 @@ cd /d "%~dp0\.."
 
 echo Starting Bill's Aircraft Radar regional airport package builder...
 echo.
-echo This creates release\airports.radarapt for the radar web uploader.
+echo This creates airports.radarapt in the project root for the radar web uploader.
 echo It does not rebuild firmware or change the radar's saved location.
 echo.
 

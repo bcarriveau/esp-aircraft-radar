@@ -37,6 +37,10 @@ advance repository HEAD without creating a new firmware Product.
 
 ### Tooling correction
 
+- Moved the generated PC/developer `airports.radarapt` output from `release/` to the
+  project root. The package is location-specific private/user data, while `release/`
+  is reserved for public firmware/update/factory artifacts. The root package and its
+  atomic temporary siblings remain Git-ignored.
 - Fixed the guided PC airport package builder after the persistent-only airport cleanup.
   `airport_package.parse_package()` returns `(PackageInfo, records)`, but the setup
   wrapper still treated the result as an object with `.header` and `.records`.

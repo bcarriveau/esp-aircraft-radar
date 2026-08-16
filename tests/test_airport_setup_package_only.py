@@ -48,7 +48,7 @@ def verify_written_package_api() -> None:
 
 
 def main() -> None:
-    require(SETUP, 'root / "release" / "airports.radarapt"')
+    require(SETUP, 'root / "airports.radarapt"')
     require(SETUP, "build_binary_package(")
     require(SETUP, "write_package_atomic(")
     require(SETUP, "parse_package(")
@@ -56,6 +56,7 @@ def main() -> None:
     require(SETUP, "test_airport_package.py")
     require(SETUP, "test_airport_generator.py")
     require(SETUP, "does NOT rebuild firmware")
+    assert 'root / "release" / "airports.radarapt"' not in SETUP
     require(SETUP, "does NOT change the radar's saved")
     require(SETUP, "does not store the center/home coordinates")
     require(BAT, r"release\airports.radarapt")

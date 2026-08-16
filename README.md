@@ -265,7 +265,7 @@ or run:
 python tools/airport_database_setup.py
 ```
 
-Both produce `release\airports.radarapt`; they do **not** rebuild firmware and do
+Both produce `airports.radarapt`; they do **not** rebuild firmware and do
 **not** change the location saved on the radar. Install the generated package from
 the Airport Database page's existing-package installer.
 

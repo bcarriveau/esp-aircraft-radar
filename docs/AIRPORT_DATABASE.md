@@ -173,11 +173,15 @@ or:
 python tools/airport_database_setup.py
 ```
 
-This tooling creates:
+This tooling creates a location-specific package directly in the project root:
 
 ```text
-release\airports.radarapt
+airports.radarapt
 ```
+
+The root location keeps private/developer regional data separate from `release/`,
+which is reserved for public firmware/update/factory artifacts. The file is ignored
+by Git and must not be committed as a generic project asset.
 
 It does **not** rebuild firmware and does **not** change the location saved on the
 radar. The generated package is installed separately into persistent airport flash.
@@ -188,7 +192,7 @@ coverage radius, and region label, validates the generated package by parsing it
 and writes only:
 
 ```text
-release\airports.radarapt
+airports.radarapt
 ```
 
 The lower-level generator remains available for tests, automation, and developer
@@ -203,7 +207,7 @@ python tools/generate_airport_database.py airports.csv \
   --coverage "YOUR REGION"
 ```
 
-Its default output is also `release/airports.radarapt`. Use `--output` only when a
+Its default output is also `airports.radarapt`. Use `--output` only when a
 different package path is intentionally needed. The lower-level generator does not
 download the CSV files and does not flash the radar.
 
@@ -310,7 +314,7 @@ manual installer for diagnosis and capture the radar serial output.
 The persistent airport package is missing, unavailable, or failed validation.
 
 Open the Airport Database page and build/install a regional package, or generate
-`release\airports.radarapt` with the PC-side builder and install it from the
+`airports.radarapt` with the PC-side builder and install it from the
 **Advanced** existing-package section. Product 97 has no compiled regional airport
 fallback; both private and distribution firmware require the same persistent package.
 

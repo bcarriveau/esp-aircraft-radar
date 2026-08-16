@@ -3,7 +3,7 @@
 
 This tool is intentionally PC-side. It downloads/reads the public OurAirports
 CSV data, filters a bounded regional dataset around coordinates supplied by the
-user, and writes only ``release/airports.radarapt``.
+user, and writes only ``airports.radarapt`` in the project root.
 
 It does not modify firmware, the compiled fallback airport header, radar NVS
 settings, or the user's saved radar location.
@@ -266,12 +266,12 @@ def main() -> int:
         "to select this region."
     )
 
-    confirm = input("\nCreate release\\airports.radarapt? [y/N]: ").strip().lower()
+    confirm = input("\nCreate airports.radarapt in the project root? [y/N]: ").strip().lower()
     if confirm not in {"y", "yes"}:
         print("No files were changed.")
         return 0
 
-    package_output = root / "release" / "airports.radarapt"
+    package_output = root / "airports.radarapt"
     package_output.parent.mkdir(parents=True, exist_ok=True)
     previous = package_output.read_bytes() if package_output.exists() else None
 
