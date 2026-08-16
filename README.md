@@ -1,480 +1,800 @@
-# Bill's Aircraft Radar
+# ESP AIRCRAFT RADAR
 
-A dedicated 7-inch ESP32-S3 ADS-B aircraft radar display built with PlatformIO,
-Arduino C++, and LVGL.
+A dedicated 7-inch ESP32-S3 ADS-B aircraft radar display built for the
+**Waveshare ESP32-S3-Touch-LCD-7**.
 
-This repository targets one exact device:
+The radar shows nearby aircraft on a touch-screen 20 / 40 / 80 mile
+display, supports stable aircraft selection and tracking, shows nearby
+airports from an offline regional database, and includes local web tools
+for firmware and airport-database maintenance.
 
-- **Board:** Waveshare ESP32-S3-Touch-LCD-7
-- **Display:** 7-inch 800x480 RGB LCD with ST7262 controller
-- **Touch:** GT911 capacitive touchscreen
-- **I/O expander:** CH422G
-- **Processor:** ESP32-S3
-- **Memory:** OPI PSRAM with XIP enabled
-- **Framework:** Arduino-ESP32 3.0.7 high-performance build
-- **UI:** LVGL 8.3.11
+This repository targets one exact hardware platform. It is **not** a
+generic ESP32 display project.
 
-It is not compatible with Waveshare 7B/7C, ESP32-P4, generic 7-inch panels,
-Cheap Yellow Display hardware, ESPHome, or e-paper projects.
+## Hardware
 
-## Current status
+Required hardware:
 
-Current development/source branch for the completed airport-separation work:
+-   **Board:** Waveshare ESP32-S3-Touch-LCD-7
+-   **Display:** 7-inch 800x480 RGB LCD with ST7262 controller
+-   **Touch:** GT911 capacitive touchscreen
+-   **I/O expander:** CH422G
+-   **Processor:** ESP32-S3
+-   **Flash:** 16 MB
+-   **Memory:** OPI PSRAM
+-   **USB:** data-capable USB connection for the initial factory install
+    or recovery
+-   **Network:** 2.4 GHz Wi-Fi with Internet access for live ADS-B data
 
-```text
-airport-seperation
+Firmware stack:
+
+-   PlatformIO
+-   Arduino C++
+-   Arduino-ESP32 3.0.7 high-performance build
+-   LVGL 8.3.11
+
+Do not use this firmware on Waveshare 7B/7C boards, ESP32-P4 boards,
+Cheap Yellow Displays, generic 7-inch panels, ESPHome hardware, or
+e-paper displays.
+
+## Getting Started / First Setup
+
+A new radar has two different stages:
+
+1.  **Put the complete factory software on the blank device.**
+2.  **Configure that device for its owner.**
+
+After that, normal firmware updates use a separate, non-destructive
+update path.
+
+> **Important:** A factory install and a normal firmware update are not
+> the same thing.
+>
+> **Factory install = full 16 MB flash erase.** It removes saved Wi-Fi,
+> location, MQTT/Home Assistant settings, airport data, OTA state, and
+> all other owner-specific flash state.
+>
+> **Normal public firmware update = application update.** It is designed
+> to preserve owner settings in NVS and the separately stored airport
+> database.
+>
+> Do **not** use the factory installer for routine updates.
+
+### What a new owner needs
+
+For the normal owner workflow:
+
+-   the correct Waveshare ESP32-S3-Touch-LCD-7
+-   a data-capable USB cable
+-   a computer with current Chrome or Edge for the first factory
+    installation
+-   Internet access while using the browser factory installer
+-   a 2.4 GHz Wi-Fi network for the radar
+-   a phone or computer on the same local network for the radar's
+    maintenance web pages
+
+A normal owner does **not** need to understand ESP32 partitions, OTA
+slots, NVS, or flash addresses.
+
+A normal owner also does **not** need Python or PlatformIO to generate
+their regional airport database.
+
+## Factory Installation
+
+Use a factory install only for:
+
+-   a brand-new/blank radar
+-   recovery from unknown or corrupt flash contents
+-   a deliberate complete reset to new-owner state
+-   a firmware transition that specifically requires a full factory
+    reinstall
+
+### Factory install warning
+
+The factory installer deliberately erases the **entire 16 MB flash
+chip** before installing the verified distribution image.
+
+That destroys:
+
+-   saved Wi-Fi credentials
+-   saved home latitude/longitude
+-   MQTT/Home Assistant settings
+-   the installed regional airport database
+-   OTA state
+-   all other owner-specific flash values
+
+If the radar is already working and you only want a newer firmware
+version, see **Normal Firmware Updates** instead.
+
+### Preferred browser factory installer
+
+Public factory bundles contain an owner-facing file:
+
+``` text
+INSTALL_RADAR.html
 ```
 
-Current committed Product:
+The generated factory bundle also contains the verified firmware images
+and manifest needed by that page.
 
-```text
-Product 94
-7IN-20260814-PRODUCT94-FACTORY-DISTRIBUTION
+For a local/extracted factory bundle:
+
+1.  Extract the complete factory bundle to a folder.
+2.  Open `INSTALL_RADAR.html` in a current Chrome or Edge browser.
+3.  When the page asks for the bundle folder, choose the same extracted
+    factory folder.
+4.  Connect the radar to the computer with a data-capable USB cable.
+5.  Follow the browser's connection prompt.
+6.  Read the destructive-install warning carefully.
+7.  Confirm the warning only if you really intend to erase the device.
+8.  Allow the installer to verify the package and connected hardware.
+9.  Keep USB power connected until flashing and verification finish and
+    the radar restarts.
+
+The browser installer verifies the factory manifest, hardware identity,
+expected four-image flash layout, file sizes, SHA-256 hashes, the
+distribution-build marker, build identity, ESP32-S3 chip identity, and
+16 MB flash size before it performs the full erase.
+
+The owner must explicitly acknowledge the destructive warning and type:
+
+``` text
+ERASE RADAR
 ```
 
-The Product marker is the durable firmware identity. Repository HEAD naturally
-advances for documentation and housekeeping commits, so README does not pin a
-"current commit" SHA.
+The generated browser installer uses the pinned Espressif `esptool-js`
+dependency over HTTPS. Opening the local installer therefore still
+requires Internet access for that dependency.
 
-Product 94 adds a separate credential-safe factory/distribution build for blank/new-owner
-hardware while preserving the normal private development build. The factory build uses neutral
-Wi-Fi/location/MQTT defaults and contains no compiled regional airport fallback; the owner
-installs a regional airport database after setup.
+### Offline/developer recovery installer
 
-After the local maintenance window is armed and the six-digit code is accepted,
-the Airport Database page can prefill the radar's already-saved home coordinates,
-download public OurAirports data in the user's browser, build a bounded regional
-`.radarapt` package locally, upload it through the validated persistent-storage
-installer, and restart automatically only after write/readback verification succeeds.
+The same factory bundle also contains:
 
-The permanent hardened rollback baseline remains:
-
-```text
-product-15-hardened
-7IN-20260721-PRODUCT15-HARDENED
+``` text
+FLASH_RADAR_FACTORY.ps1
 ```
 
-## Core features
+This is the offline/developer recovery path. It uses the same manifest
+and verified factory images as the browser installer, but it requires a
+suitable Python/esptool environment and serial-port access.
 
-### Live radar
+Most owners should use `INSTALL_RADAR.html`.
 
-- Displays retained ADS-B aircraft on 20, 40, and 80 mile radar ranges.
-- Uses heading-aware aircraft symbols at all three ranges.
-- Uses stable ICAO hex for selection, tracking, row actions, and profile identity.
-- Selected aircraft are amber; tracked aircraft are red.
-- Tracked tags show `TRACKED`, identifier, and MPH.
-- Outward auto-zoom keeps a tracked aircraft visible as it approaches the edge.
-- Hit-test priority remains tracked, selected, then closest.
-- Uses one coherent aircraft snapshot per radar update.
-- Uses version/dirty-region updates rather than rebuilding the whole LVGL UI.
-- Retains last-good aircraft through temporary transport failures.
+For deeper factory-install details, see `docs/FACTORY_INSTALL.md`.
 
-### Radar interaction
+## What Happens on First Boot
 
-Idle:
+A public factory/distribution image contains neutral owner defaults. It
+does not contain the developer's private Wi-Fi, location, or MQTT
+credentials.
 
-- Left side shows count, nearest aircraft, and data status.
-- Right side shows nearest aircraft.
-- Radar `20 / 40 / 80` is the range control, and the last manual choice is restored after restart.
+A true factory-installed device starts with:
 
-Selected:
+-   blank Wi-Fi SSID
+-   blank Wi-Fi password
+-   neutral `0,0` location
+-   MQTT disabled with no private broker/user/password
+-   no owner-specific regional airport database
 
-- Selected details take right-panel priority.
-- `INFO / TRACK / CLEAR` are the primary actions.
-- Nearby rows are ranked relative to the selected aircraft.
+The radar then requires normal owner setup.
 
-Tracked:
+### Initial Wi-Fi and location setup
 
-- `STOP TRACK` has right-panel priority.
-- Nearby rows are ranked relative to the tracked aircraft.
-- Tracking uses stable ICAO identity and a confirmed-miss grace period.
-- Failed requests and stale discarded responses do not falsely advance track loss.
+On the radar, use the normal setup/System interface to enter:
 
-### Aircraft profiles and pages
+1.  the owner's 2.4 GHz Wi-Fi network name
+2.  the owner's Wi-Fi password
+3.  the radar's actual home latitude
+4.  the radar's actual home longitude
+5.  any other optional owner settings that are appropriate
 
-- Aircraft Profile remains tied to stable ICAO and can update while open.
-- Tracks preserves scroll during live refresh but returns to top when re-entered.
-- Airspace provides totals, category cards, shared range, and live shortcuts.
-- Airports provides directory/profile views, per-category display settings,
-  `AUTO / SHOW / HIDE`, label-eye indicators, and `SHOW ON RADAR`.
-- System provides build, memory, networking, radar, airport, MQTT, update, and
-  settings diagnostics.
-- Optional Home Assistant MQTT discovery and controls remain isolated from ADS-B
-  network ownership.
+Save the settings and allow the radar to connect.
 
-## Airport architecture
+The saved latitude/longitude becomes the radar center used for aircraft
+distance/bearing and the nearby-airport cache.
 
-Airport data is now deliberately separated from per-user firmware configuration.
+The owner's location is runtime configuration. A normal owner does
+**not** need a custom firmware build for their location.
 
-### Runtime sources
+## Airport Database Setup
 
-The radar can use one of two airport sources:
+Aircraft data and airport data are separate:
 
-1. **Persistent regional package** — the normal Product 92 end-user source.
-2. **Compiled fallback table** — retained in firmware as a known-good fallback if
-   the persistent airport partition is empty, unavailable, or invalid.
+-   **Aircraft** are received live over the network.
+-   **Airport data** is stored offline in a dedicated persistent flash
+    partition.
 
-The compiled fallback is intentional and should not be removed merely because
-persistent storage exists.
+The normal airport setup is performed in the user's browser after Wi-Fi
+and the home location have been saved.
 
-### Persistent storage
+### Install airports for the owner's region
 
-The custom 16 MB partition table preserves the two OTA application slots and
-reserves a dedicated 512 KiB airport-data partition.
+1.  On the radar, open **System**.
+2.  Arm/enable the local firmware/maintenance window.
+3.  The radar displays the local web address and a six-digit access
+    code.
+4.  On a phone or computer connected to the same local network, open the
+    displayed address.
+5.  Open **AIRPORT DATABASE**.
+6.  Enter the six-digit code shown on the radar.
+7.  After authentication, the page prefills the radar's saved home
+    coordinates when they are valid.
+8.  Review the center and coverage radius. **120 miles** is the
+    recommended default.
+9.  Select **BUILD & INSTALL AIRPORT DATABASE**.
+10. Keep the radar powered while the package is generated, uploaded,
+    verified, written, and read back.
 
-The persistent package format is `.radarapt`. The installer:
+The browser downloads the public OurAirports airport and runway CSV
+datasets, filters them locally around the requested region, builds a
+bounded `.radarapt` package, and uploads that package to the radar.
 
-- accepts a complete bounded package from PSRAM
-- verifies package structure and exact record sizing
-- verifies SHA-256 before destructive work
-- enforces the dedicated partition capacity
-- erases only the aligned span required by the package
-- writes only the airport partition
-- re-reads and fully validates the stored copy
-- reports success only after readback verification
+The ESP32 does **not** download and parse the worldwide CSV files
+itself.
 
-NVS settings, both firmware OTA slots, ADS-B storage, LVGL memory, and radar target
-capacity are separate from the airport partition.
+The radar validates the complete package before changing airport flash
+storage, writes only the dedicated airport partition, reads the stored
+package back, validates it again, and restarts after a successful
+install.
 
-### Normal new-user airport setup
+### If the radar moves
 
-A normal user does not need Python or a custom firmware build for their location.
+Changing the saved home latitude/longitude changes the radar center. It
+does not rewrite the installed airport package.
 
-1. Flash/install the Product firmware.
-2. Save normal home latitude/longitude on the radar's System page.
-3. Arm the local firmware/maintenance window.
-4. Open the radar web page from a phone or computer on the same network.
-5. Open **AIRPORT DATABASE**.
-6. Enter the radar's six-digit access code.
-7. The browser prefills the currently saved radar coordinates when valid.
-8. Review the center and coverage radius; 120 miles is the recommended default.
-9. Tap **BUILD & INSTALL AIRPORT DATABASE**.
+If the new location is still covered by the installed regional package,
+changing the saved location may be all that is needed.
 
-The browser downloads the current public OurAirports airport/runway CSV datasets,
-filters them locally, creates the exact bounded `.radarapt` package, and uploads it
-to the ESP.
+If the radar moves outside the installed region, use **AIRPORT
+DATABASE** again to build and install a new regional package. No
+firmware rebuild is required.
 
-The ESP does not parse the worldwide CSV files.
+See `docs/AIRPORT_DATABASE.md` for the full airport workflow and
+advanced PC-side tools.
 
-After a verified install, Product 92 uses the established hardened restart path so
-the new persistent airport source becomes active automatically on the next boot.
+## How to Reach the Radar's Web Pages
 
-### Moving the radar
+The maintenance web server is not left open during normal operation.
 
-Changing the radar's saved latitude/longitude changes the current aircraft/radar
-center and rebuilds the nearby airport cache.
+To use local maintenance pages:
 
-It does not rewrite the regional airport package.
+1.  Put the radar and the phone/computer on the same local network.
+2.  Open **System** on the radar.
+3.  Arm the local firmware/maintenance window.
+4.  Note the web address and six-digit access code shown by the radar.
+5.  Open the displayed address in a browser.
+6.  Enter the code when requested.
 
-A nearby move still covered by the installed package generally needs only the
-System-page coordinate change. A move outside the installed region should use the
-Airport Database browser page to build/install another region. No firmware rebuild
-is required.
+The maintenance site provides the owner-facing firmware update and
+Airport Database workflows.
 
-### Developer airport tooling
+The bounded maintenance window and access code are intentional security
+boundaries. Do not treat the maintenance web server as a permanently
+open administration page.
 
-The PC/Python builder remains intentionally checked in as a reference, recovery,
-and regression tool:
+## Normal Firmware Updates
 
-```text
-tools\Build Airport Database.bat
-python tools/airport_database_setup.py
-python tools/generate_airport_database.py ...
+Once the device has been factory-installed and configured, routine
+firmware updates should use the normal public update path.
+
+**Do not factory-erase the radar for a routine update.**
+
+A normal public update:
+
+-   uses the project's validated `.radarota` application package
+-   writes the inactive OTA application slot
+-   verifies the package/image before selecting it for boot
+-   does not intentionally erase NVS
+-   does not intentionally erase the dedicated airport partition
+-   therefore preserves the owner's Wi-Fi/location and installed
+    regional airport database
+
+### Update from the radar
+
+The radar can check the repository's stable release metadata. When a
+newer compatible release is available, the Software Update interface can
+show the validated release notes under **WHAT'S NEW** and, after
+explicit user confirmation, download and install the compatible release.
+
+Firmware is not silently installed just because a release exists.
+
+### Upload a local `.radarota` package
+
+For a compatible package obtained separately:
+
+1.  Open **System** on the radar.
+2.  Arm Firmware / OTA maintenance.
+3.  Open the displayed local web address.
+4.  Enter the six-digit code.
+5.  Open the firmware update page.
+6.  Select the intended `.radarota` package.
+7.  Start the update.
+8.  Keep the radar powered through verification and restart.
+
+The updater accepts the project's validated package format rather than
+treating an arbitrary firmware binary as a routine owner update.
+
+## Recovery / Reinstall
+
+Use the destructive factory path when the normal update path is not
+appropriate, such as:
+
+-   a blank board
+-   corrupted or unknown flash contents
+-   recovery where the normal firmware updater cannot be reached
+-   an intentional complete owner-data reset
+
+Recovery uses the factory bundle described in **Factory Installation**.
+
+Remember that recovery by full factory install removes the owner's saved
+settings and airport database. After recovery, repeat Wi-Fi/location
+setup and install the regional airport database again.
+
+A normal PlatformIO upload of the distribution environment is **not**
+equivalent to a clean factory reset because it does not issue a
+whole-chip erase.
+
+## The Three Software Paths
+
+These paths are intentionally separate.
+
+  ----------------------------------------------------------------------------------
+  Path           Intended user  What it does        Owner settings  Publicly
+                                                    / airports      distributable?
+  -------------- -------------- ------------------- --------------- ----------------
+  **Factory      New owner or   Verifies            **Destroyed**   Yes, using the
+  install**      recovery       hardware/package,                   verified factory
+                                erases the complete                 bundle
+                                16 MB flash, then                   
+                                installs                            
+                                bootloader,                         
+                                partition table,                    
+                                boot app, and                       
+                                distribution                        
+                                firmware                            
+
+  **Public       Existing owner Installs a          **Preserved by  Yes
+  firmware                      validated           design**        
+  update**                      `.radarota`                         
+                                application update                  
+                                through the OTA                     
+                                path                                
+
+  **Private      Developer only Builds/flashes the  Normally        **No**
+  development                   normal development  preserved by    
+  build**                       environment and may ordinary        
+                                use ignored private upload, but     
+                                defaults            this is **not** 
+                                                    a public        
+                                                    release path    
+  ----------------------------------------------------------------------------------
+
+### 1. Factory install --- destructive provisioning/recovery
+
+Use the generated factory bundle and `INSTALL_RADAR.html` for a true
+clean installation.
+
+This is the only path in this table that deliberately performs a
+complete flash erase.
+
+### 2. Public firmware update --- normal owner update
+
+Public OTA packages are generated from the credential-safe distribution
+environment. They contain no private `include/config.h` data.
+
+This is the routine update path after the radar has been set up.
+
+### 3. Private development build --- developer only
+
+The private development environment is:
+
+``` text
+waveshare-s3-touch-lcd-7
 ```
 
-It can generate:
+It may use:
 
-```text
-release\airports.radarapt
+``` text
+include/config.h
 ```
 
-without changing firmware or the radar's saved location. The Python package code
-also serves as the reference implementation used to validate browser-generated
-package bytes.
+That file is intentionally ignored by Git and may contain developer-only
+defaults.
 
-See `docs/AIRPORT_DATABASE.md` for the full workflow.
+**Never commit, upload, package, or distribute `include/config.h`.**
 
-## ADS-B networking and reliability
+A private build must never be substituted for a public release artifact.
 
-- Core-0 owns ADS-B fetch and Wi-Fi recovery.
-- ADS-B requests do not overlap.
-- Polling retains the fixed 15-second start-to-start cadence.
-- Native ESP-IDF HTTPS remains preferred.
-- Hardened verified fallback remains restricted to eligible transport failures.
-- No blocking `HTTPClient::GET()` is used.
-- No `setInsecure()` TLS path is permitted.
-- Header, body, idle, and absolute budgets remain bounded.
-- Response payload and JSON parsing use PSRAM-first/PSRAM-only policy where designed.
-- Conflicting or ambiguous HTTP framing is rejected.
-- Stale generation results cannot overwrite newer range/location state.
-- Fully successful stale responses still count as transport successes.
-- Wi-Fi/TLS recovery and last-good aircraft retention remain intact.
+The private build has a guarded developer convenience: after a true
+factory boot, if the complete neutral owner tuple is still unchanged, a
+private build can seed private Wi-Fi/password/location and the private
+MQTT enabled default from `include/config.h`. That reseed behavior is
+compiled out of public distribution builds and does not run after the
+owner has changed any of the neutral owner values.
 
-## Memory and display protections
+## Development Setup
 
-The project intentionally retains:
+This section is for developers who want to build the project from
+source. It is not required for an owner using a prepared factory bundle
+and later public OTA updates.
 
-- Arduino-ESP32 3.0.7 high-performance XIP/PSRAM
-- OPI PSRAM and `BOARD_HAS_PSRAM`
-- Waveshare panel timing
-- DMA/anti-rolling behavior
-- 20-scanline RGB bounce buffer
-- 128 KiB LVGL pool
-- measured 12 KiB core-0 ADS-B task stack
-- bounded 200-target PSRAM architecture
-
-Do not casually change framework, panel timing, DMA, bounce buffer, target capacity,
-or memory ownership while working on unrelated features.
-
-## Firmware updates
-
-### Local browser firmware update
-
-The local HTTP updater is disabled during normal operation and is armed from System
-for a bounded maintenance window.
-
-The on-device Software Update panel shows the installed Product/build and, when a newer release is available, labels the validated manifest release notes as **WHAT'S NEW**.
-
-The user receives a six-digit code. The firmware page accepts only the project's
-validated `.radarota` package format, performs bounded handoff/retry behavior for
-the single-client WebServer, verifies the image/package before selecting the inactive
-OTA slot, and uses the hardened restart sequence.
-
-### GitHub stable-release update
-
-The radar can check the repository's stable release metadata and, after explicit
-user confirmation, download/install a newer compatible GitHub release through the
-bounded verified installer.
-
-Firmware is not silently installed merely because files exist in `release/`.
-
-## Active `release/` policy
-
-The active branch keeps only the current Product-numbered `.radarota` package and
-its matching fixed-name manifest in `release/`.
-
-For Product 92 that means:
-
-```text
-release/waveshare-esp32-s3-touch-lcd-7-product-92.radarota
-release/waveshare-esp32-s3-touch-lcd-7.manifest.json
-```
-
-There is no redundant tracked `release/firmware.radarota` copy. The ESP's local
-browser updater accepts the Product-numbered package directly.
-
-Older Product packages remain available from the Git history/tag/release that
-belongs to that Product instead of accumulating in the current working tree.
-
-A PlatformIO build may create a temporary `firmware.radarota` under `.pio/build/`;
-that temporary build output is not a tracked release asset and is not authoritative
-until the versioned package/manifest have been generated for the intended Product.
-
-## Repository layout
-
-```text
-assets/                 Aircraft and UI artwork
-docs/                   Repository/user guides
-home-assistant/          MQTT dashboard/support files
-include/                 Interfaces, build identity, generated fallback data
-partitions/              Custom partition table including persistent airport storage
-release/                 Current Product OTA package and matching manifest
-scripts/                 OTA/release post-build tooling
-src/                     Firmware implementation
-tests/                   Focused host/source regression tests
-tools/                   Airport/aircraft generation and developer tooling
-platformio.ini           Pinned PlatformIO environment
-README.md                Current project documentation
-CHANGELOG.md             Confirmed Product history
-```
-
-Private credentials belong only in `include/config.h`. That file must remain ignored
-and must never be committed, uploaded, or included in distribution ZIPs.
-
-## Initial setup
-
-### 1. Tools
+### Tools
 
 Install:
 
-- Visual Studio Code
-- PlatformIO
-- Git
-- Python 3 for host/developer tooling
+-   Visual Studio Code
+-   PlatformIO
+-   Git
+-   Python 3 for repository tooling and tests
 
-### 2. Clone
+### Clone the repository
 
-```bash
+``` bash
 git clone https://github.com/bcarriveau/esp-aircraft-radar.git
 cd esp-aircraft-radar
 ```
 
-Use the intended branch for the work being tested.
+Before developing, confirm that the branch above is still the intended
+branch for the work being performed.
 
-### 3. Private configuration
+### Private configuration
 
-Copy:
+For a private development build, create the ignored private
+configuration from the example:
 
-```bash
+``` bash
 cp include/config.example.h include/config.h
 ```
 
-Keep credentials/private defaults in `include/config.h` only. Never commit it.
+On Windows, copy the file using Explorer, PowerShell, or another normal
+file-copy method if the shell command above is not available.
 
-Normal users can later edit Wi-Fi, home coordinates, and display name through the
-radar's System page.
+Keep all private Wi-Fi/location/MQTT defaults in `include/config.h`.
 
-### 4. First USB flash and partition-table requirement
+Never commit or distribute that file.
 
-The persistent airport architecture introduced a custom partition table. A device
-coming from a pre-separation layout needs one appropriate USB/PlatformIO flash that
-installs the intended partition table.
-
-Ordinary later firmware OTA updates do not intentionally erase NVS or the dedicated
-airport partition.
-
-### 5. Build
+### Private development build
 
 PlatformIO environment:
 
-```text
+``` text
 waveshare-s3-touch-lcd-7
 ```
 
 Build:
 
-```bash
+``` bash
 pio run -e waveshare-s3-touch-lcd-7
 ```
 
-The project pins the established Arduino-ESP32 3.0.7 high-performance stack and
-LVGL 8.3.11.
+This environment is for development. It does not generate the public
+release/factory artifacts.
 
-### 6. Install regional airports
+### Public distribution build
 
-After firmware is running, use the browser Airport Database workflow described
-above. Do not rebuild firmware simply to customize the normal user's region.
+PlatformIO environment:
 
-### 7. Local browser firmware update
+``` text
+waveshare-s3-touch-lcd-7-factory
+```
 
-1. Build the exact intended source.
-2. Use the newly generated local `.radarota`.
-3. Open System and arm Firmware / OTA.
-4. Open the displayed address.
-5. Enter the six-digit code.
-6. Upload the newly generated package.
-7. Keep power connected through verification/restart.
+Build:
 
-### 8. GitHub release publishing
-
-Before publishing a stable release:
-
-1. Build the exact intended Product source.
-2. Confirm the Product marker.
-3. Run relevant focused tests.
-4. Perform required physical regression tests.
-5. Publish the matching tag/release.
-6. Attach only the matching generated versioned `.radarota` and manifest expected
-   by the updater.
-
-Use the current Product-numbered package generated from the exact intended source;
-older packages belong to their historical Git commit/tag/release.
-
-## Expected Product 94 checks
-
-For Product 94, confirm:
-
-- build marker `7IN-20260814-PRODUCT94-FACTORY-DISTRIBUTION`
-- factory build uses the neutral distribution config and no compiled regional airport fallback
-- select 20, 40, and 80 miles and confirm the last manual choice survives restart
-- confirm an invalid/missing saved range safely defaults to 80 miles
-- when a newer release is available, confirm its validated manifest note appears under WHAT'S NEW
-- OPI PSRAM detected
-- 20-scanline display bounce buffer retained
-- core-0 ADS-B task and 15-second cadence retained
-- native/fallback HTTPS remains stable
-- persistent airport source is reported after successful browser install
-- compiled fallback is used safely when no valid persistent package exists
-- six-digit Airport Database page access works
-- saved coordinates prefill only after authenticated status succeeds
-- browser package generation succeeds from phone/PC
-- airport upload uses READY/settle pacing without connection reset
-- verified airport install restarts automatically
-- new boot reports persistent airport records
-- selection/tracking, 20/40/80, touch, page switching, and display stability remain
-  normal
-- heap/PSRAM remain stable through airport generation/upload/restart
-
-## Major milestones
-
-- **Product 15:** Hardened modular rollback baseline.
-- **Products 16-18:** Native HTTPS/certificate baseline.
-- **Products 19-29:** Tracking, range, themed tags, stable ICAO interaction, and UI
-  state hardening.
-- **Products 30-34:** 200-target PSRAM architecture, aircraft imagery, Airspace, and
-  confirmed track-loss recovery.
-- **Products 35-49:** Classification safety, bitmap contacts, HTTPS fallback hardening,
-  NVS/recovery fixes, vertical-state display, Tracks fixes, and label hit testing.
-- **Products 50-53:** Offline airport rendering, directory/profile, controls, and
-  collision-aware labels.
-- **Products 54-61:** Hardware-bound local OTA, MQTT, airport tooling, exclusive
-  maintenance ownership, restart hardening, and socket pacing.
-- **Products 62-69:** Airport directory completeness, PSRAM parsing, diagnostics,
-  radar dirty-region rendering, and bounded ADS-B transport.
-- **Products 70-75:** GitHub stable-release checking/install and update UI/state.
-- **Products 76-85:** Relative neighbor rows, live profiles, page-entry scroll,
-  multi-range aircraft symbols, boot splash, Airspace handoff, keyboard visibility,
-  enlarged priority icon, and range-control clipping correction.
-- **Product 86:** Dedicated persistent airport partition with compiled fallback.
-- **Product 87:** Validated persistent `.radarapt` installer and readback verification.
-- **Product 88:** Mobile airport upload page on the existing maintenance WebServer.
-- **Product 89:** Browser-side regional airport package generation.
-- **Product 90:** Proven READY/settle WebServer upload pacing and safe retry rules.
-- **Product 91:** Automatic restart after verified airport install and clearer web
-  navigation.
-- **Product 92:** Authenticated prefill from the radar's saved home coordinates and
-  removal of location-specific examples.
-- **Product 93:** Clear on-device WHAT'S NEW release notes plus persisted last-used
-  20/40/80-mile radar range.
-
-Detailed confirmed history is maintained in `CHANGELOG.md`.
-
-## License and data source
-
-Repository licensing and third-party notices are maintained in `LICENSE`,
-`LICENSES/`, and `THIRD_PARTY_NOTICES.md`.
-
-Airport information is derived from public OurAirports datasets and is for visual
-awareness only, not navigation.
-
-ADS-B data availability and permitted use remain subject to the selected provider's
-terms and service availability.
-
-## Factory / new-owner build
-
-Use the dedicated environment when producing firmware for a blank unit:
-
-```text
+``` bash
 pio run -e waveshare-s3-touch-lcd-7-factory
 ```
 
-The factory environment deliberately places `include/distribution` before the
-normal private include directory and defines `RADAR_DISTRIBUTION_BUILD`.
+Despite the historical environment name, simply building or uploading
+this environment is **not** a factory reset.
 
-That build therefore:
+This environment is the credential-safe distribution build. It defines
+`RADAR_DISTRIBUTION_BUILD`, places `include/distribution` before the
+private include directory, and is the only environment allowed to
+generate public `.radarota`, manifest, and factory-bundle artifacts.
 
-- does **not** compile the private `include/config.h`
-- starts with blank Wi-Fi credentials and neutral `0,0` coordinates
-- starts with MQTT disabled and no broker/user/password
-- does **not** compile the generated regional airport fallback
-- uses the same 16 MB custom partition table, Arduino-ESP32 3.0.7,
-  OPI PSRAM/XIP settings, display timing, DMA, and 20-scanline bounce buffer
-- expects the owner to enter Wi-Fi/location on the System page and then install
-  a regional airport database from the Airport Database web page
+A successful distribution build runs the release generators for:
 
-The normal `waveshare-s3-touch-lcd-7` environment remains the private development
-build and continues to use `include/config.h`.
+-   the normal public OTA package/manifest
+-   the destructive factory-install bundle
 
-The factory environment intentionally disables the normal OTA post-build release
-copy so a factory test cannot overwrite the active private Product package in
-`release/`.
+The factory bundle is generated under:
+
+``` text
+release/factory/product-<version>/
+```
+
+and contains the verified flash images, manifest, browser installer, and
+recovery installer.
+
+For release-generation details, see `docs/GITHUB_RELEASES.md` and
+`docs/FACTORY_INSTALL.md`.
+
+## Features
+
+### Live radar
+
+-   20, 40, and 80 mile radar ranges
+-   heading-aware aircraft symbols
+-   stable ICAO-hex identity for selection and tracking
+-   amber selected aircraft
+-   red tracked aircraft
+-   tracked tag with `TRACKED`, identifier, and MPH
+-   outward auto-zoom to keep a tracked aircraft visible
+-   collision-aware labels
+-   coherent single-snapshot radar rendering
+-   last-good aircraft retention through temporary transport failures
+
+### Radar interaction
+
+Idle:
+
+-   left side shows aircraft count, nearest aircraft, and data status
+-   right side shows the nearest-aircraft list
+-   `20 / 40 / 80` is the radar range control
+
+Selected:
+
+-   selected-aircraft details take right-panel priority
+-   `INFO / TRACK / CLEAR` are the primary actions
+
+Tracked:
+
+-   `STOP TRACK` takes right-panel priority
+-   tracking remains tied to stable ICAO identity rather than an array
+    position
+
+### Aircraft and airport pages
+
+-   live Aircraft Profile
+-   Tracks page with live aircraft
+-   Airspace totals/categories and radar handoff
+-   Airports directory and profiles
+-   airport `AUTO / SHOW / HIDE` display controls
+-   `SHOW ON RADAR`
+-   System diagnostics and owner settings
+-   optional Home Assistant MQTT discovery/support
+
+## Architecture and Reliability Notes
+
+The project intentionally retains several hardware- and
+reliability-specific protections.
+
+### ADS-B networking
+
+-   Core 0 owns ADS-B fetch and Wi-Fi recovery
+-   ADS-B requests do not overlap
+-   fixed 15-second start-to-start polling cadence
+-   native ESP-IDF HTTPS is the preferred transport
+-   hardened verified HTTPS fallback is limited to eligible transport
+    failures
+-   no blocking `HTTPClient::GET()`
+-   no `setInsecure()` TLS path
+-   bounded header, body, idle, and absolute deadlines
+-   PSRAM-first/PSRAM-only response handling where designed
+-   rejection of conflicting or ambiguous HTTP framing
+-   stale generation results cannot overwrite newer range/location state
+-   last-good aircraft are retained through temporary failures
+
+### Display and memory
+
+-   Arduino-ESP32 3.0.7 high-performance XIP/PSRAM stack
+-   OPI PSRAM and `BOARD_HAS_PSRAM`
+-   Waveshare panel timing
+-   DMA/anti-rolling behavior
+-   20-scanline RGB bounce buffer
+-   128 KiB LVGL pool
+-   measured 12 KiB Core-0 ADS-B task stack
+-   bounded 200-target PSRAM architecture
+
+These are deliberate parts of the known-good design. Do not casually
+change framework versions, panel timing, DMA behavior, bounce-buffer
+configuration, target capacity, or memory ownership while working on
+unrelated features.
+
+### Airport storage
+
+The custom 16 MB partition table includes a dedicated 512 KiB
+airport-data partition while preserving the OTA application layout.
+
+The persistent airport package format is `.radarapt`.
+
+The installer validates the package before destructive airport-partition
+work, enforces the partition capacity, writes only the airport
+partition, and validates the stored copy after write.
+
+NVS settings, firmware OTA slots, airport storage, ADS-B response
+storage, LVGL memory, and radar target capacity are separate concerns.
+
+## Web Tools / Pages
+
+The radar's local maintenance site is used for two owner workflows:
+
+### Firmware update
+
+Accepts the project's validated `.radarota` package during an armed
+maintenance window and authenticated session.
+
+### Airport Database
+
+Builds a regional airport package in the user's browser from public
+OurAirports data and installs it into the dedicated airport partition.
+
+The Airport Database page also contains an Advanced option for
+installing an existing `.radarapt` package.
+
+Both workflows use the radar's bounded maintenance window and six-digit
+access code.
+
+## Troubleshooting
+
+### I already configured the radar. Which installer should I use for an update?
+
+Use the normal public firmware update path.
+
+Do **not** use `INSTALL_RADAR.html` unless you intentionally want to
+erase the complete device and start over.
+
+### The browser factory installer cannot connect to the radar
+
+-   use current Chrome or Edge
+-   use a data-capable USB cable
+-   connect the radar directly to the computer when possible
+-   make sure another serial monitor is not holding the device
+-   reconnect and follow the browser's serial-device prompt
+
+The installer must positively identify an ESP32-S3 with 16 MB flash
+before destructive work.
+
+### The local factory installer opens but cannot proceed
+
+The generated installer is a local HTML file, but its pinned
+`esptool-js` dependency is loaded over HTTPS. Confirm that the computer
+has Internet access.
+
+### The radar has no Wi-Fi after a factory install
+
+That is expected for a public factory image. Public distribution
+firmware contains blank Wi-Fi credentials.
+
+Enter the owner's Wi-Fi settings and home location through the radar's
+normal setup/System interface.
+
+### I changed the radar's location but the airport list is wrong or incomplete
+
+The saved home location and the installed airport package are separate.
+
+If the new location is outside the package's coverage, open **AIRPORT
+DATABASE** and generate/install a new region.
+
+### Saved coordinates do not prefill on the Airport Database page
+
+Confirm that:
+
+-   valid coordinates have already been saved on the radar
+-   the maintenance window is armed
+-   the six-digit code was accepted
+
+Coordinates are exposed to the page only through the authenticated local
+status path.
+
+### Airport database generation cannot download data
+
+The phone/computer needs Internet access to retrieve the public
+OurAirports CSV files while also being able to reach the radar on the
+local network.
+
+### Airport upload reports a connection reset
+
+Do not repeatedly force a partially transferred package.
+
+The uploader permits a large-transfer retry only when both browser and
+radar state prove that zero bytes were transferred. If the problem
+persists, use the Advanced existing-package installer for diagnosis and
+capture serial output.
+
+### The radar reports the compiled airport fallback
+
+The persistent airport package is missing, unavailable, or invalid.
+
+Install a regional package from the Airport Database page. A compiled
+fallback remains available in private firmware by design; public
+distribution builds intentionally do not contain the developer's
+regional compiled fallback.
+
+### A normal PlatformIO upload did not erase old settings
+
+That is expected. A normal PlatformIO upload is not a whole-chip factory
+erase.
+
+Use the verified factory installer only when a true destructive reset is
+intended.
+
+## Repository Structure
+
+``` text
+assets/                 Aircraft and UI artwork
+docs/                   User, factory, airport, and release documentation
+home-assistant/          MQTT dashboard/support files
+include/                 Interfaces, build identity, and generated data
+include/distribution/    Neutral public distribution configuration
+partitions/              Custom 16 MB partition table
+release/                 Current generated public release artifacts
+scripts/                 OTA and factory release generators
+src/                     Firmware implementation
+tests/                   Focused host/source regression tests
+tools/                   Airport, aircraft, and factory tooling
+platformio.ini           Pinned PlatformIO environments
+README.md                Current project and getting-started documentation
+CHANGELOG.md             Detailed confirmed project history
+```
+
+Important credential boundary:
+
+``` text
+include/config.h
+```
+
+is private, ignored, and must never be committed, uploaded, included in
+a public package, or used to produce public release artifacts.
+
+Use:
+
+``` text
+include/config.example.h
+```
+
+as the safe checked-in example.
+
+## Current Known-Good Source
+
+At the time of this README cleanup, the intended development/source
+branch is:
+
+``` text
+main
+```
+
+The current pushed branch HEAD inspected for this documentation is:
+
+``` text
+465eb9291b16e92a2d3f0a953d1522ed7d81af7d
+```
+
+Current firmware identity:
+
+``` text
+Product 95
+7IN-20260815-PRODUCT95-FACTORY-HANDOFF
+```
+
+The durable firmware identity is the build marker in
+`include/build_info.h`. Repository HEAD can advance for
+documentation-only commits without changing the firmware identity.
+
+The permanent hardened rollback baseline remains:
+
+``` text
+product-15-hardened
+7IN-20260721-PRODUCT15-HARDENED
+```
+
+## History
+
+The README intentionally describes the current system and workflows
+rather than serving as a Product-by-Product development diary.
+
+Detailed confirmed version history is maintained in `CHANGELOG.md`.
+
+## License and Data Sources
+
+Repository licensing and third-party notices are maintained in:
+
+-   `LICENSE`
+-   `LICENSES/`
+-   `THIRD_PARTY_NOTICES.md`
+
+Airport information is derived from public OurAirports datasets and is
+for visual awareness only, not navigation.
+
+ADS-B data availability and permitted use remain subject to the selected
+provider's terms and service availability.
