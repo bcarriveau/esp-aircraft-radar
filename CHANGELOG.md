@@ -56,6 +56,19 @@ advance repository HEAD without creating a new firmware Product.
   dedicated 512 KiB airport partition, firmware OTA slots, NVS settings, ADS-B/TLS
   behavior, radar UI, display timing, OPI PSRAM, DMA, and target capacity.
 
+### Physical verification
+
+- Private Product 97 VS Code/PlatformIO upload booted with the existing persistent
+  709-record airport database `READY`.
+- Product 97 `.radarota` from private to distribution firmware preserved the same
+  persistent airport database plus Wi-Fi/location and NVS-backed MQTT configuration;
+  MQTT reconnected after restart.
+- Normal VS Code/PlatformIO upload using `waveshare-s3-touch-lcd-7-factory` was also
+  physically verified to preserve the working owner state and persistent airport data.
+- Product 97 therefore has one tested rule: ordinary firmware uploads/OTA update the
+  application while airport installation updates airport data; only the explicit
+  full-chip factory installer intentionally erases both.
+
 ## Product 96 - 2026-08-16
 
 **Build:** `7IN-20260816-PRODUCT96-MQTT-OTA-PRESERVATION`

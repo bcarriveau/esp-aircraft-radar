@@ -4,10 +4,10 @@
 This is the lower-level command-line generator. Most Windows users should run
 ``tools/Build Airport Database.bat`` instead.
 
-During the airport-separation transition this generator can emit both the
-current compiled C++ header and the future persistent ``.radarapt`` package.
-The generation center is used to select records but is deliberately not written
-to either output.
+Product 97 uses one airport-data path: this generator writes the persistent
+``.radarapt`` package consumed by both private and distribution firmware.
+The generation center is used only to select regional records and is deliberately
+not stored in the package.
 """
 
 from __future__ import annotations

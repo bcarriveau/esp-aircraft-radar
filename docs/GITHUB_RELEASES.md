@@ -159,10 +159,12 @@ pio run -e waveshare-s3-touch-lcd-7-factory -t upload
 ```
 
 builds/uploads the credential-safe distribution firmware, but PlatformIO/esptool
-normally erases only the regions being written. Existing NVS and airport-partition
-contents may survive that operation.
+does not perform the whole-chip erase used by the factory installer. Product 97
+hardware testing confirmed that saved owner state and an installed persistent airport
+database survive this normal PlatformIO upload.
 
-Do not use a normal PlatformIO upload as evidence of virgin first-owner behavior.
+Do not use a normal PlatformIO upload as evidence of virgin first-owner behavior,
+and do not present it as the normal owner update path.
 Use the destructive factory-install path when the test requires a genuinely erased
 unit.
 

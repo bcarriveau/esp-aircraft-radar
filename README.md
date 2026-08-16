@@ -253,8 +253,35 @@ If the radar moves outside the installed region, use **AIRPORT
 DATABASE** again to build and install a new regional package. No
 firmware rebuild is required.
 
-See `docs/AIRPORT_DATABASE.md` for the full airport workflow and
-advanced PC-side tools.
+For developer/offline package generation, Windows users can run:
+
+``` text
+tools\Build Airport Database.bat
+```
+
+or run:
+
+``` text
+python tools/airport_database_setup.py
+```
+
+Both produce release\airports.radarapt; they do not rebuild firmware
+and do not change the location saved on the radar. To install the
+generated package, open the radar's Airport Database page and
+select/upload the generated airports.radarapt file.
+
+The lower-level generator is also available for scripted/developer use:
+
+``` text
+python tools/generate_airport_database.py airports.csv \
+  --runways-csv runways.csv \
+  --latitude YOUR_LATITUDE \
+  --longitude YOUR_LONGITUDE \
+  --radius 120 \
+  --coverage "YOUR REGION"
+```
+
+See `docs/AIRPORT_DATABASE.md` for the full browser and PC-side workflows.
 
 ## How to Reach the Radar's Web Pages
 
@@ -341,7 +368,18 @@ setup and install the regional airport database again.
 
 A normal PlatformIO upload of the distribution environment is **not**
 equivalent to a clean factory reset because it does not issue a
-whole-chip erase.
+whole-chip erase. With the current Product 97 layout, physical testing confirmed
+that a normal `waveshare-s3-touch-lcd-7-factory` VS Code/PlatformIO upload preserves
+saved owner state and an installed persistent airport database. It remains a
+developer/test operation, not the normal owner update path. With the current Product 97 layout, physical testing confirmed
+that a normal `waveshare-s3-touch-lcd-7-factory` VS Code/PlatformIO upload preserves
+saved owner state and an installed persistent airport database. It remains a
+developer/test operation, not the normal owner update path. With the current Product 97 partition layout, physical testing
+confirmed that a normal `waveshare-s3-touch-lcd-7-factory` VS Code/PlatformIO
+upload preserves existing NVS owner settings and an installed persistent airport
+database. It still changes the running application to the credential-safe
+distribution variant, so it remains a developer/test operation rather than the
+normal owner update path.
 
 ## The Three Software Paths
 
@@ -782,8 +820,8 @@ main
 Current firmware identity:
 
 ``` text
-Product 96
-7IN-20260816-PRODUCT96-MQTT-OTA-PRESERVATION
+Product 97
+7IN-20260816-PRODUCT97-UNIFIED-AIRPORT-STORAGE
 ```
 
 The durable firmware identity is the build marker in

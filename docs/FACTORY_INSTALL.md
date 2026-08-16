@@ -11,8 +11,10 @@ Three paths remain deliberately separate:
 
 The PlatformIO environment name is historical. Building or uploading the
 `waveshare-s3-touch-lcd-7-factory` environment by itself is **not** a factory reset.
-A normal PlatformIO upload erases only the regions it writes and can leave NVS and
-the dedicated airport partition intact.
+With the current Product 97 partition layout, physical testing confirmed that a
+normal VS Code/PlatformIO upload of this environment preserves saved owner NVS state
+and an installed persistent airport database. Only the explicit factory installer
+performs the whole-chip erase.
 
 ## Distribution build boundary
 
@@ -156,9 +158,10 @@ pio run -e waveshare-s3-touch-lcd-7-factory -t upload
 ```
 
 uploads the distribution-flavored firmware but does not issue a whole-chip
-`erase_flash`. Existing NVS values and the airport partition may therefore survive.
-That behavior is useful for development but must not be presented as a clean
-new-owner factory installation.
+`erase_flash`. Product 97 hardware testing confirmed that Wi-Fi/location/MQTT state
+and the installed persistent airport database survive this upload. That behavior is
+useful for development/testing but must not be presented as a clean new-owner factory
+installation or as the normal owner update workflow.
 
 ## Normal public GitHub Product OTA is non-destructive
 

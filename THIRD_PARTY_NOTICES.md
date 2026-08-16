@@ -75,10 +75,12 @@ SOFTWARE.
 
 ## Airport reference data
 
-`include/generated_airport_database.h` is generated from OurAirports
-`airports.csv` and `runways.csv` data. OurAirports releases its downloadable
-data to the Public Domain and publishes its data repository under the Unlicense.
-Credit is appreciated but not required.
+Regional `airports.radarapt` packages are generated from OurAirports
+`airports.csv` and `runways.csv` data. Product 97 stores that regional data in the
+dedicated persistent airport partition rather than compiling it into application
+firmware. OurAirports releases its downloadable data to the Public Domain and
+publishes its data repository under the Unlicense. Credit is appreciated but not
+required.
 
 - Data: https://ourairports.com/data/
 - Repository: https://github.com/davidmegginson/ourairports-data

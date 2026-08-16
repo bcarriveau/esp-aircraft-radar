@@ -182,7 +182,17 @@ release\airports.radarapt
 It does **not** rebuild firmware and does **not** change the location saved on the
 radar. The generated package is installed separately into persistent airport flash.
 
-The lower-level generator remains available for tests and developer workflows:
+The guided builder can download fresh `airports.csv` and `runways.csv`, reuse its
+local cache, or use CSV files already on the computer. It asks for the package center,
+coverage radius, and region label, validates the generated package by parsing it back,
+and writes only:
+
+```text
+release\airports.radarapt
+```
+
+The lower-level generator remains available for tests, automation, and developer
+workflows when the CSV files are already available:
 
 ```text
 python tools/generate_airport_database.py airports.csv \
@@ -193,8 +203,18 @@ python tools/generate_airport_database.py airports.csv \
   --coverage "YOUR REGION"
 ```
 
-The Python package implementation is also used as the reference implementation
-for browser-builder parity tests.
+Its default output is also `release/airports.radarapt`. Use `--output` only when a
+different package path is intentionally needed. The lower-level generator does not
+download the CSV files and does not flash the radar.
+
+After either PC-side method finishes, open the radar's authenticated **AIRPORT
+DATABASE** page and use the **Advanced** existing-package installer to select the
+generated `.radarapt` file. The radar performs the same PSRAM-first validation,
+dedicated-partition write, read-back verification, and automatic restart used for a
+browser-built package.
+
+The Python package implementation is also used as the reference implementation for
+browser-builder parity tests.
 
 ## One airport-data path
 
@@ -225,11 +245,16 @@ The airport package is independent of:
 - LVGL memory
 - the firmware GitHub-release package
 
-Updating firmware does not intentionally erase the user's saved airport package
-or their saved NVS home coordinates.
+Product 97 physical testing confirmed that an installed persistent airport package
+survives all ordinary application-update paths currently used by the project:
 
-A partition-table-changing USB flash operation is different from an ordinary
-firmware OTA update and should be treated accordingly.
+- private `waveshare-s3-touch-lcd-7` VS Code/PlatformIO upload
+- distribution `waveshare-s3-touch-lcd-7-factory` VS Code/PlatformIO upload
+- normal `.radarota` OTA update
+
+Those operations are not factory resets. The explicit factory installer is different:
+it performs a whole-chip erase and therefore removes the airport database, NVS owner
+settings, MQTT state, and other saved flash state before provisioning the device.
 
 ## OurAirports source data
 
@@ -284,8 +309,10 @@ manual installer for diagnosis and capture the radar serial output.
 
 The persistent airport package is missing, unavailable, or failed validation.
 
-Open the Airport Database page and install a newly generated package. The compiled
-fallback remains available by design.
+Open the Airport Database page and build/install a regional package, or generate
+`release\airports.radarapt` with the PC-side builder and install it from the
+**Advanced** existing-package section. Product 97 has no compiled regional airport
+fallback; both private and distribution firmware require the same persistent package.
 
 ### An airport category is imperfect
 
