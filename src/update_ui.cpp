@@ -22,6 +22,8 @@ lv_obj_t* installedLabel = nullptr;
 lv_obj_t* availableLabel = nullptr;
 lv_obj_t* lastCheckLabel = nullptr;
 lv_obj_t* messageLabel = nullptr;
+lv_obj_t* notesPanel = nullptr;
+lv_obj_t* notesHeading = nullptr;
 lv_obj_t* notesLabel = nullptr;
 lv_obj_t* checkNowButton = nullptr;
 lv_obj_t* checkNowLabel = nullptr;
@@ -259,10 +261,24 @@ bool build() {
                            rgb(255, 214, 80), 12, 208);
   lv_obj_set_width(messageLabel, 710);
   lv_label_set_long_mode(messageLabel, LV_LABEL_LONG_WRAP);
-  notesLabel = makeLabel(detailPanel, "", &lv_font_montserrat_12,
-                         rgb(180, 210, 215), 12, 234);
-  lv_obj_set_width(notesLabel, 710);
-  lv_label_set_long_mode(notesLabel, LV_LABEL_LONG_WRAP);
+
+  notesPanel = lv_obj_create(detailPanel);
+  lv_obj_set_size(notesPanel, 710, 52);
+  lv_obj_set_pos(notesPanel, 12, 228);
+  lv_obj_set_style_bg_color(notesPanel, rgb(8, 24, 32), 0);
+  lv_obj_set_style_bg_opa(notesPanel, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_color(notesPanel, rgb(35, 76, 87), 0);
+  lv_obj_set_style_border_width(notesPanel, 1, 0);
+  lv_obj_set_style_radius(notesPanel, 6, 0);
+  lv_obj_set_style_pad_all(notesPanel, 0, 0);
+  lv_obj_clear_flag(notesPanel, LV_OBJ_FLAG_SCROLLABLE);
+
+  notesHeading = makeLabel(notesPanel, "WHAT'S NEW", &lv_font_montserrat_12,
+                           rgb(110, 220, 255), 10, 5);
+  notesLabel = makeLabel(notesPanel, "", &lv_font_montserrat_12,
+                         rgb(180, 235, 205), 10, 22);
+  lv_obj_set_size(notesLabel, 688, 24);
+  lv_label_set_long_mode(notesLabel, LV_LABEL_LONG_DOT);
   lv_obj_set_style_text_line_space(notesLabel, 2, 0);
 
   checkNowButton = lv_btn_create(detailPanel);
@@ -454,18 +470,21 @@ void update(uint32_t now) {
                  ? rgb(120, 240, 155) : rgb(110, 220, 255)), 0);
 
   if (status.updateAvailable && status.notes[0]) {
-    snprintf(text, sizeof(text), "WHAT'S NEW\n%s", status.notes);
-    setLabelTextIfChanged(notesLabel, text);
+    setLabelTextIfChanged(notesHeading, "WHAT'S NEW");
+    setLabelTextIfChanged(notesLabel, status.notes);
+    lv_obj_set_style_text_color(notesHeading, rgb(110, 220, 255), 0);
     lv_obj_set_style_text_color(notesLabel, rgb(180, 235, 205), 0);
+    lv_obj_set_style_border_color(notesPanel, rgb(35, 96, 91), 0);
   } else {
+    setLabelTextIfChanged(notesHeading, "UPDATE INFO");
     setLabelTextIfChanged(
         notesLabel,
         "CHECK NOW verifies the latest stable release. DOWNLOAD & INSTALL "
-        "requires a second confirmation, checks the manifest again, streams "
-        "the exact .radarota package into the inactive partition, validates "
-        "both SHA-256 digests and the embedded build ID, then restarts. The "
-        "local browser FIRMWARE / OTA path remains available for recovery.");
+        "requires a second confirmation and installs the validated .radarota "
+        "package into the inactive application slot.");
+    lv_obj_set_style_text_color(notesHeading, rgb(100, 170, 180), 0);
     lv_obj_set_style_text_color(notesLabel, rgb(180, 210, 215), 0);
+    lv_obj_set_style_border_color(notesPanel, rgb(35, 76, 87), 0);
   }
 }
 

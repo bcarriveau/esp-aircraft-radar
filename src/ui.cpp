@@ -3889,7 +3889,7 @@ void updateMqttPanel() {
   snprintf(deviceText, sizeof(deviceText),
            "DEVICE  %s\nBROKER  %s\nRUNTIME %s",
            status.deviceId[0] ? status.deviceId : "--",
-           status.configured ? "CONFIGURED IN PRIVATE config.h"
+           status.configured ? "SAVED IN NVS"
                              : "NOT CONFIGURED",
            status.clientRunning
                ? (status.connected ? "CONNECTED" : "CLIENT ACTIVE")

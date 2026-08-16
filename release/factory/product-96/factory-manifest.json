@@ -4,7 +4,7 @@
     "html": "INSTALL_RADAR.html",
     "self_contained": true
   },
-  "build_id": "7IN-20260815-PRODUCT95-FACTORY-HANDOFF",
+  "build_id": "7IN-20260816-PRODUCT96-MQTT-OTA-PRESERVATION",
   "chip": "esp32s3",
   "destructive_full_erase": true,
   "distribution_marker": "RADAR-DISTRIBUTION-BUILD",
@@ -30,8 +30,8 @@
     {
       "address": "0x00010000",
       "name": "firmware.bin",
-      "sha256": "d44b60b580d642fe2e8c6320b2086930b2695a87db72d5d2765aa3fa9fb921a1",
-      "size": 2452544
+      "sha256": "439229b1053648e15152b677140e13a73f30bd9431a837515087cf0c6710f335",
+      "size": 2454432
     }
   ],
   "flash_freq": "80m",
@@ -39,6 +39,6 @@
   "flash_size": "16MB",
   "hardware": "waveshare-esp32-s3-touch-lcd-7",
   "schema": 1,
-  "version_code": 95,
-  "version_label": "Product 95"
+  "version_code": 96,
+  "version_label": "Product 96"
 }

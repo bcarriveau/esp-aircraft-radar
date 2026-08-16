@@ -176,6 +176,10 @@ A true factory-installed device starts with:
 -   MQTT disabled with no private broker/user/password
 -   no owner-specific regional airport database
 
+MQTT broker credentials are runtime owner state once they have been seeded into
+NVS by a private development build. Public/distribution firmware reads those saved
+values and does not contain private broker credentials of its own.
+
 The radar then requires normal owner setup.
 
 ### Initial Wi-Fi and location setup
@@ -286,8 +290,15 @@ A normal public update:
 -   verifies the package/image before selecting it for boot
 -   does not intentionally erase NVS
 -   does not intentionally erase the dedicated airport partition
--   therefore preserves the owner's Wi-Fi/location and installed
-    regional airport database
+-   therefore preserves the owner's Wi-Fi/location, saved MQTT broker
+    credentials, and installed regional airport database
+
+The airport guarantee applies to a database installed in the dedicated persistent
+`airports` partition. Older private builds could also display a location-specific
+**compiled fallback** from `generated_airport_database.h`; that fallback is part of
+the private application image, not persistent owner data, and is intentionally absent
+from public/distribution firmware. Install the regional database through the Airport
+Database web workflow before switching from that legacy fallback to public firmware.
 
 ### Update from the radar
 
@@ -392,6 +403,12 @@ The private development environment is:
 waveshare-s3-touch-lcd-7
 ```
 
+For routine developer USB uploads, use this private environment. The dedicated
+`waveshare-s3-touch-lcd-7-factory` environment exists to build credential-safe public
+artifacts. Its PlatformIO upload writes bootloader/partition/app images but is **not**
+the same operation as the destructive browser factory installer and is **not** the
+owner OTA workflow.
+
 It may use:
 
 ``` text
@@ -404,6 +421,11 @@ defaults.
 **Never commit, upload, package, or distribute `include/config.h`.**
 
 A private build must never be substituted for a public release artifact.
+
+Private builds also seed missing MQTT broker URI/username/password NVS keys from
+`include/config.h`. After that one-time migration, the credential-safe public build
+uses the saved NVS values, so a normal `.radarota` update does not need private
+credentials compiled into the release.
 
 The private build has a guarded developer convenience: after a true
 factory boot, if the complete neutral owner tuple is still unchanged, a
@@ -754,17 +776,11 @@ branch is:
 main
 ```
 
-The current pushed branch HEAD inspected for this documentation is:
-
-``` text
-e1fc421b778b141e04e958f35d7d7afeb56ca65b
-```
-
 Current firmware identity:
 
 ``` text
-Product 95
-7IN-20260815-PRODUCT95-FACTORY-HANDOFF
+Product 96
+7IN-20260816-PRODUCT96-MQTT-OTA-PRESERVATION
 ```
 
 The durable firmware identity is the build marker in

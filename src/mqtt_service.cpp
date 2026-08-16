@@ -16,22 +16,11 @@
 #include "aircraft_data.h"
 #include "app_state.h"
 #include "build_info.h"
-#include "config.h"
 #include "display_power.h"
 #include "ota_update.h"
 #include "radar_control.h"
 #include "settings.h"
 #include "vertical_state.h"
-
-#ifndef MQTT_BROKER_URI
-#define MQTT_BROKER_URI ""
-#endif
-#ifndef MQTT_USERNAME
-#define MQTT_USERNAME ""
-#endif
-#ifndef MQTT_PASSWORD
-#define MQTT_PASSWORD ""
-#endif
 
 namespace mqtt_service {
 namespace {
@@ -312,6 +301,9 @@ char displayCommandTopic[128]{};
 char rangeCommandTopic[128]{};
 char refreshCommandTopic[128]{};
 char brokerHost[96]{};
+char brokerUri[128]{};
+char brokerUsername[64]{};
+char brokerPassword[96]{};
 uint16_t brokerPort = 1883;
 char statusMessage[128] = "MQTT disabled";
 
@@ -386,9 +378,9 @@ bool parseBrokerUri() {
 
   constexpr const char* PREFIX = "mqtt://";
   constexpr size_t PREFIX_LENGTH = 7;
-  if (strncmp(MQTT_BROKER_URI, PREFIX, PREFIX_LENGTH) != 0) return false;
+  if (strncmp(brokerUri, PREFIX, PREFIX_LENGTH) != 0) return false;
 
-  const char* authority = MQTT_BROKER_URI + PREFIX_LENGTH;
+  const char* authority = brokerUri + PREFIX_LENGTH;
   if (!authority[0]) return false;
 
   const char* slash = strchr(authority, '/');
@@ -650,9 +642,9 @@ bool connectClient() {
 
   setState(State::CONNECTING, "Connecting to MQTT broker");
   bool connected = false;
-  if (MQTT_USERNAME[0]) {
+  if (brokerUsername[0]) {
     connected = mqttClient->connect(
-        clientId, MQTT_USERNAME, MQTT_PASSWORD, availabilityTopic, 0, true,
+        clientId, brokerUsername, brokerPassword, availabilityTopic, 0, true,
         "offline", true);
   } else {
     connected = mqttClient->connect(
@@ -1196,7 +1188,22 @@ const char* stateName(State state) {
 
 bool begin() {
   initializeIdentity();
-  configured = parseBrokerUri();
+  const String savedBrokerUri = settings::mqttBrokerUri();
+  const String savedUsername = settings::mqttUsername();
+  const String savedPassword = settings::mqttPassword();
+  if (savedBrokerUri.length() >= sizeof(brokerUri) ||
+      savedUsername.length() >= sizeof(brokerUsername) ||
+      savedPassword.length() >= sizeof(brokerPassword)) {
+    brokerUri[0] = 0;
+    brokerUsername[0] = 0;
+    brokerPassword[0] = 0;
+    configured = false;
+  } else {
+    savedBrokerUri.toCharArray(brokerUri, sizeof(brokerUri));
+    savedUsername.toCharArray(brokerUsername, sizeof(brokerUsername));
+    savedPassword.toCharArray(brokerPassword, sizeof(brokerPassword));
+    configured = parseBrokerUri();
+  }
   desiredEnabled = settings::mqttEnabled();
   maintenanceRequested = false;
   maintenanceActive = false;
@@ -1208,7 +1215,7 @@ bool begin() {
     setState(State::INACTIVE, "MQTT disabled; no task or buffer allocated");
   } else if (!configured) {
     setState(State::NOT_CONFIGURED,
-             "Add MQTT_BROKER_URI to private include/config.h");
+             "MQTT broker is not configured");
   } else {
     setState(State::WAITING_FOR_WIFI, "Waiting for first ADS-B cycle");
   }
@@ -1359,7 +1366,7 @@ void service() {
       destroyClient();
     }
     setState(State::NOT_CONFIGURED,
-             "Add MQTT_BROKER_URI to private include/config.h");
+             "MQTT broker is not configured");
     return;
   }
 

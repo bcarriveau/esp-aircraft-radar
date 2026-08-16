@@ -19,6 +19,9 @@ bool storageAvailable();
 bool resetToDefaults();
 
 bool mqttEnabled();
+String mqttBrokerUri();
+String mqttUsername();
+String mqttPassword();
 bool setMqttEnabled(bool enabled);
 
 String deviceTitle();

@@ -24,6 +24,9 @@ constexpr const char* KEY_WIFI_PASS = "wifi_pass";
 constexpr const char* KEY_LAT = "home_lat";
 constexpr const char* KEY_LON = "home_lon";
 constexpr const char* KEY_MQTT_ENABLED = "mqtt_on";
+constexpr const char* KEY_MQTT_BROKER = "mqtt_uri";
+constexpr const char* KEY_MQTT_USERNAME = "mqtt_user";
+constexpr const char* KEY_MQTT_PASSWORD = "mqtt_pass";
 constexpr const char* KEY_RADAR_RANGE = "radar_rng";
 constexpr const char* KEY_AIRPORTS_ENABLED = "apt_on";
 constexpr const char* KEY_AIRPORT_OVERRIDES = "apt_ovr";
@@ -89,6 +92,18 @@ String defaultWifiSsid() {
 
 String defaultWifiPassword() {
   return String(WIFI_PASS);
+}
+
+String defaultMqttBrokerUri() {
+  return String(MQTT_BROKER_URI);
+}
+
+String defaultMqttUsername() {
+  return String(MQTT_USERNAME);
+}
+
+String defaultMqttPassword() {
+  return String(MQTT_PASSWORD);
 }
 
 float defaultLatitude() {
@@ -218,6 +233,9 @@ bool seedPrivateDefaultsFromFactoryState() {
   if (!writeFloatChecked(KEY_LON, defaultLongitude())) seeded = false;
   if (!writeUCharChecked(KEY_MQTT_ENABLED,
                          MQTT_ENABLED_DEFAULT ? 1 : 0)) seeded = false;
+  if (!writeStringChecked(KEY_MQTT_BROKER, defaultMqttBrokerUri())) seeded = false;
+  if (!writeStringChecked(KEY_MQTT_USERNAME, defaultMqttUsername())) seeded = false;
+  if (!writeStringChecked(KEY_MQTT_PASSWORD, defaultMqttPassword())) seeded = false;
 
   if (seeded) {
     Serial.println(
@@ -430,6 +448,18 @@ bool initialize() {
       !writeUCharChecked(KEY_MQTT_ENABLED, MQTT_ENABLED_DEFAULT ? 1 : 0)) {
     initialized = false;
   }
+  if (preferences.getType(KEY_MQTT_BROKER) != PT_STR &&
+      !writeStringChecked(KEY_MQTT_BROKER, defaultMqttBrokerUri())) {
+    initialized = false;
+  }
+  if (preferences.getType(KEY_MQTT_USERNAME) != PT_STR &&
+      !writeStringChecked(KEY_MQTT_USERNAME, defaultMqttUsername())) {
+    initialized = false;
+  }
+  if (preferences.getType(KEY_MQTT_PASSWORD) != PT_STR &&
+      !writeStringChecked(KEY_MQTT_PASSWORD, defaultMqttPassword())) {
+    initialized = false;
+  }
   const uint8_t storedRange = preferences.getUChar(
       KEY_RADAR_RANGE, DEFAULT_RADAR_RANGE_MILES);
   if (preferences.getType(KEY_RADAR_RANGE) != PT_U8 ||
@@ -482,6 +512,9 @@ bool resetToDefaults() {
   if (!writeFloatChecked(KEY_LON, defaultLongitude())) saved = false;
   if (!writeUCharChecked(KEY_MQTT_ENABLED,
                          MQTT_ENABLED_DEFAULT ? 1 : 0)) saved = false;
+  if (!writeStringChecked(KEY_MQTT_BROKER, defaultMqttBrokerUri())) saved = false;
+  if (!writeStringChecked(KEY_MQTT_USERNAME, defaultMqttUsername())) saved = false;
+  if (!writeStringChecked(KEY_MQTT_PASSWORD, defaultMqttPassword())) saved = false;
   if (!writeUCharChecked(KEY_RADAR_RANGE, DEFAULT_RADAR_RANGE_MILES)) {
     saved = false;
   }
@@ -512,6 +545,21 @@ bool resetToDefaults() {
 }
 
 bool mqttEnabled() { return cachedMqttEnabled; }
+
+String mqttBrokerUri() {
+  if (!storageOpen) return defaultMqttBrokerUri();
+  return preferences.getString(KEY_MQTT_BROKER, defaultMqttBrokerUri());
+}
+
+String mqttUsername() {
+  if (!storageOpen) return defaultMqttUsername();
+  return preferences.getString(KEY_MQTT_USERNAME, defaultMqttUsername());
+}
+
+String mqttPassword() {
+  if (!storageOpen) return defaultMqttPassword();
+  return preferences.getString(KEY_MQTT_PASSWORD, defaultMqttPassword());
+}
 
 bool setMqttEnabled(bool enabled) {
   if (!storageAvailable()) return false;

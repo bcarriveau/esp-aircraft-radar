@@ -9,9 +9,9 @@ version-controlled baseline. Earlier numbered history is intentionally not inven
 
 ## Current status
 
-- **Current Product:** Product 94
-- **Build marker:** `7IN-20260814-PRODUCT94-FACTORY-DISTRIBUTION`
-- **Current branch:** `airport-seperation`
+- **Current Product:** Product 96
+- **Build marker:** `7IN-20260816-PRODUCT96-MQTT-OTA-PRESERVATION`
+- **Current branch:** `main`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262, GT911, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
 - **UI:** LVGL 8.3.11
@@ -29,6 +29,29 @@ the Git history/tag/release associated with each Product.
 Current firmware identity comes from `include/build_info.h` plus the matching
 generated Product package/manifest. Documentation-only and housekeeping commits may
 advance repository HEAD without creating a new firmware Product.
+
+## Product 96 - 2026-08-16
+
+**Build:** `7IN-20260816-PRODUCT96-MQTT-OTA-PRESERVATION`
+
+### Fixed
+
+- MQTT broker URI, username, and password are now stored in the existing `radar_cfg`
+  NVS namespace instead of being runtime-only compile-time values.
+- Private development builds seed missing MQTT credential keys from ignored
+  `include/config.h`; public/distribution builds contain no private credentials.
+- The MQTT service reads the saved NVS credentials, allowing a later public
+  distribution/OTA image to keep using the owner's existing MQTT configuration.
+- Clarified the airport transition boundary: PlatformIO factory-environment upload
+  does not erase the dedicated airport partition, but a legacy compiled private
+  airport fallback is not part of public firmware and must be replaced by a
+  persistent browser-installed regional database.
+
+### Preserved
+
+- Wi-Fi/location NVS, persistent airport partition, OTA slot behavior, ADS-B/TLS
+  networking, 15-second cadence, radar rendering, stable ICAO tracking, display
+  timing/DMA/bounce buffer, OPI PSRAM, and 200-target capacity.
 
 ## Product 94 - 2026-08-14
 
