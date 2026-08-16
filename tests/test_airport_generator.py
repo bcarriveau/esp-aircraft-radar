@@ -36,7 +36,6 @@ def main() -> None:
         temporary = Path(temporary_name)
         airports_csv = temporary / "airports.csv"
         runways_csv = temporary / "runways.csv"
-        output = temporary / "generated.h"
         package_output = temporary / "airports.radarapt"
 
         write_csv(
@@ -75,14 +74,6 @@ def main() -> None:
         assert by_ident["1IA2"].runway_length == 0
         assert stats.runway_matches == 2
 
-        first = generator.build_header(airports, "2026-08-01", "IOWA TEST", 120.0)
-        second = generator.build_header(airports, "2026-08-01", "IOWA TEST", 120.0)
-        assert first == second, "header generation must be deterministic"
-        assert "DATABASE_CENTER" not in first
-        assert "DATABASE_RADIUS_MILES = 120" in first
-        assert f"DATABASE_GENERATOR_VERSION = {generator.GENERATOR_VERSION}" in first
-        assert "PUBLIC MUNICIPAL" in first and "CLOSED AIRPORT" not in first
-
         first_package = generator.build_binary_package(
             airports, "2026-08-01", "IOWA TEST", 120.0
         )
@@ -99,9 +90,7 @@ def main() -> None:
         assert [record.ident for record in records] == [airport.ident for airport in airports]
         assert b"CENTER_LAT" not in first_package and b"CENTER_LON" not in first_package
 
-        generator.write_header_atomic(output, first)
         package.write_package_atomic(package_output, first_package)
-        assert output.read_text(encoding="utf-8") == first
         assert package_output.read_bytes() == first_package
 
         try:
@@ -122,16 +111,12 @@ def main() -> None:
         "*.py[cod]",
         "/airports.csv",
         "/runways.csv",
-        "/include/.generated_airport_database.h.*.tmp",
         "/release/airports.radarapt",
         "/COMMIT_MESSAGE.txt",
         "/PACKAGE_README.txt",
         "/SHA256SUMS.txt",
     ):
         assert expected in ignore, f"missing .gitignore rule: {expected}"
-    assert "/include/generated_airport_database.h" not in ignore, (
-        "the compiled regional airport header must remain tracked during transition"
-    )
 
     print("Airport generator checks passed")
 

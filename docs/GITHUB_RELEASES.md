@@ -1,11 +1,11 @@
 # Stable GitHub release and on-device installation
 
-This document describes the current Product 95 release boundary for Bill's
+This document describes the current Product 97 release boundary for Bill's
 Waveshare ESP32-S3-Touch-LCD-7 Aircraft Radar.
 
 ## Three installation paths, one public producer
 
-Product 95 distinguishes three operations that must not be treated as interchangeable:
+Product 97 distinguishes three operations that must not be treated as interchangeable:
 
 1. **Destructive factory install / fresh start** — erases the complete flash and installs the verified distribution factory image.
 2. **Private development build** — may use ignored `include/config.h`, normally preserves NVS, and never produces public OTA/factory release assets.
@@ -25,8 +25,8 @@ The first is the private development build. It may use the ignored
 
 The second is the credential-safe distribution build. It defines
 `RADAR_DISTRIBUTION_BUILD=1`, resolves `config.h` from `include/distribution`, uses
-neutral Wi-Fi/location/MQTT defaults, and excludes the compiled regional airport
-fallback.
+neutral Wi-Fi/location/MQTT defaults. Airport data is never compiled into either
+build variant; both use only the persistent airport partition.
 
 Only the distribution environment runs the public release post-build generators.
 The application image contains `RADAR-DISTRIBUTION-BUILD`; the OTA packager and
@@ -41,7 +41,7 @@ The distribution build generates the Product-numbered OTA package and fixed-name
 manifest:
 
 ```text
-release/waveshare-esp32-s3-touch-lcd-7-product-95.radarota
+release/waveshare-esp32-s3-touch-lcd-7-product-97.radarota
 release/waveshare-esp32-s3-touch-lcd-7.manifest.json
 ```
 
@@ -75,11 +75,11 @@ preserved.
 The same distribution build also generates:
 
 ```text
-release/factory/product-95/
+release/factory/product-97/
 ```
 
 containing the exact bootloader, partition table, OTA bootstrap, application image,
-a factory manifest, the Product 95 browser installer, and the offline recovery
+a factory manifest, the Product 97 browser installer, and the offline recovery
 PowerShell installer.
 
 The factory manifest uses a fixed approved layout:
@@ -94,7 +94,7 @@ The factory manifest uses a fixed approved layout:
 The bundle records SHA-256 and size for every image. Factory generation refuses a
 firmware image without the distribution provenance marker.
 
-Product 95 also places a generated single-file `INSTALL_RADAR.html` in the factory
+Product 97 also places a generated single-file `INSTALL_RADAR.html` in the factory
 bundle. Owners can double-click that file in current Chrome or Edge; no Python or
 local web server is required. The page verifies the same manifest/images, performs
 the full erase and flash, verifies writes, explicitly pulses the ESP32-S3 EN/reset
@@ -105,9 +105,9 @@ A true factory installation is intentionally destructive: it erases the complete
 saved Wi-Fi/location, MQTT/Home Assistant state, the persistent airport database,
 OTA state, and all other owner-specific flash contents.
 
-## Product 95 browser factory installer
+## Product 97 browser factory installer
 
-Product 95 makes the browser/Web Serial path the preferred owner interface. The
+Product 97 makes the browser/Web Serial path the preferred owner interface. The
 generated factory bundle includes the single owner-facing file:
 
 ```text
@@ -142,7 +142,7 @@ install, and normal OTA.
 
 A destructive factory boot intentionally writes neutral owner values: blank Wi-Fi
 SSID/password and `0,0` location. If the next firmware flashed is the private
-development build and that complete neutral tuple is still present, Product 95
+development build and that complete neutral tuple is still present, Product 97
 seeds the private `config.h` Wi-Fi/password/location and MQTT enabled default.
 
 This reseed code is compiled only when `RADAR_DISTRIBUTION_BUILD` is absent. Any
@@ -192,7 +192,7 @@ Before publishing a stable Product release:
    installer agree on Product/build identity and the fixed hardware/layout.
 6. Physically test the normal non-destructive OTA path when the Product changes OTA
    behavior or release packaging.
-7. Physically test the Product 95 browser destructive factory install in current
+7. Physically test the Product 97 browser destructive factory install in current
    Chrome or Edge before publishing it as the normal owner path.
 8. Confirm the destructive test boots with no prior Wi-Fi/location, no installed
    airport database, neutral integration defaults, and the intended Product marker.

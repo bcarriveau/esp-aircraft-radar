@@ -293,12 +293,10 @@ A normal public update:
 -   therefore preserves the owner's Wi-Fi/location, saved MQTT broker
     credentials, and installed regional airport database
 
-The airport guarantee applies to a database installed in the dedicated persistent
-`airports` partition. Older private builds could also display a location-specific
-**compiled fallback** from `generated_airport_database.h`; that fallback is part of
-the private application image, not persistent owner data, and is intentionally absent
-from public/distribution firmware. Install the regional database through the Airport
-Database web workflow before switching from that legacy fallback to public firmware.
+Airport data uses the same dedicated persistent `airports` partition in private
+development builds and public/distribution firmware. Regional airport data is never
+part of the application image. Once installed, normal VS Code firmware uploads and
+normal `.radarota` updates leave that database alone.
 
 ### Update from the radar
 
@@ -491,6 +489,12 @@ pio run -e waveshare-s3-touch-lcd-7
 
 This environment is for development. It does not generate the public
 release/factory artifacts.
+
+Regional airport data is **not** compiled into this private firmware. Development
+units use the same persistent airport database as public units. Install it once from
+the radar's Airport Database web page, or generate `release/airports.radarapt` with
+`tools\Build Airport Database.bat` and install that package from the same page.
+Normal later private firmware uploads leave the airport partition unchanged.
 
 ### Public distribution build
 
@@ -714,14 +718,13 @@ radar state prove that zero bytes were transferred. If the problem
 persists, use the Advanced existing-package installer for diagnosis and
 capture serial output.
 
-### The radar reports the compiled airport fallback
+### The radar reports no regional airport database
 
-The persistent airport package is missing, unavailable, or invalid.
+The dedicated persistent airport package is missing, unavailable, or invalid.
 
-Install a regional package from the Airport Database page. A compiled
-fallback remains available in private firmware by design; public
-distribution builds intentionally do not contain the developer's
-regional compiled fallback.
+Open the Airport Database page and build/install the regional package. Private
+development firmware and public/distribution firmware use this same persistent
+database; there is no separate compiled development fallback.
 
 ### A normal PlatformIO upload did not erase old settings
 
@@ -737,7 +740,7 @@ intended.
 assets/                 Aircraft and UI artwork
 docs/                   User, factory, airport, and release documentation
 home-assistant/          MQTT dashboard/support files
-include/                 Interfaces, build identity, and generated data
+include/                 Interfaces and build identity
 include/distribution/    Neutral public distribution configuration
 partitions/              Custom 16 MB partition table
 release/                 Current generated public release artifacts

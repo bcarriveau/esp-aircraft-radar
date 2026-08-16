@@ -5,8 +5,8 @@ This tool is intentionally PC-side. It downloads/reads the public OurAirports
 CSV data, filters a bounded regional dataset around coordinates supplied by the
 user, and writes only ``release/airports.radarapt``.
 
-It does not modify firmware, the compiled fallback airport header, radar NVS
-settings, or the user's saved radar location.
+It does not modify firmware, radar NVS settings, or the user's saved radar
+location. Regional airport data is always installed separately in persistent flash.
 """
 
 from __future__ import annotations

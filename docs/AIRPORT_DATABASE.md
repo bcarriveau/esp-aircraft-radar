@@ -5,8 +5,8 @@ Bill's Aircraft Radar keeps aircraft and airport data on separate paths:
 - **Aircraft** are received from ADS-B over the network.
 - **Airport data** is stored offline in the dedicated persistent `airports`
   flash partition.
-- A checked-in compiled airport table remains in firmware only as the safe
-  fallback when the persistent partition is empty, unavailable, or invalid.
+- **All firmware variants use that same persistent airport partition.** Regional
+  airport data is not compiled into private or public application firmware.
 
 Airport information is for visual awareness only and must not be used for
 navigation.
@@ -125,8 +125,8 @@ reporting success.
 If an upload is interrupted before installation starts, the existing persistent
 database remains unchanged.
 
-If persistent storage is unavailable or invalid at boot, the runtime uses the
-compiled fallback table instead.
+If persistent storage is unavailable, empty, or invalid at boot, the radar runs
+without regional airport data until a valid package is installed.
 
 ## Upload connection pacing
 
@@ -179,8 +179,8 @@ This tooling creates:
 release\airports.radarapt
 ```
 
-It does **not** rebuild firmware, does **not** modify the checked-in compiled
-fallback header, and does **not** change the location saved on the radar.
+It does **not** rebuild firmware and does **not** change the location saved on the
+radar. The generated package is installed separately into persistent airport flash.
 
 The lower-level generator remains available for tests and developer workflows:
 
@@ -196,16 +196,20 @@ python tools/generate_airport_database.py airports.csv \
 The Python package implementation is also used as the reference implementation
 for browser-builder parity tests.
 
-## Compiled fallback database
+## One airport-data path
 
-`include/generated_airport_database.h` remains intentionally tracked.
+Private development firmware and public/distribution firmware now use exactly the
+same airport source: a validated `airports.radarapt` package in the dedicated
+`airports` partition.
 
-It is no longer the normal per-user regional database. It is the firmware's
-known-good fallback so the Airports feature can still operate when the dedicated
-persistent package is missing or invalid.
+`include/generated_airport_database.h` is retained only as a small legacy placeholder
+so old references fail visibly during development; it contains no regional records
+and is not used by the runtime.
 
-Do not remove the compiled fallback merely because a persistent package is
-installed.
+For a development unit, install the regional package once through the same Airport
+Database web workflow used by an owner. Normal later VS Code application uploads do
+not rewrite that partition. Regenerate/reinstall airport data only when the intended
+region or source data changes.
 
 ## Persistent partition
 
@@ -276,7 +280,7 @@ browser and radar state prove zero bytes were transferred.
 If a reset persists, use the downloaded/generated package with the Advanced
 manual installer for diagnosis and capture the radar serial output.
 
-### Radar boots with compiled fallback
+### Radar boots without a regional database
 
 The persistent airport package is missing, unavailable, or failed validation.
 

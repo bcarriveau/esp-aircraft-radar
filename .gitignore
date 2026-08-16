@@ -28,8 +28,6 @@ __pycache__/
 /release/airports.radarapt
 
 # Interrupted atomic airport-output replacements
-/include/.generated_airport_database.h.*.tmp
-/include/.generated_airport_database.h.*.restore
 /release/.airports.radarapt.*.tmp
 /release/.airports.radarapt.*.restore
 

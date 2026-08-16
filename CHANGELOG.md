@@ -9,8 +9,8 @@ version-controlled baseline. Earlier numbered history is intentionally not inven
 
 ## Current status
 
-- **Current Product:** Product 96
-- **Build marker:** `7IN-20260816-PRODUCT96-MQTT-OTA-PRESERVATION`
+- **Current Product:** Product 97
+- **Build marker:** `7IN-20260816-PRODUCT97-UNIFIED-AIRPORT-STORAGE`
 - **Current branch:** `main`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262, GT911, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
@@ -29,6 +29,32 @@ the Git history/tag/release associated with each Product.
 Current firmware identity comes from `include/build_info.h` plus the matching
 generated Product package/manifest. Documentation-only and housekeeping commits may
 advance repository HEAD without creating a new firmware Product.
+
+
+## Product 97 - 2026-08-16
+
+**Build:** `7IN-20260816-PRODUCT97-UNIFIED-AIRPORT-STORAGE`
+
+### Changed
+
+- Removed the private-firmware runtime fallback to the compiled regional airport
+  table. Private and public/distribution firmware now use only the validated
+  persistent `airports.radarapt` store.
+- Normal VS Code application uploads and normal `.radarota` updates therefore share
+  the same airport-data behavior and leave the dedicated airport partition alone.
+- The lower-level airport generator now writes a persistent `.radarapt` package by
+  default instead of regenerating an application header.
+- Retained `include/generated_airport_database.h` only as a record-free legacy
+  placeholder so the obsolete compiled-data path cannot silently return.
+- Updated airport/release/factory documentation and regression tests around the one
+  persistent-data model.
+
+### Preserved
+
+- Product 96 NVS-backed MQTT credential preservation across public OTA.
+- Existing browser airport builder/installer, package validation, PSRAM-first upload,
+  dedicated 512 KiB airport partition, firmware OTA slots, NVS settings, ADS-B/TLS
+  behavior, radar UI, display timing, OPI PSRAM, DMA, and target capacity.
 
 ## Product 96 - 2026-08-16
 

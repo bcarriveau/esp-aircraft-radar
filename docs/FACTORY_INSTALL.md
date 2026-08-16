@@ -1,6 +1,6 @@
 # Factory installation and distribution firmware
 
-Product 95 keeps the Product 94 distribution safety boundary and adds the normal
+Product 97 keeps the Product 94 distribution safety boundary and adds the normal
 end-user browser/Web Serial factory installer.
 
 Three paths remain deliberately separate:
@@ -23,7 +23,7 @@ private include directory, and therefore uses neutral defaults:
 - blank Wi-Fi SSID/password
 - neutral `0,0` location
 - MQTT disabled with no broker/user/password
-- no compiled regional airport fallback
+- no embedded regional airport data
 
 The firmware contains the marker `RADAR-DISTRIBUTION-BUILD`. Public OTA and
 factory-bundle generation refuse firmware that does not contain that marker.
@@ -37,7 +37,7 @@ be packaged, committed, or used to produce GitHub OTA/factory release artifacts.
 A true factory boot creates the neutral distribution owner tuple: blank Wi-Fi SSID,
 blank Wi-Fi password, latitude `0`, and longitude `0`. If the next firmware flashed
 is the private development build and that complete neutral tuple is still present,
-Product 95 seeds Wi-Fi/password/location and the private MQTT enabled default from
+Product 97 seeds Wi-Fi/password/location and the private MQTT enabled default from
 the private build's `config.h`.
 
 That reseed path is compiled only when `RADAR_DISTRIBUTION_BUILD` is **not** defined.
@@ -71,7 +71,7 @@ That erase intentionally removes:
 After a successful factory install the unit boots as a new-owner distribution unit
 and requires normal setup.
 
-## Product 95 browser installer
+## Product 97 browser installer
 
 The preferred owner path is now the browser installer generated into each factory
 bundle as one owner-facing file:
@@ -111,7 +111,7 @@ requires an intentional reconnect/retry or the offline recovery installer.
 ### Browser use
 
 For an extracted/local Product factory bundle, double-click `INSTALL_RADAR.html` in
-current Chrome or Edge, choose the same `product-95` folder when prompted, then
+current Chrome or Edge, choose the same `product-97` folder when prompted, then
 connect the radar. This is the normal offline owner workflow.
 
 When the same bundle is hosted over HTTPS, `LOAD ADJACENT BUNDLE` may load the
@@ -124,10 +124,10 @@ A successful distribution build runs both release generators:
 - `scripts/build_radar_ota.py`
 - `scripts/build_factory_bundle.py`
 
-For Product 95 the factory generator creates:
+For Product 97 the factory generator creates:
 
 ```text
-release/factory/product-95/
+release/factory/product-97/
 ```
 
 with:
@@ -144,7 +144,7 @@ The manifest records Product/build identity, hardware requirements, fixed flash
 layout, file sizes, SHA-256 hashes, and the pinned browser-installer version.
 
 The PowerShell installer remains an **offline/developer recovery path**. It consumes
-the same manifest and identical verified binaries as the browser path. Product 95
+the same manifest and identical verified binaries as the browser path. Product 97
 does not maintain a second firmware image or alternate flash layout for the browser.
 
 ## PlatformIO upload is not a factory reset

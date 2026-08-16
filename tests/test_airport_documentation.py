@@ -9,7 +9,7 @@ def main() -> None:
     required = (
         "BUILD & INSTALL AIRPORT DATABASE",
         "automatically restarts the radar",
-        "compiled airport table remains in firmware only as the safe",
+        "All firmware variants use that same persistent airport partition",
         "does **not** rebuild firmware",
         "PREPARE -> READY -> bounded settle -> multipart upload",
         "settings",
@@ -24,6 +24,7 @@ def main() -> None:
         "replaces only:",
         "new generated header and build",
         "compiled region needs only",
+        "compiled fallback remains available",
     )
     for text in stale:
         assert text not in DOC, f"stale pre-separation wording remains: {text}"

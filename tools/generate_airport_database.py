@@ -15,8 +15,6 @@ from __future__ import annotations
 import argparse
 import csv
 import math
-import os
-import tempfile
 import unicodedata
 from dataclasses import dataclass
 from datetime import date
@@ -297,55 +295,6 @@ def category_counts(airports: list[Airport]) -> tuple[int, int, int, int]:
     return tuple(counts)  # type: ignore[return-value]
 
 
-def build_header(
-    airports: list[Airport],
-    database_date: str,
-    coverage: str,
-    radius_miles: float,
-) -> str:
-    validate_airports(airports)
-    lines = [
-        "#pragma once\n",
-        "#include <Arduino.h>\n",
-        "#include <stdint.h>\n\n",
-        "// Generated from OurAirports public-domain airports.csv and runways.csv.\n",
-        "// Awareness only: not for navigation. The private generation-center\n",
-        "// coordinates are intentionally not stored in this file.\n\n",
-        "namespace generated_airports {\n\n",
-        f'constexpr const char* DATABASE_DATE = "{clean_coverage(database_date)}";\n',
-        f'constexpr const char* DATABASE_COVERAGE = "{clean_coverage(coverage)}";\n',
-        f"constexpr uint16_t DATABASE_RADIUS_MILES = {int(round(radius_miles))};\n",
-        f"constexpr uint8_t DATABASE_GENERATOR_VERSION = {GENERATOR_VERSION};\n\n",
-        "struct Record {\n",
-        "  char ident[8];\n",
-        "  char name[32];\n",
-        "  int32_t latitudeE6;\n",
-        "  int32_t longitudeE6;\n",
-        "  int16_t elevationFt;\n",
-        "  uint16_t runwayLengthFt;\n",
-        "  uint16_t runwayHeadingDegrees;\n",
-        "  uint8_t category;\n",
-        "};\n\n",
-        "static const Record RECORDS[] PROGMEM = {\n",
-    ]
-    for airport in airports:
-        lines.append(
-            f'  {{"{airport.ident}", "{airport.name}", '
-            f"{round(airport.latitude * 1_000_000)}, "
-            f"{round(airport.longitude * 1_000_000)}, "
-            f"{airport.elevation}, {airport.runway_length}, "
-            f"{airport.runway_heading}, {airport.category}}},\n"
-        )
-    lines.extend(
-        [
-            "};\n\n",
-            "constexpr uint16_t RECORD_COUNT = sizeof(RECORDS) / sizeof(RECORDS[0]);\n\n",
-            "}  // namespace generated_airports\n",
-        ]
-    )
-    return "".join(lines)
-
-
 def build_binary_package(
     airports: list[Airport],
     database_date: str,
@@ -362,23 +311,6 @@ def build_binary_package(
     )
 
 
-def write_header_atomic(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-    )
-    temporary = Path(temporary_name)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        temporary.replace(path)
-    except Exception:
-        temporary.unlink(missing_ok=True)
-        raise
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate a bounded regional airport table for Bill's Aircraft Radar"
@@ -386,12 +318,8 @@ def main() -> None:
     parser.add_argument("airports_csv", type=Path)
     parser.add_argument("--runways-csv", type=Path)
     parser.add_argument(
-        "--output", type=Path, default=Path("include/generated_airport_database.h")
-    )
-    parser.add_argument(
-        "--package-output",
-        type=Path,
-        help="also write a persistent airport package (.radarapt)",
+        "--output", type=Path, default=Path("release/airports.radarapt"),
+        help="persistent airport package output (.radarapt)",
     )
     parser.add_argument("--latitude", type=float, required=True)
     parser.add_argument("--longitude", type=float, required=True)
@@ -408,17 +336,12 @@ def main() -> None:
         args.longitude,
         args.radius,
     )
-    content = build_header(airports, args.date, args.coverage, args.radius)
-    package_content = (
-        build_binary_package(airports, args.date, args.coverage, args.radius)
-        if args.package_output is not None
-        else None
+    package_content = build_binary_package(
+        airports, args.date, args.coverage, args.radius
     )
     counts = category_counts(airports)
     if not args.dry_run:
-        write_header_atomic(args.output, content)
-        if args.package_output is not None and package_content is not None:
-            write_package_atomic(args.package_output, package_content)
+        write_package_atomic(args.output, package_content)
     action = "Would generate" if args.dry_run else "Generated"
     print(f"{action} {len(airports)} airports for a {args.radius:.0f}-mile region")
     print(
@@ -430,8 +353,6 @@ def main() -> None:
         print(f"Skipped duplicate display identifiers: {stats.duplicate_idents}")
     if not args.dry_run:
         print(f"Wrote: {args.output}")
-        if args.package_output is not None:
-            print(f"Wrote: {args.package_output}")
 
 
 if __name__ == "__main__":

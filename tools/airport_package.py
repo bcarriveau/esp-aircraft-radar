@@ -2,7 +2,7 @@
 """Build and validate persistent regional airport database packages.
 
 This module defines the transport/storage format intended to replace the current
-compile-time generated airport header. It does not change firmware behavior by
+persistent airport partition. It does not change firmware behavior by
 itself. The package contains only the filtered regional airport records and
 non-sensitive metadata; generation-center coordinates are deliberately omitted.
 """
