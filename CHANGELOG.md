@@ -35,6 +35,20 @@ advance repository HEAD without creating a new firmware Product.
 
 **Build:** `7IN-20260816-PRODUCT97-UNIFIED-AIRPORT-STORAGE`
 
+### Tooling correction
+
+- Fixed the guided PC airport package builder after the persistent-only airport cleanup.
+  `airport_package.parse_package()` returns `(PackageInfo, records)`, but the setup
+  wrapper still treated the result as an object with `.header` and `.records`.
+  This caused a valid generated package to be restored/rejected with
+  `'tuple' object has no attribute 'header'`.
+- Added a behavioral regression test that writes and re-validates a real
+  `.radarapt` package through the guided setup validator.
+- Corrected airport documentation to refer to the actual Airport Database page and
+  existing-package upload control rather than a separate Advanced section.
+- Firmware remains Product 97; this tooling fix does not change firmware, partition
+  layout, OTA behavior, or the `.radarapt` format.
+
 ### Changed
 
 - Removed the private-firmware runtime fallback to the compiled regional airport

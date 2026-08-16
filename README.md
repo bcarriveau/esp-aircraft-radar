@@ -265,10 +265,9 @@ or run:
 python tools/airport_database_setup.py
 ```
 
-Both produce release\airports.radarapt; they do not rebuild firmware
-and do not change the location saved on the radar. To install the
-generated package, open the radar's Airport Database page and
-select/upload the generated airports.radarapt file.
+Both produce `release\airports.radarapt`; they do **not** rebuild firmware and do
+**not** change the location saved on the radar. Install the generated package from
+the Airport Database page's existing-package installer.
 
 The lower-level generator is also available for scripted/developer use:
 

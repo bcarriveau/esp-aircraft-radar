@@ -208,7 +208,7 @@ different package path is intentionally needed. The lower-level generator does n
 download the CSV files and does not flash the radar.
 
 After either PC-side method finishes, open the radar's authenticated **AIRPORT
-DATABASE** page and use the **Advanced** existing-package installer to select the
+DATABASE** page and use the Airport Database page's existing-package installer to select the
 generated `.radarapt` file. The radar performs the same PSRAM-first validation,
 dedicated-partition write, read-back verification, and automatic restart used for a
 browser-built package.

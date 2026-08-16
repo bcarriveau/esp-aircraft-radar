@@ -5,8 +5,8 @@ This tool is intentionally PC-side. It downloads/reads the public OurAirports
 CSV data, filters a bounded regional dataset around coordinates supplied by the
 user, and writes only ``release/airports.radarapt``.
 
-It does not modify firmware, radar NVS settings, or the user's saved radar
-location. Regional airport data is always installed separately in persistent flash.
+It does not modify firmware, the compiled fallback airport header, radar NVS
+settings, or the user's saved radar location.
 """
 
 from __future__ import annotations
@@ -191,17 +191,16 @@ def validate_written_package(
     expected_records: int,
     expected_radius: int,
 ) -> None:
-    parsed = parse_package(package_output.read_bytes())
-    header = parsed.header
-    if header.record_count != expected_records:
+    info, records = parse_package(package_output.read_bytes())
+    if info.record_count != expected_records:
         raise RuntimeError(
             "Written airport package record count does not match generated data"
         )
-    if header.radius_miles != expected_radius:
+    if info.radius_miles != expected_radius:
         raise RuntimeError(
             "Written airport package radius does not match requested coverage"
         )
-    if len(parsed.records) != expected_records:
+    if len(records) != expected_records:
         raise RuntimeError(
             "Written airport package record payload is incomplete"
         )
@@ -298,8 +297,8 @@ def main() -> int:
         "and install it."
     )
     print(
-        "After a successful upload, restart the radar so the persistent "
-        "regional database becomes the active source."
+        "After a successful install, the radar validates the stored database "
+        "and restarts automatically."
     )
     return 0
 
