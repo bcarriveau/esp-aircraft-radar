@@ -111,7 +111,7 @@ def main() -> None:
         "*.py[cod]",
         "/airports.csv",
         "/runways.csv",
-        "/release/airports.radarapt",
+        "/airports.radarapt",
         "/COMMIT_MESSAGE.txt",
         "/PACKAGE_README.txt",
         "/SHA256SUMS.txt",
