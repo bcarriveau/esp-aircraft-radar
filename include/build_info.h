@@ -4,18 +4,18 @@
 
 // Main branch: unified persistent airport storage for all build variants.
 
-constexpr uint32_t FIRMWARE_VERSION_CODE = 97;
-constexpr const char* FIRMWARE_VERSION_LABEL = "Product 97";
+constexpr uint32_t FIRMWARE_VERSION_CODE = 98;
+constexpr const char* FIRMWARE_VERSION_LABEL = "Product 98";
 constexpr const char* FIRMWARE_HARDWARE_ID =
     "waveshare-esp32-s3-touch-lcd-7";
 constexpr const char* FIRMWARE_RELEASE_CHANNEL = "stable";
 constexpr uint16_t FIRMWARE_MANIFEST_SCHEMA = 1;
 constexpr uint16_t FIRMWARE_UPDATER_VERSION = 1;
 constexpr const char* FIRMWARE_RELEASE_NOTES =
-    "Uses one persistent airport database path in private and public firmware.";
+    "Adds muted nearest-aircraft halo associations on the 20-mile radar.";
 
 constexpr const char* BUILD_ID =
-    "7IN-20260816-PRODUCT97-UNIFIED-AIRPORT-STORAGE";
+    "7IN-20260817-PRODUCT98-NEAREST-HALO";
 
 #if defined(RADAR_DISTRIBUTION_BUILD)
 constexpr const char* FIRMWARE_BUILD_VARIANT = "distribution";
