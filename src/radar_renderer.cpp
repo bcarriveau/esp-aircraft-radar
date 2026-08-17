@@ -62,6 +62,7 @@ lv_point_t priorityHeadingPoints[5]{};
 vertical_state::State priorityVerticalState = vertical_state::State::LEVEL;
 char priorityVerticalStateHex[7]{};
 bool priorityVerticalStateInitialized = false;
+uint32_t displaySettingsGeneration = 0;
 
 inline lv_color_t rgb(uint8_t red, uint8_t green, uint8_t blue) {
   return lv_color_make(red, green, blue);
@@ -76,6 +77,12 @@ lv_color_t nearestAssociationColor(uint8_t index) {
     case 4: return rgb(132, 96, 165);   // muted purple
     default: return rgb(92, 157, 194);
   }
+}
+
+uint8_t radarDisplayRangeIndex(float rangeMiles) {
+  if (rangeMiles <= 20.1f) return 0;
+  if (rangeMiles <= 40.1f) return 1;
+  return 2;
 }
 
 void putPixel(int x, int y, lv_color_t color) {
@@ -547,6 +554,10 @@ bool airportLabelVisible(uint8_t rangeIndex, uint8_t labelMask,
 
 void invalidateAirportLabelCount() {
   invalidateStaticRadarLayer();
+}
+
+void invalidateDisplaySettings() {
+  ++displaySettingsGeneration;
 }
 
 void drawAircraftPreview(lv_obj_t* canvas, lv_color_t* buffer,
@@ -1342,9 +1353,12 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
       }
     }
   }
-  const bool showNearestAssociations =
-      rangeMiles <= 20.1f && !priorityAircraftActive;
-  if (showNearestAssociations) {
+  const uint8_t displayRange = radarDisplayRangeIndex(rangeMiles);
+  const bool showNearestColors =
+      !priorityAircraftActive && settings::radarNearestColors(displayRange);
+  const bool showNearestHalos =
+      !priorityAircraftActive && settings::radarNearestHalos(displayRange);
+  if (showNearestColors || showNearestHalos) {
     for (uint8_t contact = 0; contact < frame.count; ++contact) {
       ScreenContact& screen = frame.contacts[contact];
       if (screen.targetIndex < NEAREST_ASSOCIATION_COUNT &&
@@ -1378,10 +1392,10 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
           : (rangeMiles <= 40.1f ? CONTACT_40_MILE_SIZE
                                  : CONTACT_80_MILE_SIZE);
 
-  // Draw association halos before every contact so a later halo can never wash
-  // over another aircraft symbol. Only the five visible nearest-list slots use
-  // these accents, and only while the 20-mile nearest-list mode is active.
-  if (showNearestAssociations) {
+  // Draw enabled association halos before every contact so a later halo can
+  // never wash over another aircraft symbol. Only the five nearest-list slots
+  // participate, and each radar range can enable halos independently.
+  if (showNearestHalos) {
     for (uint8_t drawRank = frame.count; drawRank > 0; --drawRank) {
       const ScreenContact& screen =
           frame.contacts[priorityOrder[drawRank - 1]];
@@ -1403,7 +1417,7 @@ void drawContacts(aircraft::Target* workTargets, uint8_t count,
     const bool sweepActive =
         screen.sweepHighlighted && !screen.selected && !screen.tracked;
     const bool useNearestAssociationColor =
-        screen.nearestAssociationIndex != UINT8_MAX;
+        showNearestColors && screen.nearestAssociationIndex != UINT8_MAX;
     const lv_color_t iconColor =
         screen.tracked
             ? red
@@ -1498,7 +1512,11 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
         screen.hitIndex, labelBoxes, labelBoxCount);
   }
 
-  if (rangeMiles <= 20.1f) {
+  if (settings::radarAircraftLabels(radarDisplayRangeIndex(rangeMiles))) {
+    const int labelClearance =
+        rangeMiles <= 20.1f
+            ? RADAR_CONTACT_TAG_CLEARANCE
+            : (rangeMiles <= 40.1f ? 12 : DOT_TAG_CLEARANCE);
     for (uint8_t contact = 0; contact < frame.count; ++contact) {
       const ScreenContact& screen = frame.contacts[contact];
       if (screen.tracked || screen.selected) continue;
@@ -1508,7 +1526,7 @@ void drawContactLabels(aircraft::Target* workTargets, float rangeMiles,
       const lv_color_t colors[] = {rgb(115, 225, 255)};
       drawPlacedTag(
           screen.x, screen.y, lines, colors, 1, rgb(5, 20, 28),
-          rgb(28, 100, 104), 88, RADAR_CONTACT_TAG_CLEARANCE,
+          rgb(28, 100, 104), 88, labelClearance,
           screen.hitIndex, labelBoxes, labelBoxCount);
     }
   }
@@ -1933,8 +1951,11 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
     lv_obj_clear_flag(radarView.leftOtherModeLabel, LV_OBJ_FLAG_HIDDEN);
   }
 
+  const uint8_t displayRange = radarDisplayRangeIndex(snapshot.rangeMiles);
   const bool nearestAssociationMode =
-      !priorityAircraft && snapshot.rangeMiles <= 20.1f;
+      !priorityAircraft &&
+      (settings::radarNearestColors(displayRange) ||
+       settings::radarNearestHalos(displayRange));
   for (int i = 0; i < 5; ++i) {
     if (radarView.listLabels[i]) {
       if (priorityAircraft) {
@@ -2184,15 +2205,18 @@ bool render(aircraft::Target* workTargets, const char* selectedHex,
   static uint32_t lastSummaryTargetVersion = UINT32_MAX;
   static uint32_t lastSummaryRangeGeneration = UINT32_MAX;
   static uint32_t lastSummaryTrackingVersion = UINT32_MAX;
+  static uint32_t lastSummaryDisplaySettingsGeneration = UINT32_MAX;
   static char lastSummarySelectedHex[7]{};
   if (snapshot.targetVersion != lastSummaryTargetVersion ||
       snapshot.rangeGeneration != lastSummaryRangeGeneration ||
       snapshot.trackingVersion != lastSummaryTrackingVersion ||
+      displaySettingsGeneration != lastSummaryDisplaySettingsGeneration ||
       strncmp(lastSummarySelectedHex, selectedHex ? selectedHex : "",
               sizeof(lastSummarySelectedHex)) != 0) {
     lastSummaryTargetVersion = snapshot.targetVersion;
     lastSummaryRangeGeneration = snapshot.rangeGeneration;
     lastSummaryTrackingVersion = snapshot.trackingVersion;
+    lastSummaryDisplaySettingsGeneration = displaySettingsGeneration;
     strncpy(lastSummarySelectedHex, selectedHex ? selectedHex : "",
             sizeof(lastSummarySelectedHex) - 1);
     lastSummarySelectedHex[sizeof(lastSummarySelectedHex) - 1] = 0;

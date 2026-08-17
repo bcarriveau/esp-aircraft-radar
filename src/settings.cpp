@@ -28,6 +28,9 @@ constexpr const char* KEY_MQTT_BROKER = "mqtt_uri";
 constexpr const char* KEY_MQTT_USERNAME = "mqtt_user";
 constexpr const char* KEY_MQTT_PASSWORD = "mqtt_pass";
 constexpr const char* KEY_RADAR_RANGE = "radar_rng";
+constexpr const char* KEY_RADAR_LABELS = "rdr_lbl";
+constexpr const char* KEY_RADAR_COLORS = "rdr_col";
+constexpr const char* KEY_RADAR_HALOS = "rdr_halo";
 constexpr const char* KEY_AIRPORTS_ENABLED = "apt_on";
 constexpr const char* KEY_AIRPORT_OVERRIDES = "apt_ovr";
 constexpr const char* KEY_AIRPORT_SYMBOLS[AIRPORT_RANGE_COUNT] = {
@@ -38,6 +41,9 @@ constexpr const char* KEY_AIRPORT_LABELS[AIRPORT_RANGE_COUNT] = {
 };
 
 constexpr uint8_t DEFAULT_RADAR_RANGE_MILES = 80;
+constexpr uint8_t RADAR_DISPLAY_VALID_MASK = 0x07;
+// Preserve Product 98 behavior by default: enabled at 20 miles only.
+constexpr uint8_t DEFAULT_RADAR_DISPLAY_MASK = 0x01;
 
 // Category bits: major, public, private field, heliport.
 constexpr uint8_t DEFAULT_AIRPORT_SYMBOLS[AIRPORT_RANGE_COUNT] = {
@@ -49,6 +55,9 @@ constexpr uint8_t DEFAULT_AIRPORT_LABELS[AIRPORT_RANGE_COUNT] = {
 
 bool cachedMqttEnabled = MQTT_ENABLED_DEFAULT != 0;
 uint8_t cachedRadarRangeMiles = DEFAULT_RADAR_RANGE_MILES;
+uint8_t cachedRadarLabels = DEFAULT_RADAR_DISPLAY_MASK;
+uint8_t cachedRadarColors = DEFAULT_RADAR_DISPLAY_MASK;
+uint8_t cachedRadarHalos = DEFAULT_RADAR_DISPLAY_MASK;
 bool cachedAirportsEnabled = true;
 uint8_t cachedAirportSymbols[AIRPORT_RANGE_COUNT] = {
   DEFAULT_AIRPORT_SYMBOLS[0], DEFAULT_AIRPORT_SYMBOLS[1],
@@ -352,6 +361,44 @@ void markStorageError(const char* operation) {
   Serial.printf("NVS ERROR: %s did not complete; saving disabled\n", operation);
 }
 
+bool initializeRadarDisplayDefaults() {
+  bool initialized = true;
+  const struct {
+    const char* key;
+    uint8_t value;
+  } defaults[] = {
+    {KEY_RADAR_LABELS, DEFAULT_RADAR_DISPLAY_MASK},
+    {KEY_RADAR_COLORS, DEFAULT_RADAR_DISPLAY_MASK},
+    {KEY_RADAR_HALOS, DEFAULT_RADAR_DISPLAY_MASK}
+  };
+  for (const auto& setting : defaults) {
+    if (preferences.getType(setting.key) != PT_U8 &&
+        !writeUCharChecked(setting.key, setting.value)) {
+      initialized = false;
+    }
+  }
+  return initialized;
+}
+
+void setRadarDisplayCacheDefaults() {
+  cachedRadarLabels = DEFAULT_RADAR_DISPLAY_MASK;
+  cachedRadarColors = DEFAULT_RADAR_DISPLAY_MASK;
+  cachedRadarHalos = DEFAULT_RADAR_DISPLAY_MASK;
+}
+
+void loadRadarDisplayCache() {
+  if (!storageOpen) {
+    setRadarDisplayCacheDefaults();
+    return;
+  }
+  cachedRadarLabels = preferences.getUChar(
+      KEY_RADAR_LABELS, DEFAULT_RADAR_DISPLAY_MASK) & RADAR_DISPLAY_VALID_MASK;
+  cachedRadarColors = preferences.getUChar(
+      KEY_RADAR_COLORS, DEFAULT_RADAR_DISPLAY_MASK) & RADAR_DISPLAY_VALID_MASK;
+  cachedRadarHalos = preferences.getUChar(
+      KEY_RADAR_HALOS, DEFAULT_RADAR_DISPLAY_MASK) & RADAR_DISPLAY_VALID_MASK;
+}
+
 bool initializeAirportDefaults() {
   bool initialized = true;
   if (preferences.getType(KEY_AIRPORTS_ENABLED) != PT_U8 &&
@@ -408,6 +455,7 @@ bool initialize() {
   if (!storageOpen) {
     cachedMqttEnabled = MQTT_ENABLED_DEFAULT != 0;
     cachedRadarRangeMiles = DEFAULT_RADAR_RANGE_MILES;
+    setRadarDisplayCacheDefaults();
     setAirportSettingsCacheDefaults();
     Serial.println(
         "NVS ERROR: preferences namespace unavailable; using compile-time defaults");
@@ -468,11 +516,13 @@ bool initialize() {
       initialized = false;
     }
   }
+  if (!initializeRadarDisplayDefaults()) initialized = false;
   if (!initializeAirportDefaults()) initialized = false;
 
   storageHealthy = initialized;
   if (!initialized) {
     cachedRadarRangeMiles = DEFAULT_RADAR_RANGE_MILES;
+    setRadarDisplayCacheDefaults();
     setAirportSettingsCacheDefaults();
     markStorageError("default initialization");
     return false;
@@ -484,9 +534,11 @@ bool initialize() {
   if (!radarRangeValid(cachedRadarRangeMiles)) {
     cachedRadarRangeMiles = DEFAULT_RADAR_RANGE_MILES;
   }
+  loadRadarDisplayCache();
   if (!loadAirportSettingsCache()) {
     cachedMqttEnabled = MQTT_ENABLED_DEFAULT != 0;
     cachedRadarRangeMiles = DEFAULT_RADAR_RANGE_MILES;
+    setRadarDisplayCacheDefaults();
     setAirportSettingsCacheDefaults();
     markStorageError("airport override initialization");
     return false;
@@ -518,6 +570,15 @@ bool resetToDefaults() {
   if (!writeUCharChecked(KEY_RADAR_RANGE, DEFAULT_RADAR_RANGE_MILES)) {
     saved = false;
   }
+  if (!writeUCharChecked(KEY_RADAR_LABELS, DEFAULT_RADAR_DISPLAY_MASK)) {
+    saved = false;
+  }
+  if (!writeUCharChecked(KEY_RADAR_COLORS, DEFAULT_RADAR_DISPLAY_MASK)) {
+    saved = false;
+  }
+  if (!writeUCharChecked(KEY_RADAR_HALOS, DEFAULT_RADAR_DISPLAY_MASK)) {
+    saved = false;
+  }
   if (!writeUCharChecked(KEY_AIRPORTS_ENABLED, 1)) saved = false;
   for (uint8_t i = 0; i < AIRPORT_RANGE_COUNT; ++i) {
     if (!writeUCharChecked(KEY_AIRPORT_SYMBOLS[i],
@@ -539,6 +600,7 @@ bool resetToDefaults() {
   } else {
     cachedMqttEnabled = MQTT_ENABLED_DEFAULT != 0;
     cachedRadarRangeMiles = DEFAULT_RADAR_RANGE_MILES;
+    setRadarDisplayCacheDefaults();
     setAirportSettingsCacheDefaults();
   }
   return saved;
@@ -639,6 +701,47 @@ bool setRadarRangeMiles(uint8_t rangeMiles) {
     return false;
   }
   cachedRadarRangeMiles = rangeMiles;
+  return true;
+}
+
+bool radarAircraftLabels(uint8_t rangeIndex) {
+  if (rangeIndex >= RADAR_DISPLAY_RANGE_COUNT) {
+    rangeIndex = RADAR_DISPLAY_RANGE_COUNT - 1;
+  }
+  return (cachedRadarLabels & static_cast<uint8_t>(1U << rangeIndex)) != 0;
+}
+
+bool radarNearestColors(uint8_t rangeIndex) {
+  if (rangeIndex >= RADAR_DISPLAY_RANGE_COUNT) {
+    rangeIndex = RADAR_DISPLAY_RANGE_COUNT - 1;
+  }
+  return (cachedRadarColors & static_cast<uint8_t>(1U << rangeIndex)) != 0;
+}
+
+bool radarNearestHalos(uint8_t rangeIndex) {
+  if (rangeIndex >= RADAR_DISPLAY_RANGE_COUNT) {
+    rangeIndex = RADAR_DISPLAY_RANGE_COUNT - 1;
+  }
+  return (cachedRadarHalos & static_cast<uint8_t>(1U << rangeIndex)) != 0;
+}
+
+bool saveRadarDisplaySettings(uint8_t labelMask, uint8_t colorMask,
+                              uint8_t haloMask) {
+  if (!storageAvailable()) return false;
+  labelMask &= RADAR_DISPLAY_VALID_MASK;
+  colorMask &= RADAR_DISPLAY_VALID_MASK;
+  haloMask &= RADAR_DISPLAY_VALID_MASK;
+
+  bool saved = writeUCharChecked(KEY_RADAR_LABELS, labelMask);
+  if (!writeUCharChecked(KEY_RADAR_COLORS, colorMask)) saved = false;
+  if (!writeUCharChecked(KEY_RADAR_HALOS, haloMask)) saved = false;
+  if (!saved) {
+    markStorageError("radar display settings save");
+    return false;
+  }
+  cachedRadarLabels = labelMask;
+  cachedRadarColors = colorMask;
+  cachedRadarHalos = haloMask;
   return true;
 }
 

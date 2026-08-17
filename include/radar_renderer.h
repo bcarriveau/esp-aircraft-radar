@@ -90,6 +90,7 @@ bool airportLabelCount(uint8_t rangeIndex, uint8_t labelMask,
 bool airportLabelVisible(uint8_t rangeIndex, uint8_t labelMask,
                          const char* ident, bool& visible);
 void invalidateAirportLabelCount();
+void invalidateDisplaySettings();
 void focusAirport(const char* ident, uint32_t durationMs);
 void clearAirportFocus();
 
