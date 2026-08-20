@@ -9,8 +9,8 @@ version-controlled baseline. Earlier numbered history is intentionally not inven
 
 ## Current status
 
-- **Current Product:** Product 97
-- **Build marker:** `7IN-20260816-PRODUCT97-UNIFIED-AIRPORT-STORAGE`
+- **Current Product:** Product 99
+- **Build marker:** `7IN-20260817-PRODUCT99-RADAR-DISPLAY-OPTIONS`
 - **Current branch:** `main`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262, GT911, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
@@ -19,17 +19,69 @@ version-controlled baseline. Earlier numbered history is intentionally not inven
 
 ### Active release-artifact policy
 
-The active branch keeps only the current Product-numbered `.radarota` package and
-its matching fixed-name manifest in `release/`.
-
-The redundant tracked `release/firmware.radarota` copy and stale Product 70-91
-packages were removed after Product 92. Historical firmware remains recoverable from
-the Git history/tag/release associated with each Product.
-
 Current firmware identity comes from `include/build_info.h` plus the matching
 generated Product package/manifest. Documentation-only and housekeeping commits may
 advance repository HEAD without creating a new firmware Product.
 
+## Product 99 - 2026-08-17
+
+**Build:** `7IN-20260817-PRODUCT99-RADAR-DISPLAY-OPTIONS`  
+**Commit:** `e5009c72697049cc5c8df156277c6135ae40be34`
+
+### Added
+
+- Added a **RADAR DISPLAY** control in the Tracks-page header.
+- Added saved 20/40/80-mile controls for aircraft ID labels, nearest-five color
+  linking, and nearest-five halos.
+- Defaults preserve the Product 98 appearance at 20 miles while leaving the added
+  40/80-mile density disabled until the owner enables it.
+- Enabled visible aircraft ID labels participate in the established stable-ICAO radar
+  hit testing, providing a larger selectable target at 40/80 miles without storing
+  target-array indexes.
+
+### Preserved
+
+- Selected aircraft remain amber and tracked aircraft remain red, overriding
+  nearest-five association colors.
+- Collision-aware bounded label placement and one coherent aircraft snapshot per
+  frame remain intact.
+- Existing 20/40/80 range control, outward tracked auto-zoom, nearest-list behavior,
+  200-target capacity, aircraft retention, and stable ICAO selection/tracking.
+- ADS-B networking/TLS, 15-second cadence, Wi-Fi recovery, stale-response rejection,
+  last-good retention, display timing, DMA, OPI PSRAM, and the 20-scanline bounce
+  buffer are unchanged.
+
+### Validation
+
+- Focused host/source checks covered saved radar-display defaults and persistence,
+  reset behavior, per-range activation, association-color priority, and source
+  integrity during implementation.
+- PlatformIO compile/link, upload, and physical Product 99 verification are not
+  claimed by this documentation update.
+
+## Product 98 - 2026-08-17
+
+**Build:** `7IN-20260817-PRODUCT98-NEAREST-HALO`  
+**Commit:** `a94fad267dc7dbe9c5739725865edd8b8970c760`
+
+### Added
+
+- Added muted visual association between the right-panel nearest-five list and the
+  corresponding radar aircraft on the 20-mile view.
+- Uses five fixed muted accent colors with a 4-pixel list indicator, matching aircraft
+  color, and compact 21-pixel halo.
+- Final compact halo uses the lighter `84 / 54 / 26` opacity bands with no animation
+  or pulsing.
+- Association is derived from the already distance-sorted nearest-five list;
+  persistent selection and tracking remain stable-ICAO based.
+
+### Preserved
+
+- Selected amber and tracked red always take priority over nearest-five colors.
+- Existing label styling, right-panel priority states, range control, hit-test
+  priority, collision handling, and single-snapshot renderer are preserved.
+- No networking, TLS, Wi-Fi recovery, display framework/timing, PSRAM ownership,
+  DMA/bounce-buffer, or target-capacity changes.
 
 ## Product 97 - 2026-08-16
 

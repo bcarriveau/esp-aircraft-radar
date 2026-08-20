@@ -367,18 +367,11 @@ setup and install the regional airport database again.
 
 A normal PlatformIO upload of the distribution environment is **not**
 equivalent to a clean factory reset because it does not issue a
-whole-chip erase. With the current Product 97 layout, physical testing confirmed
+whole-chip erase. With the Product 97 partition layout, physical testing confirmed
 that a normal `waveshare-s3-touch-lcd-7-factory` VS Code/PlatformIO upload preserves
-saved owner state and an installed persistent airport database. It remains a
-developer/test operation, not the normal owner update path. With the current Product 97 layout, physical testing confirmed
-that a normal `waveshare-s3-touch-lcd-7-factory` VS Code/PlatformIO upload preserves
-saved owner state and an installed persistent airport database. It remains a
-developer/test operation, not the normal owner update path. With the current Product 97 partition layout, physical testing
-confirmed that a normal `waveshare-s3-touch-lcd-7-factory` VS Code/PlatformIO
-upload preserves existing NVS owner settings and an installed persistent airport
-database. It still changes the running application to the credential-safe
-distribution variant, so it remains a developer/test operation rather than the
-normal owner update path.
+existing NVS owner settings and an installed persistent airport database. It still
+changes the running application to the credential-safe distribution variant, so it
+remains a developer/test operation rather than the normal owner update path.
 
 ## The Three Software Paths
 
@@ -529,7 +522,7 @@ release/factory artifacts.
 
 Regional airport data is **not** compiled into this private firmware. Development
 units use the same persistent airport database as public units. Install it once from
-the radar's Airport Database web page, or generate `release/airports.radarapt` with
+the radar's Airport Database web page, or generate `airports.radarapt` with
 `tools\Build Airport Database.bat` and install that package from the same page.
 Normal later private firmware uploads leave the airport partition unchanged.
 
@@ -584,6 +577,11 @@ For release-generation details, see `docs/GITHUB_RELEASES.md` and
 -   tracked tag with `TRACKED`, identifier, and MPH
 -   outward auto-zoom to keep a tracked aircraft visible
 -   collision-aware labels
+-   per-range saved controls for aircraft ID labels, nearest-five colors, and halos
+-   color-linked nearest-five aircraft with matching right-list indicators
+-   selectable visible aircraft ID labels using stable ICAO identity
+-   Product 98/99 defaults preserve labels, nearest-five colors, and halos at 20 miles
+    while leaving those optional display features off at 40 and 80 miles
 -   coherent single-snapshot radar rendering
 -   last-good aircraft retention through temporary transport failures
 
@@ -594,22 +592,27 @@ Idle:
 -   left side shows aircraft count, nearest aircraft, and data status
 -   right side shows the nearest-aircraft list
 -   `20 / 40 / 80` is the radar range control
+-   the Tracks-page **RADAR DISPLAY** control configures ID labels, nearest-five
+    colors, and halos independently for 20 / 40 / 80 miles
 
 Selected:
 
 -   selected-aircraft details take right-panel priority
 -   `INFO / TRACK / CLEAR` are the primary actions
+-   selected aircraft remain amber even when nearest-five color linking is enabled
 
 Tracked:
 
 -   `STOP TRACK` takes right-panel priority
 -   tracking remains tied to stable ICAO identity rather than an array
     position
+-   tracked aircraft remain red even when nearest-five color linking is enabled
 
 ### Aircraft and airport pages
 
 -   live Aircraft Profile
 -   Tracks page with live aircraft
+-   Tracks-page Radar Display settings for saved per-range aircraft presentation
 -   Airspace totals/categories and radar handoff
 -   Airports directory and profiles
 -   airport `AUTO / SHOW / HIDE` display controls
@@ -809,8 +812,7 @@ as the safe checked-in example.
 
 ## Current Known-Good Source
 
-At the time of this README cleanup, the intended development/source
-branch is:
+The intended stable/source branch after the Product 98/99 radar-display work lands is:
 
 ``` text
 main
@@ -819,8 +821,8 @@ main
 Current firmware identity:
 
 ``` text
-Product 97
-7IN-20260816-PRODUCT97-UNIFIED-AIRPORT-STORAGE
+Product 99
+7IN-20260817-PRODUCT99-RADAR-DISPLAY-OPTIONS
 ```
 
 The durable firmware identity is the build marker in
