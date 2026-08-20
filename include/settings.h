@@ -6,6 +6,7 @@
 namespace settings {
 
 constexpr uint8_t AIRPORT_RANGE_COUNT = 3;
+constexpr uint8_t RADAR_DISPLAY_RANGE_COUNT = 3;
 constexpr uint8_t AIRPORT_LABEL_OVERRIDE_CAPACITY = 64;
 
 enum class AirportLabelMode : uint8_t {
@@ -41,6 +42,12 @@ void setHomeLongitude(float longitude);
 
 uint8_t radarRangeMiles();
 bool setRadarRangeMiles(uint8_t rangeMiles);
+
+bool radarAircraftLabels(uint8_t rangeIndex);
+bool radarNearestColors(uint8_t rangeIndex);
+bool radarNearestHalos(uint8_t rangeIndex);
+bool saveRadarDisplaySettings(uint8_t labelMask, uint8_t colorMask,
+                              uint8_t haloMask);
 
 bool airportsEnabled();
 uint8_t airportSymbolMask(uint8_t rangeIndex);

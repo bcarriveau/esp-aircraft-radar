@@ -41,6 +41,11 @@ constexpr uint32_t AIRPORT_FOCUS_DURATION_MS = 15000;
 static_assert(AIRPORT_RANGE_COUNT == settings::AIRPORT_RANGE_COUNT,
               "Airport range settings must stay synchronized");
 constexpr uint8_t RANGE_OPTION_COUNT = 3;
+constexpr uint8_t RADAR_DISPLAY_FEATURE_COUNT = 3;
+constexpr uint8_t RADAR_DISPLAY_RANGE_COUNT =
+    settings::RADAR_DISPLAY_RANGE_COUNT;
+static_assert(RADAR_DISPLAY_RANGE_COUNT == RANGE_OPTION_COUNT,
+              "Radar display range settings must stay synchronized");
 constexpr float RADAR_RANGES[RANGE_OPTION_COUNT] = {
   20.0f, 40.0f, 80.0f
 };
@@ -143,6 +148,16 @@ lv_obj_t* retryButton = nullptr;
 lv_obj_t* showPasswordButton = nullptr;
 lv_obj_t* showPasswordLabel = nullptr;
 lv_obj_t* tracksTable = nullptr;
+lv_obj_t* radarDisplayButton = nullptr;
+lv_obj_t* radarDisplayPanel = nullptr;
+lv_obj_t* radarDisplayToggleButtons[RADAR_DISPLAY_FEATURE_COUNT]
+                                    [RADAR_DISPLAY_RANGE_COUNT]{};
+lv_obj_t* radarDisplayToggleLabels[RADAR_DISPLAY_FEATURE_COUNT]
+                                   [RADAR_DISPLAY_RANGE_COUNT]{};
+lv_obj_t* radarDisplaySaveButton = nullptr;
+lv_obj_t* radarDisplayStatusLabel = nullptr;
+lv_obj_t* radarDisplayCloseButton = nullptr;
+lv_obj_t* radarDisplayDefaultsButton = nullptr;
 lv_obj_t* airspaceDashboard = nullptr;
 lv_obj_t* airspaceMetricValueLabels[AIRSPACE_METRIC_COUNT]{};
 lv_obj_t* airspaceCategoryCountLabels[AIRSPACE_CATEGORY_COUNT]{};
@@ -226,6 +241,11 @@ uint8_t pendingAirportLabelMasks[AIRPORT_RANGE_COUNT]{};
 uint8_t airportConfigMode = 0;
 bool airportOptionsLoaded = false;
 bool airportOptionsDirty = false;
+uint8_t pendingRadarLabelMask = 0;
+uint8_t pendingRadarColorMask = 0;
+uint8_t pendingRadarHaloMask = 0;
+bool radarDisplayLoaded = false;
+bool radarDisplayDirty = false;
 airport_data::NearbyAirport* airportDirectoryEntries = nullptr;
 airport_data::NearbyAirport* airportDirectoryScratch = nullptr;
 bool airportDirectoryLabelVisible[AIRPORT_DIRECTORY_CAPACITY]{};
@@ -497,7 +517,7 @@ void setTemporarySettingsSuccess(const char* text) {
 void syncSettingsStorageState() {
   const bool ready = settings::storageAvailable();
   lv_obj_t* storageButtons[] = {saveSettingsButton, resetSettingsButton,
-                                    airportSaveButton};
+                                    airportSaveButton, radarDisplaySaveButton};
   for (lv_obj_t* button : storageButtons) {
     if (!button) continue;
     if (ready) lv_obj_clear_state(button, LV_STATE_DISABLED);
@@ -517,6 +537,7 @@ void setAirportStatus(const char* text, lv_color_t color) {
 
 void selectPage(uint8_t page);
 void syncRangeControls(float rangeMiles);
+void updatePageContent();
 
 void syncAirportLabelEditControl() {
   if (!airportLabelEditButton || !airportLabelEditLabel) return;
@@ -576,6 +597,141 @@ void syncAirportDetailShowButton() {
                                 rgb(130, 145, 150), 0);
   }
   lv_obj_center(airportDetailShowLabel);
+}
+
+uint8_t* pendingRadarDisplayMask(uint8_t feature) {
+  switch (feature) {
+    case 0: return &pendingRadarLabelMask;
+    case 1: return &pendingRadarColorMask;
+    case 2: return &pendingRadarHaloMask;
+    default: return nullptr;
+  }
+}
+
+void loadRadarDisplayOptions() {
+  pendingRadarLabelMask = 0;
+  pendingRadarColorMask = 0;
+  pendingRadarHaloMask = 0;
+  for (uint8_t range = 0; range < RADAR_DISPLAY_RANGE_COUNT; ++range) {
+    const uint8_t bit = static_cast<uint8_t>(1U << range);
+    if (settings::radarAircraftLabels(range)) pendingRadarLabelMask |= bit;
+    if (settings::radarNearestColors(range)) pendingRadarColorMask |= bit;
+    if (settings::radarNearestHalos(range)) pendingRadarHaloMask |= bit;
+  }
+  radarDisplayLoaded = true;
+}
+
+void setRadarDisplayStatus(const char* text, lv_color_t color) {
+  if (!radarDisplayStatusLabel) return;
+  setLabelTextIfChanged(radarDisplayStatusLabel, text ? text : "");
+  lv_obj_set_style_text_color(radarDisplayStatusLabel, color, 0);
+}
+
+void syncRadarDisplayControls() {
+  if (!radarDisplayLoaded) loadRadarDisplayOptions();
+  for (uint8_t feature = 0; feature < RADAR_DISPLAY_FEATURE_COUNT; ++feature) {
+    const uint8_t* mask = pendingRadarDisplayMask(feature);
+    if (!mask) continue;
+    for (uint8_t range = 0; range < RADAR_DISPLAY_RANGE_COUNT; ++range) {
+      const bool enabled = (*mask & static_cast<uint8_t>(1U << range)) != 0;
+      lv_obj_t* button = radarDisplayToggleButtons[feature][range];
+      lv_obj_t* label = radarDisplayToggleLabels[feature][range];
+      if (button) {
+        lv_obj_set_style_bg_color(button,
+                                  enabled ? rgb(24, 128, 84)
+                                          : rgb(35, 48, 58), 0);
+        lv_obj_set_style_border_color(button,
+                                      enabled ? rgb(63, 255, 155)
+                                              : rgb(70, 100, 108), 0);
+        lv_obj_set_style_border_width(button, 1, 0);
+      }
+      if (label) {
+        setLabelTextIfChanged(label, enabled ? "ON" : "OFF");
+        lv_obj_set_style_text_color(label,
+                                    enabled ? rgb(240, 255, 245)
+                                            : rgb(145, 160, 165), 0);
+        lv_obj_center(label);
+      }
+    }
+  }
+}
+
+void radarDisplayOpenEvent(lv_event_t*) {
+  if (!radarDisplayPanel) return;
+  radarDisplayLoaded = false;
+  radarDisplayDirty = false;
+  loadRadarDisplayOptions();
+  syncRadarDisplayControls();
+  setRadarDisplayStatus("", rgb(120, 240, 155));
+  syncSettingsStorageState();
+  lv_obj_move_foreground(radarDisplayPanel);
+  lv_obj_clear_flag(radarDisplayPanel, LV_OBJ_FLAG_HIDDEN);
+}
+
+void radarDisplayToggleEvent(lv_event_t* event) {
+  if (!radarDisplayLoaded) loadRadarDisplayOptions();
+  const uintptr_t packed =
+      reinterpret_cast<uintptr_t>(lv_event_get_user_data(event));
+  const uint8_t feature = static_cast<uint8_t>((packed >> 4) & 0x0F);
+  const uint8_t range = static_cast<uint8_t>(packed & 0x0F);
+  if (feature >= RADAR_DISPLAY_FEATURE_COUNT ||
+      range >= RADAR_DISPLAY_RANGE_COUNT) {
+    return;
+  }
+  uint8_t* mask = pendingRadarDisplayMask(feature);
+  if (!mask) return;
+  *mask ^= static_cast<uint8_t>(1U << range);
+  radarDisplayDirty = true;
+  syncRadarDisplayControls();
+  setRadarDisplayStatus("Unsaved radar display change",
+                        rgb(255, 220, 100));
+}
+
+void radarDisplayDefaultsEvent(lv_event_t*) {
+  pendingRadarLabelMask = 0x01;
+  pendingRadarColorMask = 0x01;
+  pendingRadarHaloMask = 0x01;
+  radarDisplayLoaded = true;
+  radarDisplayDirty = true;
+  syncRadarDisplayControls();
+  setRadarDisplayStatus("Default 20-mile display selected; tap SAVE SETTINGS",
+                        rgb(255, 220, 100));
+}
+
+void radarDisplaySaveEvent(lv_event_t*) {
+  if (!settings::storageAvailable()) {
+    syncSettingsStorageState();
+    setRadarDisplayStatus("NVS ERROR: radar display settings not saved",
+                          rgb(255, 120, 110));
+    return;
+  }
+  if (!settings::saveRadarDisplaySettings(
+          pendingRadarLabelMask, pendingRadarColorMask,
+          pendingRadarHaloMask)) {
+    syncSettingsStorageState();
+    radarDisplayLoaded = false;
+    loadRadarDisplayOptions();
+    syncRadarDisplayControls();
+    setRadarDisplayStatus("Radar display settings write failed",
+                          rgb(255, 120, 110));
+    return;
+  }
+  radarDisplayDirty = false;
+  radar::invalidateDisplaySettings();
+  setRadarDisplayStatus("Radar display settings saved",
+                        rgb(120, 240, 155));
+}
+
+void radarDisplayCloseEvent(lv_event_t*) {
+  if (!radarDisplayPanel) return;
+  if (radarDisplayDirty) {
+    radarDisplayLoaded = false;
+    loadRadarDisplayOptions();
+    syncRadarDisplayControls();
+  }
+  radarDisplayDirty = false;
+  lv_obj_add_flag(radarDisplayPanel, LV_OBJ_FLAG_HIDDEN);
+  updatePageContent();
 }
 
 void loadAirportOptions() {
@@ -1412,6 +1568,11 @@ void resetSettingsEvent(lv_event_t*) {
   airportOptionsLoaded = false;
   loadAirportOptions();
   syncAirportControls();
+  radarDisplayLoaded = false;
+  radarDisplayDirty = false;
+  loadRadarDisplayOptions();
+  syncRadarDisplayControls();
+  radar::invalidateDisplaySettings();
   populateSettingsForm();
   setSettingsStatus(locationChanged ? "Defaults restored; updating aircraft"
                                     : "Defaults restored",
@@ -1422,7 +1583,6 @@ void resetSettingsEvent(lv_event_t*) {
   adsb::requestWifiReconnect();
 }
 
-void updatePageContent();
 void updateOtaPanel();
 void updateMqttPanel();
 void showTargetDetails(const aircraft::Target& target, DetailOrigin origin);
@@ -1435,6 +1595,12 @@ void selectPage(uint8_t page) {
   }
   if (mqttPanel && !lv_obj_has_flag(mqttPanel, LV_OBJ_FLAG_HIDDEN)) {
     lv_obj_add_flag(mqttPanel, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (radarDisplayPanel &&
+      !lv_obj_has_flag(radarDisplayPanel, LV_OBJ_FLAG_HIDDEN)) {
+    radarDisplayLoaded = false;
+    radarDisplayDirty = false;
+    lv_obj_add_flag(radarDisplayPanel, LV_OBJ_FLAG_HIDDEN);
   }
   if (currentPage == 0 && nextPage != 0) {
     radar::clearAirportFocus();
@@ -1485,6 +1651,7 @@ void selectPage(uint8_t page) {
   setVisible(reconnectButton, false);
   setVisible(retryButton, false);
   setVisible(showPasswordButton, false);
+  setVisible(radarDisplayButton, false);
   updatePageContent();
   if (currentPage == 1) {
     resetScrollToTop(tracksTable);
@@ -2047,6 +2214,7 @@ void renderTracksPage() {
   setTracksVisible(true);
   setAirspaceVisible(false);
   setSystemCreditVisible(false);
+  setVisible(radarDisplayButton, true);
   if (lastTracksVersion == snapshot.targetVersion &&
       lastTracksRangeGeneration == snapshot.rangeGeneration) return;
   lastTracksVersion = snapshot.targetVersion;
@@ -2373,6 +2541,8 @@ void updatePageContent() {
   if (!pagePanel || currentPage == 0) return;
   if (otaPanel && !lv_obj_has_flag(otaPanel, LV_OBJ_FLAG_HIDDEN)) return;
   if (mqttPanel && !lv_obj_has_flag(mqttPanel, LV_OBJ_FLAG_HIDDEN)) return;
+  if (radarDisplayPanel &&
+      !lv_obj_has_flag(radarDisplayPanel, LV_OBJ_FLAG_HIDDEN)) return;
   if (detailPanel && !lv_obj_has_flag(detailPanel, LV_OBJ_FLAG_HIDDEN)) return;
   switch (currentPage) {
     case 1: renderTracksPage(); break;
@@ -2947,6 +3117,25 @@ void buildPageShell(lv_obj_t* root) {
   lv_obj_add_event_cb(tracksTable, tracksTableDrawEvent,
                       LV_EVENT_DRAW_PART_END, nullptr);
   setTracksVisible(false);
+
+  radarDisplayButton = lv_btn_create(pagePanel);
+  lv_obj_set_size(radarDisplayButton, 196, 34);
+  lv_obj_set_pos(radarDisplayButton, 548, 8);
+  lv_obj_set_style_bg_color(radarDisplayButton, rgb(20, 68, 82), 0);
+  lv_obj_set_style_border_color(radarDisplayButton, rgb(80, 180, 190), 0);
+  lv_obj_set_style_border_width(radarDisplayButton, 1, 0);
+  lv_obj_set_style_radius(radarDisplayButton, 5, 0);
+  lv_obj_set_style_pad_all(radarDisplayButton, 0, 0);
+  lv_obj_add_event_cb(radarDisplayButton, radarDisplayOpenEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* radarDisplayButtonLabel = lv_label_create(radarDisplayButton);
+  lv_label_set_text(radarDisplayButtonLabel, "RADAR DISPLAY  >");
+  lv_obj_set_style_text_font(radarDisplayButtonLabel,
+                             &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(radarDisplayButtonLabel,
+                              rgb(150, 230, 255), 0);
+  lv_obj_center(radarDisplayButtonLabel);
+  lv_obj_add_flag(radarDisplayButton, LV_OBJ_FLAG_HIDDEN);
 
   airspaceDashboard = lv_obj_create(pagePanel);
   lv_obj_set_size(airspaceDashboard, 742, 280);
@@ -3591,6 +3780,122 @@ void buildPageShell(lv_obj_t* root) {
   setSettingsFormVisible(false);
 }
 
+void buildRadarDisplayPanel() {
+  radarDisplayPanel = lv_obj_create(pagePanel);
+  lv_obj_set_size(radarDisplayPanel, 752, 337);
+  lv_obj_set_pos(radarDisplayPanel, 3, 3);
+  stylePanel(radarDisplayPanel);
+  lv_obj_set_style_bg_color(radarDisplayPanel, rgb(7, 16, 23), 0);
+  lv_obj_clear_flag(radarDisplayPanel, LV_OBJ_FLAG_SCROLLABLE);
+
+  makeLabel(radarDisplayPanel, "RADAR DISPLAY", &lv_font_montserrat_28,
+            rgb(63, 255, 155), 12, 7);
+  lv_obj_t* help = makeLabel(
+      radarDisplayPanel,
+      "Choose how much aircraft information appears at each radar range.",
+      &lv_font_montserrat_12, rgb(180, 210, 215), 12, 46);
+  lv_obj_set_width(help, 710);
+  lv_label_set_long_mode(help, LV_LABEL_LONG_CLIP);
+
+  const char* rangeNames[RADAR_DISPLAY_RANGE_COUNT] = {
+    "20 MI", "40 MI", "80 MI"
+  };
+  for (uint8_t range = 0; range < RADAR_DISPLAY_RANGE_COUNT; ++range) {
+    lv_obj_t* rangeLabel = makeLabel(
+        radarDisplayPanel, rangeNames[range], &lv_font_montserrat_12,
+        rgb(100, 170, 180), 430 + range * 94, 70);
+    lv_obj_set_width(rangeLabel, 82);
+    lv_obj_set_style_text_align(rangeLabel, LV_TEXT_ALIGN_CENTER, 0);
+  }
+
+  const char* featureNames[RADAR_DISPLAY_FEATURE_COUNT] = {
+    "AIRCRAFT ID LABELS", "NEAREST 5 COLORS", "NEAREST 5 HALOS"
+  };
+  const char* featureNotes[RADAR_DISPLAY_FEATURE_COUNT] = {
+    "Show selectable aircraft IDs on the radar",
+    "Match nearest aircraft to the right-hand list",
+    "Add a soft color halo around nearest aircraft"
+  };
+  for (uint8_t feature = 0; feature < RADAR_DISPLAY_FEATURE_COUNT; ++feature) {
+    const int rowY = 94 + feature * 58;
+    makeLabel(radarDisplayPanel, featureNames[feature], &lv_font_montserrat_14,
+              rgb(225, 235, 240), 14, rowY + 1);
+    lv_obj_t* note = makeLabel(
+        radarDisplayPanel, featureNotes[feature], &lv_font_montserrat_12,
+        rgb(100, 170, 180), 14, rowY + 23);
+    lv_obj_set_width(note, 390);
+    lv_label_set_long_mode(note, LV_LABEL_LONG_CLIP);
+
+    for (uint8_t range = 0; range < RADAR_DISPLAY_RANGE_COUNT; ++range) {
+      lv_obj_t* button = lv_btn_create(radarDisplayPanel);
+      radarDisplayToggleButtons[feature][range] = button;
+      lv_obj_set_size(button, 82, 40);
+      lv_obj_set_pos(button, 430 + range * 94, rowY);
+      lv_obj_set_style_radius(button, 5, 0);
+      lv_obj_set_style_shadow_width(button, 0, 0);
+      const uintptr_t packed =
+          (static_cast<uintptr_t>(feature) << 4) | range;
+      lv_obj_add_event_cb(button, radarDisplayToggleEvent,
+                          LV_EVENT_CLICKED,
+                          reinterpret_cast<void*>(packed));
+      lv_obj_t* label = lv_label_create(button);
+      radarDisplayToggleLabels[feature][range] = label;
+      lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
+      lv_obj_center(label);
+    }
+  }
+
+  radarDisplayStatusLabel = makeLabel(
+      radarDisplayPanel, "", &lv_font_montserrat_12,
+      rgb(120, 240, 155), 14, 270);
+  lv_obj_set_width(radarDisplayStatusLabel, 390);
+  lv_label_set_long_mode(radarDisplayStatusLabel, LV_LABEL_LONG_CLIP);
+
+  radarDisplayDefaultsButton = lv_btn_create(radarDisplayPanel);
+  lv_obj_set_size(radarDisplayDefaultsButton, 150, 36);
+  lv_obj_set_pos(radarDisplayDefaultsButton, 14, 287);
+  lv_obj_set_style_bg_color(radarDisplayDefaultsButton, rgb(35, 48, 58), 0);
+  lv_obj_set_style_border_color(radarDisplayDefaultsButton,
+                                rgb(100, 145, 155), 0);
+  lv_obj_set_style_border_width(radarDisplayDefaultsButton, 1, 0);
+  lv_obj_set_style_radius(radarDisplayDefaultsButton, 5, 0);
+  lv_obj_add_event_cb(radarDisplayDefaultsButton, radarDisplayDefaultsEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* defaultsLabel = lv_label_create(radarDisplayDefaultsButton);
+  lv_label_set_text(defaultsLabel, "RESTORE DEFAULTS");
+  lv_obj_set_style_text_font(defaultsLabel, &lv_font_montserrat_12, 0);
+  lv_obj_center(defaultsLabel);
+
+  radarDisplaySaveButton = lv_btn_create(radarDisplayPanel);
+  lv_obj_set_size(radarDisplaySaveButton, 150, 36);
+  lv_obj_set_pos(radarDisplaySaveButton, 420, 287);
+  lv_obj_set_style_bg_color(radarDisplaySaveButton, rgb(24, 128, 84), 0);
+  lv_obj_set_style_radius(radarDisplaySaveButton, 5, 0);
+  lv_obj_add_event_cb(radarDisplaySaveButton, radarDisplaySaveEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* saveLabel = lv_label_create(radarDisplaySaveButton);
+  lv_label_set_text(saveLabel, "SAVE SETTINGS");
+  lv_obj_set_style_text_font(saveLabel, &lv_font_montserrat_12, 0);
+  lv_obj_center(saveLabel);
+
+  radarDisplayCloseButton = lv_btn_create(radarDisplayPanel);
+  lv_obj_set_size(radarDisplayCloseButton, 150, 36);
+  lv_obj_set_pos(radarDisplayCloseButton, 580, 287);
+  lv_obj_set_style_bg_color(radarDisplayCloseButton, rgb(20, 68, 82), 0);
+  lv_obj_set_style_radius(radarDisplayCloseButton, 5, 0);
+  lv_obj_add_event_cb(radarDisplayCloseButton, radarDisplayCloseEvent,
+                      LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* closeLabel = lv_label_create(radarDisplayCloseButton);
+  lv_label_set_text(closeLabel, "CLOSE");
+  lv_obj_set_style_text_font(closeLabel, &lv_font_montserrat_12, 0);
+  lv_obj_center(closeLabel);
+
+  loadRadarDisplayOptions();
+  syncRadarDisplayControls();
+  syncSettingsStorageState();
+  lv_obj_add_flag(radarDisplayPanel, LV_OBJ_FLAG_HIDDEN);
+}
+
 void buildOtaPanel() {
   otaPanel = lv_obj_create(pagePanel);
   lv_obj_set_size(otaPanel, 752, 337);
@@ -3978,6 +4283,7 @@ bool buildUi() {
   if (!buildRadarPanels(root)) return false;
   buildNavigation(root);
   buildPageShell(root);
+  buildRadarDisplayPanel();
   loadAirportOptions();
   syncAirportControls();
   buildOtaPanel();
