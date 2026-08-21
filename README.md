@@ -845,6 +845,11 @@ Detailed confirmed version history is maintained in `CHANGELOG.md`.
 
 ## License and Data Sources
 
+Copyright © 2026 Bill Carriveau.
+
+This project is licensed under the Apache License 2.0. See `LICENSE` for
+the full license terms.
+
 Repository licensing and third-party notices are maintained in:
 
 -   `LICENSE`
