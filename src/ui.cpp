@@ -25,6 +25,14 @@ namespace {
 constexpr uint32_t FRAME_INTERVAL_MS = 80;
 constexpr uint8_t PAGE_COUNT = 5;
 constexpr uint8_t NEAREST_LIST_COUNT = 5;
+constexpr int NEAREST_LIST_ROW_STEP = 56;
+constexpr int NEAREST_LIST_INDICATOR_X = 34;
+constexpr int NEAREST_LIST_INDICATOR_Y = 38;
+constexpr int NEAREST_LIST_INDICATOR_WIDTH = 6;
+constexpr int NEAREST_LIST_INDICATOR_HEIGHT = 40;
+constexpr int NEAREST_LIST_LABEL_X = 43;
+constexpr int NEAREST_LIST_LABEL_Y = 36;
+constexpr int NEAREST_LIST_LABEL_WIDTH = 138;
 constexpr uint8_t PRIORITY_OTHER_COUNT = 3;
 constexpr uint8_t AIRSPACE_CATEGORY_COUNT = 6;
 constexpr uint8_t AIRSPACE_METRIC_COUNT = 4;
@@ -113,6 +121,7 @@ lv_obj_t* headingLabel = nullptr;
 lv_obj_t* verticalStateIcon = nullptr;
 lv_obj_t* verticalStateLabel = nullptr;
 lv_obj_t* listLabels[NEAREST_LIST_COUNT]{};
+lv_obj_t* listIndicators[NEAREST_LIST_COUNT]{};
 lv_obj_t* listIcons[NEAREST_LIST_COUNT]{};
 char leftNearestHex[7]{};
 char nearestListHex[NEAREST_LIST_COUNT][7]{};
@@ -2961,16 +2970,36 @@ bool buildRadarPanels(lv_obj_t* root) {
 
   for (int i = 0; i < NEAREST_LIST_COUNT; ++i) {
     listIcons[i] = makeRadarSideIcon(
-        right, LIST_ICON_BASE_INDEX + i, 4, 40 + i * 56);
+        right, LIST_ICON_BASE_INDEX + i, 4,
+        40 + i * NEAREST_LIST_ROW_STEP);
     if (!listIcons[i]) return false;
     lv_obj_add_flag(listIcons[i], LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_ext_click_area(listIcons[i], 6);
     lv_obj_add_event_cb(listIcons[i], nearestTargetEvent, LV_EVENT_CLICKED,
                         (void*)(uintptr_t)i);
 
-    listLabels[i] = makeLabel(right, "", &lv_font_montserrat_12,
-                              rgb(225, 235, 240), 38, 36 + i * 56);
-    lv_obj_set_width(listLabels[i], 143);
+    listIndicators[i] = lv_obj_create(right);
+    if (!listIndicators[i]) return false;
+    lv_obj_set_size(listIndicators[i], NEAREST_LIST_INDICATOR_WIDTH,
+                    NEAREST_LIST_INDICATOR_HEIGHT);
+    lv_obj_set_pos(listIndicators[i], NEAREST_LIST_INDICATOR_X,
+                   NEAREST_LIST_INDICATOR_Y + i * NEAREST_LIST_ROW_STEP);
+    lv_obj_set_style_bg_opa(listIndicators[i], LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(listIndicators[i], 0, 0);
+    lv_obj_set_style_radius(listIndicators[i], 1, 0);
+    lv_obj_set_style_pad_all(listIndicators[i], 0, 0);
+    lv_obj_clear_flag(listIndicators[i], LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(listIndicators[i], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(listIndicators[i], 2);
+    lv_obj_add_event_cb(listIndicators[i], nearestTargetEvent, LV_EVENT_CLICKED,
+                        (void*)(uintptr_t)i);
+    lv_obj_add_flag(listIndicators[i], LV_OBJ_FLAG_HIDDEN);
+
+    listLabels[i] = makeLabel(
+        right, "", &lv_font_montserrat_12, rgb(225, 235, 240),
+        NEAREST_LIST_LABEL_X, NEAREST_LIST_LABEL_Y + i * NEAREST_LIST_ROW_STEP);
+    lv_obj_set_width(listLabels[i], NEAREST_LIST_LABEL_WIDTH);
+    lv_obj_set_style_border_width(listLabels[i], 0, 0);
     lv_obj_add_flag(listLabels[i], LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_ext_click_area(listLabels[i], 8);
     lv_obj_add_event_cb(listLabels[i], nearestTargetEvent, LV_EVENT_CLICKED,
@@ -3051,6 +3080,7 @@ bool buildRadarPanels(lv_obj_t* root) {
   view.leftNearestHex = leftNearestHex;
   for (int i = 0; i < NEAREST_LIST_COUNT; ++i) {
     view.listLabels[i] = listLabels[i];
+    view.listIndicators[i] = listIndicators[i];
     view.listIcons[i] = listIcons[i];
     view.listIconBuffers[i] =
         radarSideIconBuffer(LIST_ICON_BASE_INDEX + i);

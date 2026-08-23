@@ -1963,16 +1963,18 @@ void updateRadarSummary(aircraft::Target* workTargets, uint8_t count,
       } else {
         lv_obj_clear_flag(radarView.listLabels[i], LV_OBJ_FLAG_HIDDEN);
       }
-      const bool showIndicator = nearestAssociationMode && i < count;
-      lv_obj_set_style_border_side(radarView.listLabels[i],
-                                   LV_BORDER_SIDE_LEFT, 0);
-      lv_obj_set_style_border_width(radarView.listLabels[i],
-                                    showIndicator ? 4 : 0, 0);
-      lv_obj_set_style_border_color(radarView.listLabels[i],
-                                    nearestAssociationColor(i), 0);
-      lv_obj_set_style_border_opa(
-          radarView.listLabels[i],
-          showIndicator ? static_cast<lv_opa_t>(175) : LV_OPA_TRANSP, 0);
+    }
+    const bool showIndicator = nearestAssociationMode && i < count;
+    if (radarView.listIndicators[i]) {
+      if (showIndicator) {
+        lv_obj_set_style_bg_color(radarView.listIndicators[i],
+                                  nearestAssociationColor(i), 0);
+        lv_obj_set_style_bg_opa(radarView.listIndicators[i],
+                                static_cast<lv_opa_t>(175), 0);
+        lv_obj_clear_flag(radarView.listIndicators[i], LV_OBJ_FLAG_HIDDEN);
+      } else {
+        lv_obj_add_flag(radarView.listIndicators[i], LV_OBJ_FLAG_HIDDEN);
+      }
     }
     if (priorityAircraft && radarView.listIcons[i]) {
       lv_obj_add_flag(radarView.listIcons[i], LV_OBJ_FLAG_HIDDEN);

@@ -47,6 +47,7 @@ struct View {
   lv_obj_t* verticalStateLabel = nullptr;
   char* leftNearestHex = nullptr;
   lv_obj_t* listLabels[5]{};
+  lv_obj_t* listIndicators[5]{};
   lv_obj_t* listIcons[5]{};
   lv_color_t* listIconBuffers[5]{};
   char* listHexes[5]{};
