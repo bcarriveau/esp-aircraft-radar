@@ -23,6 +23,10 @@ bool wifiOperationInProgress();
 // becomes true when local OTA requests exclusive network maintenance.
 bool fetchAbortRequested();
 
+// True only after this boot has received a sane time from SNTP. A restored NVS
+// epoch can make TLS usable without claiming that the wall clock is synchronized.
+bool timeSynchronized();
+
 // Coordinates exclusive flash-update maintenance with the core-0 network task.
 // Active transport checks the cancellation signal between bounded blocking
 // calls, then acknowledges the hold without recording an ADS-B failure.

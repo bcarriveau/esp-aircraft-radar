@@ -1,6 +1,11 @@
 #include "adsb_network.h"
 
+#include <Preferences.h>
 #include <esp_heap_caps.h>
+#include <esp_sntp.h>
+#include <esp_system.h>
+#include <sys/time.h>
+#include <time.h>
 
 #include "adsb_fetch.h"
 #include "adsb_diagnostics.h"
@@ -22,6 +27,13 @@ constexpr uint32_t NETWORK_QUIESCE_SETTLE_MS = 100;
 constexpr uint32_t ADSB_TASK_STACK_BYTES = 12U * 1024U;
 constexpr uint32_t COMMAND_REFRESH = 1U << 0;
 constexpr uint32_t COMMAND_WIFI_RECONNECT = 1U << 1;
+constexpr uint32_t TIME_SYNC_RETRY_MS = 15000;
+constexpr uint32_t TIME_PERSIST_INTERVAL_SECONDS = 6UL * 60UL * 60UL;
+constexpr uint32_t TIME_SEED_MIN_EPOCH = 1704067200UL;  // 2024-01-01 UTC
+constexpr uint32_t TIME_SEED_MAX_EPOCH = 4102444800UL;  // 2100-01-01 UTC
+constexpr char TIME_PREF_NAMESPACE[] = "adsb_time";
+constexpr char TIME_PREF_KEY[] = "last_ntp";
+constexpr char LOCAL_TIME_ZONE[] = "CST6CDT,M3.2.0/2,M11.1.0/2";
 
 TaskHandle_t fetchTaskHandle = nullptr;
 portMUX_TYPE commandMux = portMUX_INITIALIZER_UNLOCKED;
@@ -33,6 +45,14 @@ bool wifiOperationPending = false;
 uint32_t lastWifiAttempt = 0;
 uint32_t wifiAttempts = 0;
 wl_status_t lastLoggedWifiStatus = WL_IDLE_STATUS;
+
+portMUX_TYPE timeMux = portMUX_INITIALIZER_UNLOCKED;
+bool ntpSynchronized = false;
+bool timePersistPending = false;
+bool timeRefreshPending = false;
+uint32_t pendingNtpEpoch = 0;
+uint32_t lastPersistedNtpEpoch = 0;
+uint32_t lastTimeSyncKickMs = 0;
 
 void logFetchMemory(const char* stage) {
   app_state::observeFetchMemory(stage);
@@ -96,9 +116,131 @@ void printFetchSummary(const char* outcome, const adsb_fetch::Result& result,
                                   logStartedMs, millis());
 }
 
-void configureTimeSync() {
-  configTzTime("CST6CDT,M3.2.0/2,M11.1.0/2", "pool.ntp.org",
-               "time.google.com");
+bool timeEpochSane(uint32_t epoch) {
+  return epoch >= TIME_SEED_MIN_EPOCH && epoch <= TIME_SEED_MAX_EPOCH;
+}
+
+bool systemTimeUsable() {
+  const time_t current = time(nullptr);
+  return current >= 0 && static_cast<uint64_t>(current) <= UINT32_MAX &&
+         timeEpochSane(static_cast<uint32_t>(current));
+}
+
+bool isTimeSynchronized() {
+  portENTER_CRITICAL(&timeMux);
+  const bool synchronized = ntpSynchronized;
+  portEXIT_CRITICAL(&timeMux);
+  return synchronized;
+}
+
+void noteTimeSyncKick() {
+  portENTER_CRITICAL(&timeMux);
+  lastTimeSyncKickMs = millis();
+  portEXIT_CRITICAL(&timeMux);
+}
+
+uint32_t lastTimeSyncKick() {
+  portENTER_CRITICAL(&timeMux);
+  const uint32_t kickedAt = lastTimeSyncKickMs;
+  portEXIT_CRITICAL(&timeMux);
+  return kickedAt;
+}
+
+void onTimeSynchronized(struct timeval* tv) {
+  if (!tv || tv->tv_sec < 0 ||
+      static_cast<uint64_t>(tv->tv_sec) > UINT32_MAX) {
+    return;
+  }
+
+  const uint32_t epoch = static_cast<uint32_t>(tv->tv_sec);
+  if (!timeEpochSane(epoch)) return;
+
+  portENTER_CRITICAL(&timeMux);
+  const bool firstSyncThisBoot = !ntpSynchronized;
+  ntpSynchronized = true;
+  pendingNtpEpoch = epoch;
+  timePersistPending = true;
+  if (firstSyncThisBoot) timeRefreshPending = true;
+  portEXIT_CRITICAL(&timeMux);
+}
+
+void configureTimeSync(const char* reason) {
+  noteTimeSyncKick();
+  sntp_set_time_sync_notification_cb(onTimeSynchronized);
+  configTzTime(LOCAL_TIME_ZONE, "pool.ntp.org", "time.google.com");
+  Serial.printf("SNTP started%s%s\n", reason ? ": " : "",
+                reason ? reason : "");
+}
+
+bool restoreTimeSeed() {
+  Preferences preferences;
+  if (!preferences.begin(TIME_PREF_NAMESPACE, false)) {
+    Serial.println("Time seed: NVS namespace unavailable");
+    return false;
+  }
+
+  if (!preferences.isKey(TIME_PREF_KEY)) {
+    preferences.end();
+    Serial.println("Time seed: no saved NTP epoch yet");
+    return false;
+  }
+
+  const uint32_t epoch = preferences.getULong(TIME_PREF_KEY, 0);
+  preferences.end();
+  if (!timeEpochSane(epoch)) {
+    Serial.println("Time seed: saved NTP epoch is outside sanity bounds");
+    return false;
+  }
+
+  portENTER_CRITICAL(&timeMux);
+  lastPersistedNtpEpoch = epoch;
+  portEXIT_CRITICAL(&timeMux);
+
+  if (systemTimeUsable()) {
+    Serial.println("Time seed: system clock already usable");
+    return true;
+  }
+
+  struct timeval seededTime{};
+  seededTime.tv_sec = static_cast<time_t>(epoch);
+  if (settimeofday(&seededTime, nullptr) != 0) {
+    Serial.println("Time seed: settimeofday failed");
+    return false;
+  }
+
+  Serial.printf("Time seed: restored last successful NTP epoch %lu\n",
+                (unsigned long)epoch);
+  return true;
+}
+
+bool shouldPersistTime(uint32_t epoch) {
+  portENTER_CRITICAL(&timeMux);
+  const uint32_t previous = lastPersistedNtpEpoch;
+  portEXIT_CRITICAL(&timeMux);
+  if (previous == 0) return true;
+  const uint32_t delta = epoch >= previous ? epoch - previous : previous - epoch;
+  return delta >= TIME_PERSIST_INTERVAL_SECONDS;
+}
+
+void persistTimeSeed(uint32_t epoch) {
+  if (!timeEpochSane(epoch) || !shouldPersistTime(epoch)) return;
+
+  Preferences preferences;
+  if (!preferences.begin(TIME_PREF_NAMESPACE, false)) {
+    Serial.println("Time seed: NVS write namespace unavailable");
+    return;
+  }
+  const size_t written = preferences.putULong(TIME_PREF_KEY, epoch);
+  preferences.end();
+  if (written != sizeof(uint32_t)) {
+    Serial.println("Time seed: NVS write failed");
+    return;
+  }
+
+  portENTER_CRITICAL(&timeMux);
+  lastPersistedNtpEpoch = epoch;
+  portEXIT_CRITICAL(&timeMux);
+  Serial.printf("Time seed: saved NTP epoch %lu\n", (unsigned long)epoch);
 }
 
 void queueCommand(uint32_t command) {
@@ -225,8 +367,11 @@ bool reserveWifiReconnect(wl_status_t status, uint32_t retryDelayMs) {
   return reconnectDue;
 }
 
-bool beginWifiConnection(const char* reason, bool restartRadio = false) {
-  if (restartRadio && !prepareHardWifiRecovery()) return false;
+bool beginWifiConnection(const char* reason, bool restartRadio = false,
+                         bool quiesceDependents = true) {
+  if (restartRadio && quiesceDependents && !prepareHardWifiRecovery()) {
+    return false;
+  }
 
   ++wifiAttempts;
   recordWifiAttempt();
@@ -292,6 +437,7 @@ void fetchTask(void* parameter) {
   uint32_t nextPollAt = millis();
   uint32_t outageStartedAt = 0;
   uint8_t outageRecoveries = 0;
+  bool unsyncedTlsRecoveryAttempted = false;
   for (;;) {
     if (isMaintenanceRequested()) {
       setMaintenanceActive(true);
@@ -365,6 +511,7 @@ void fetchTask(void* parameter) {
         printFetchSummary("STALE", result, diagnostics);
         outageStartedAt = 0;
         outageRecoveries = 0;
+        unsyncedTlsRecoveryAttempted = false;
         immediateFollowup = true;
       } else {
         app_state::publishTargets(incoming, result.acceptedCount, millis());
@@ -384,6 +531,7 @@ void fetchTask(void* parameter) {
         printFetchSummary("OK", result, diagnostics);
         outageStartedAt = 0;
         outageRecoveries = 0;
+        unsyncedTlsRecoveryAttempted = false;
         if (updateCheckPrepared) update_manager::performPreparedCheck();
       }
     } else {
@@ -400,10 +548,11 @@ void fetchTask(void* parameter) {
                     app_state::failureStageName(result.failureStage),
                     diagnostics.consecutiveFailures);
 
-      // A single TLS error does not justify dropping a healthy station link.
-      // A partial response body is different: repeated physical logs show that
-      // a soft association reconnect does not clear the poisoned TLS/socket
-      // state, while a station-radio restart restores the next transfer.
+      // A TLS failure while this boot is still unsynchronized, or while the
+      // system clock is outside sane bounds, gets one bounded hard-radio
+      // recovery. The GOT_IP event starts SNTP immediately after the recycle;
+      // later unsynchronized TLS failures wait for that background sync instead
+      // of entering a soft-reconnect death spiral.
       const bool linkFailure =
           result.failureStage == app_state::FetchFailureStage::WIFI ||
           result.failureStage == app_state::FetchFailureStage::DNS ||
@@ -413,16 +562,22 @@ void fetchTask(void* parameter) {
           result.failureStage == app_state::FetchFailureStage::HTTP_HEADERS;
       const bool bodyFailure =
           result.failureStage == app_state::FetchFailureStage::RESPONSE_BODY;
+      const bool unsyncedTlsFailure =
+          result.failureStage == app_state::FetchFailureStage::TLS &&
+          (!isTimeSynchronized() || !systemTimeUsable());
+      const bool unsyncedTlsRecoveryDue =
+          unsyncedTlsFailure && !unsyncedTlsRecoveryAttempted;
       const bool linkRecoveryDue =
           linkFailure && diagnostics.consecutiveFailures >= 3 &&
           (diagnostics.consecutiveFailures == 3 ||
            diagnostics.consecutiveFailures % 6 == 0);
       const bool transportRecoveryDue =
-          transportFailure && diagnostics.consecutiveFailures >= 2 &&
+          !unsyncedTlsFailure && transportFailure &&
+          diagnostics.consecutiveFailures >= 2 &&
           (diagnostics.consecutiveFailures == 2 ||
            diagnostics.consecutiveFailures % 3 == 0);
-      const bool recoveryDue =
-          bodyFailure || linkRecoveryDue || transportRecoveryDue;
+      const bool recoveryDue = bodyFailure || unsyncedTlsRecoveryDue ||
+                               linkRecoveryDue || transportRecoveryDue;
       const bool maintenanceRequestedAfterFetch = isMaintenanceRequested();
       const bool recoveryDeferredForOta =
           recoveryDue && maintenanceRequestedAfterFetch;
@@ -432,7 +587,14 @@ void fetchTask(void* parameter) {
             "ADSB recovery deferred: OTA exclusive hold was requested");
       }
       if (recoveryDue && !recoveryDeferredForOta) {
-        const bool restartRadio = bodyFailure || outageRecoveries > 0;
+        if (unsyncedTlsRecoveryDue) {
+          unsyncedTlsRecoveryAttempted = true;
+          Serial.println(
+              "ADSB TLS failed before SNTP sync; hard radio recycle and "
+              "background time kick selected");
+        }
+        const bool restartRadio = unsyncedTlsRecoveryDue || bodyFailure ||
+                                  outageRecoveries > 0;
         Serial.printf(
             "ADSB recovery ladder: %s WiFi after %s failure\n",
             restartRadio ? "hard-recycling" : "reconnecting",
@@ -491,6 +653,40 @@ void fetchTask(void* parameter) {
   }
 }
 
+void serviceTimeSync(uint32_t now, wl_status_t wifiStatus) {
+  const bool maintenance = isMaintenanceRequested();
+  const bool fetchBusy = app_state::fetchInProgress();
+  uint32_t syncedEpoch = 0;
+  bool persistPending = false;
+  bool refreshPending = false;
+  portENTER_CRITICAL(&timeMux);
+  if (timePersistPending && !maintenance && !fetchBusy) {
+    syncedEpoch = pendingNtpEpoch;
+    timePersistPending = false;
+    persistPending = true;
+  }
+  if (timeRefreshPending && !maintenance) {
+    timeRefreshPending = false;
+    refreshPending = true;
+  }
+  portEXIT_CRITICAL(&timeMux);
+
+  if (persistPending) persistTimeSeed(syncedEpoch);
+  if (refreshPending) {
+    Serial.println("SNTP synchronized; ADSB refresh queued");
+    queueCommand(COMMAND_REFRESH);
+  }
+
+  if (wifiStatus != WL_CONNECTED ||
+      (isTimeSynchronized() && systemTimeUsable()) || maintenance) {
+    return;
+  }
+
+  const uint32_t lastKick = lastTimeSyncKick();
+  if (lastKick != 0 && now - lastKick < TIME_SYNC_RETRY_MS) return;
+  configureTimeSync("background retry");
+}
+
 }  // namespace
 
 const char* wifiStatusName(wl_status_t status) {
@@ -514,9 +710,17 @@ bool begin() {
     return false;
   }
 
-  WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false);
-  WiFi.setAutoReconnect(true);
+  sntp_set_time_sync_notification_cb(onTimeSynchronized);
+  restoreTimeSeed();
+
+  const esp_reset_reason_t resetReason = esp_reset_reason();
+  const bool coldRadioReset = resetReason == ESP_RST_POWERON ||
+                              resetReason == ESP_RST_BROWNOUT;
+  if (!coldRadioReset) {
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);
+    WiFi.setAutoReconnect(true);
+  }
   WiFi.persistent(true);
   WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
     if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
@@ -528,18 +732,24 @@ bool begin() {
       app_state::setWifiStatus(WL_CONNECTED);
       Serial.printf("WiFi connected: %s, RSSI=%d\n",
                     WiFi.localIP().toString().c_str(), WiFi.RSSI());
-      configureTimeSync();
+      configureTimeSync("WiFi got IP");
     }
   });
 
-  beginWifiConnection("startup");
+  if (coldRadioReset) {
+    // Power-on/brownout starts with the same station-radio recycle already
+    // proven to clear poisoned TLS/socket state. MQTT is not started yet, so
+    // there are no dependent runtime sockets to quiesce at this point.
+    beginWifiConnection("startup hard bring-up", true, false);
+  } else {
+    beginWifiConnection("startup");
+  }
   Serial.printf("Connecting to %s", settings::wifiSsid().c_str());
   const bool connected = waitForWifi(20000);
   Serial.println();
   if (connected) {
     Serial.printf("Initial WiFi connection complete: %s\n",
                   WiFi.localIP().toString().c_str());
-    configureTimeSync();
   } else {
     Serial.println("WiFi timeout; UI will still run");
   }
@@ -576,6 +786,7 @@ void service() {
     Serial.printf("WiFi state: %s (%d)\n", wifiStatusName(status), status);
     lastLoggedWifiStatus = status;
   }
+  serviceTimeSync(now, status);
   static uint32_t lastMemorySample = 0;
   if (now - lastMemorySample >= 1000) {
     lastMemorySample = now;
@@ -624,6 +835,10 @@ bool wifiOperationInProgress() {
 
 bool fetchAbortRequested() {
   return isMaintenanceRequested();
+}
+
+bool timeSynchronized() {
+  return isTimeSynchronized() && systemTimeUsable();
 }
 
 bool requestMaintenanceHold() {

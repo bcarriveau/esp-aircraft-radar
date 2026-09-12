@@ -18,6 +18,7 @@
 #include "radar_north_marker.h"
 #include "settings.h"
 #include "system_ux.h"
+#include "time_sync_ui.h"
 #include "ui.h"
 #include "update_manager.h"
 #include "update_ui.h"
@@ -94,6 +95,7 @@ void setup() {
   const bool updateUiReady = uiReady && update_ui::build();
   const bool radarNorthReady = uiReady && radar_north_marker::attach();
   const bool systemUxReady = uiReady && system_ux::build();
+  const bool timeSyncUiReady = uiReady && time_sync_ui::build();
   const bool splashReady =
       uiReady && boot_splash::show(settings::deviceTitle().c_str());
   if (!uiReady) ui::showFatalStatus("UI INITIALIZATION FAILED");
@@ -113,6 +115,10 @@ void setup() {
   if (!systemUxReady) {
     Serial.println(
         "WARNING: Product 100 system UX unavailable; radar continuing");
+  }
+  if (!timeSyncUiReady) {
+    Serial.println(
+        "WARNING: Product 101 clock sync indicator unavailable; radar continuing");
   }
   if (!splashReady) {
     Serial.println(
@@ -165,6 +171,7 @@ void loop() {
   ui::update(now);
   update_ui::update(now);
   system_ux::update(now);
+  time_sync_ui::update(now);
   lvgl_port_unlock();
   delay(5);
 }

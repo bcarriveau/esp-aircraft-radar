@@ -9,8 +9,8 @@ version-controlled baseline. Earlier numbered history is intentionally not inven
 
 ## Current status
 
-- **Current Product:** Product 99
-- **Build marker:** `7IN-20260817-PRODUCT99-RADAR-DISPLAY-OPTIONS`
+- **Current Product:** Product 101
+- **Build marker:** `7IN-20260912-PRODUCT101-COLD-BOOT-TIME-RECOVERY`
 - **Current branch:** `main`
 - **Exact hardware:** Waveshare ESP32-S3-Touch-LCD-7, 800x480 ST7262, GT911, OPI PSRAM
 - **Framework:** Arduino-ESP32 3.0.7 high-performance build
@@ -22,6 +22,62 @@ version-controlled baseline. Earlier numbered history is intentionally not inven
 Current firmware identity comes from `include/build_info.h` plus the matching
 generated Product package/manifest. Documentation-only and housekeeping commits may
 advance repository HEAD without creating a new firmware Product.
+
+## Product 101 - 2026-09-12
+
+**Build:** `7IN-20260912-PRODUCT101-COLD-BOOT-TIME-RECOVERY`
+
+### Changed
+
+- Power-on and brownout startup now use the established hard station-radio recycle
+  before the first ADS-B request instead of entering through the soft reconnect path.
+- The last successful sane SNTP epoch is retained in bounded NVS storage and restored
+  on boot so verified HTTPS can start from a usable clock while SNTP resynchronizes.
+- SNTP remains asynchronous, retries in the background, and queues an immediate
+  serialized ADS-B refresh when real network time first synchronizes.
+- A TLS failure while time is unsynchronized or outside sane bounds gets one bounded
+  hard-radio recovery; later unsynchronized failures wait for background time sync
+  rather than repeatedly soft-reconnecting.
+- The header clock reports `SYNCING` until this boot receives sane SNTP time. A
+  restored epoch is intentionally sufficient for TLS without being presented as a
+  synchronized wall clock.
+
+### Preserved
+
+- ADS-B requests are not gated on a wall-clock year check; the core-0 serialized
+  fetch task can attempt the first poll immediately after Wi-Fi comes up.
+- Native ESP-IDF HTTPS remains preferred and the hardened verified fallback transport
+  is unchanged.
+- 15-second normal cadence, request generation/stale rejection, last-good retention,
+  OTA/MQTT network ownership, Wi-Fi/TLS recovery, response deadlines and bounds are
+  preserved.
+- Radar rendering, stable ICAO selection/tracking, 200-target capacity, display
+  timing, DMA, OPI PSRAM, and the 20-scanline bounce buffer are unchanged.
+
+### Validation
+
+- Strict host C++ syntax checks passed for the complete changed ADS-B network source,
+  main startup/loop source, and the new clock-sync UI helper using target-interface stubs.
+- Focused ASan/UBSan recovery/time tests passed for saved-epoch bounds, throttled NVS
+  persistence, one-shot unsynchronized TLS recovery, normal TLS recovery, body
+  recovery, and link-recovery thresholds.
+- Existing-file reverse checks reproduce the exact Product 100 Git blobs for the
+  modified ADS-B network, main, network header, and build-info sources after removing
+  only the Product 101 changes.
+- PlatformIO compile/link, upload, and physical hardware testing were not run here.
+
+## Product 100 - 2026-09-08
+
+**Build:** `7IN-20260907-PRODUCT100-WIFI-SCAN-OTA-QR-R3`  
+**Commit:** `0296dfbe98390759fca03591b3b83a29fb0e5b87`
+
+### Added
+
+- Added a bounded on-device Wi-Fi SSID scan and selection flow that serializes radio
+  use through the existing ADS-B and MQTT maintenance holds.
+- Preserved manual SSID entry and the existing settings save/reconnect path.
+- Added a locally generated QR code for the active numeric-IP OTA update URL without
+  embedding the six-digit authorization code.
 
 ## Product 99 - 2026-08-17
 
